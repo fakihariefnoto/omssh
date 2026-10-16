@@ -259,8 +259,8 @@ type Plan struct {
 
 | Thing | Location |
 | --- | --- |
-| Main config | `$XDG_CONFIG_HOME/omssh/config.toml` (default `~/.config/omssh/`) |
-| Themes | `.../omssh/themes/*.toml`, built-ins embedded |
+| Main config | `$XDG_CONFIG_HOME/omssh/config.yaml` (default `~/.config/omssh/`) |
+| Themes | `.../omssh/themes/*.yaml`, built-ins embedded |
 | Connections | `~/.ssh/config` (read/write, OpenSSH-compatible) |
 | Secrets | OS keyring, keys under `omssh/<connection-id>` |
 | Local trash | freedesktop trash when present, else `~/.local/share/omssh/trash/` |
@@ -269,9 +269,10 @@ type Plan struct {
 | Cache (previews, listings) | `$XDG_CACHE_HOME/omssh/` |
 | Logs | `.../omssh/logs/`, rotated, redacted |
 
-Config is TOML, loaded with `pelletier/go-toml/v2`. Unknown keys are an error
-(`DisallowUnknownFields`) so typos surface early; `omssh config check` reports
-them with line numbers.
+Config is YAML, loaded with `goccy/go-yaml` in strict mode, so an unknown key is
+an error carrying a line and column; `omssh config check` prints them. Anchors
+and aliases are allowed but their expansion is bounded, and duplicate keys are
+rejected rather than silently last-wins.
 
 ## 8. Error handling and logging
 
@@ -303,10 +304,10 @@ to stay under a minute with `-race`.
 
 ## 10. Packaging
 
-- Module path is `github.com/fakih/omssh` (PLAN §9 D1), so the binary is built
-  from `github.com/fakih/omssh/cmd/omssh`.
+- Module path is `github.com/fakihariefnoto/omssh` (PLAN §9 D1), so the binary is built
+  from `github.com/fakihariefnoto/omssh/cmd/omssh`.
 - `goreleaser` for `darwin/linux/windows` × `amd64/arm64`, producing archives,
   checksums and a Homebrew tap formula.
-- `go install github.com/fakih/omssh/cmd/omssh@latest` works because the app is
+- `go install github.com/fakihariefnoto/omssh/cmd/omssh@latest` works because the app is
   pure Go with no cgo.
 - Shell completions and a man page generated from cobra at release time.

@@ -45,6 +45,9 @@ The first UX draft was vim-first and letter-keyed: `c` copy, `M` move,
    out of scope for v1.
 8. **Only bind keys the terminal can deliver.** Unbindable keys are avoided
    rather than half-supported, and capabilities are probed at startup.
+9. **Quitting is explicit.** `Ctrl+Q` (or `F10`) quits and is rebindable;
+   `Esc` only ever goes back, and at the top level it says how to quit. `Ctrl+C`
+   stays *copy* with an explanatory hint when it has nothing to act on.
 
 ## Consequences
 
@@ -58,5 +61,8 @@ The first UX draft was vim-first and letter-keyed: `c` copy, `M` move,
   deleting permanently.
 - `Ctrl+C` means copy, which is a deliberate, documented break from "quit". The
   mitigation is a toast that names `Ctrl+Q`, plus a configurable alternative.
+- `Esc` never quits, so quitting has to be learned (`Ctrl+Q`/`F10`). The top
+  level answers `Esc` with the shortcut, which is disclosure at the moment of
+  need rather than a manual to read up front.
 - Vim users lose their muscle memory for file operations unless they rebind
   them; they keep navigation, which is the part that is actually habitual.

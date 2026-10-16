@@ -189,26 +189,33 @@ Hard requirements (see §7 Security) — this is untrusted input:
 A profile answers "get this local tree onto that remote, then do the usual
 things". It is declarative, previewable, and repeatable.
 
-```toml
-[deploy.profiles.prod-api]
-host          = "prod-api"          # connection id
-local_root    = "./dist"            # source tree
-remote_root   = "/srv/api/current"  # destination
-mode          = "sync"              # "sync" (delete extraneous) | "update"
-exclude       = [".git/", "*.log", "node_modules/", ".env"]
-include_hidden = false
-follow_symlinks = false
-atomic        = true                # upload to *.omssh-tmp then rename (default)
-preserve_perms = true
-backup        = true                # keep one previous version of changed files
-workers       = 4
-
-[deploy.profiles.prod-api.hooks]
-local_pre    = ["npm run build"]
-local_post   = []
-remote_pre   = ["mkdir -p /srv/api/current"]
-remote_post  = ["sudo systemctl restart api", "curl -fsS localhost:8080/healthz"]
-on_failure   = ["echo 'deploy failed' >> /var/log/omssh-deploy.log"]
+deploy:
+  profiles:
+    prod-api:
+      host: prod-api                 # connection id
+      local_root: ./dist             # source tree
+      remote_root: /srv/api/current  # destination
+      mode: sync                     # sync (delete extraneous) | update (add/change only)
+      exclude:
+        - .git/
+        - "*.log"
+        - node_modules/
+        - .env
+      include_hidden: false
+      follow_symlinks: false
+      atomic: true                   # upload to *.omssh-tmp then rename (default)
+      preserve_perms: true
+      backup: true                   # keep one previous version of changed files
+      workers: 4
+      hooks:
+        local_pre:  ["npm run build"]
+        local_post: []
+        remote_pre: ["mkdir -p /srv/api/current"]
+        remote_post:
+          - sudo systemctl restart api
+          - curl -fsS localhost:8080/healthz
+        on_failure:
+          - echo 'deploy failed' >> /var/log/omssh-deploy.log
 ```
 
 - **Dry run first, always offered.** `p` computes and shows the plan:
@@ -346,18 +353,17 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
 
 | # | Question | Decision |
 | --- | --- | --- |
-| D1 | Module path | `github.com/fakih/omssh`. A bare `omssh` module path would break `go install github.com/fakih/omssh/cmd/omssh@latest` and the goreleaser/Homebrew pipeline, both promised in the goals (§2 G8) and `ARCHITECTURE.md` §10. Renaming later is a one-line `go mod edit -module` plus an import rewrite, so this stays cheap to revisit. |
+| D1 | Module path | `github.com/fakihariefnoto/omssh`. A bare `omssh` module path would break `go install github.com/fakihariefnoto/omssh/cmd/omssh@latest` and the goreleaser/Homebrew pipeline, both promised in the goals (§2 G8) and `ARCHITECTURE.md` §10. Renaming later is a one-line `go mod edit -module` plus an import rewrite, so this stays cheap to revisit. |
 | D2 | Deploy atomic writes | **On by default** (`atomic = true`), per profile opt-out. Correctness first: a dropped connection must never leave a half-written file in place. The cost is a temporary second copy during upload, which the plan accepts. |
 | D3 | Remote→remote across hosts | **Always stream through the client** with bounded buffers. No bastion-to-bastion `ssh`/`rsync` path: it would need a second credential context, a second quoting surface, and would not work when the two hosts cannot reach each other — which is the common case. |
 | D4 | Colour identity | **Signature accent**: `#57D9C9` aqua/teal, with `#8FF5E6` for emphasis, mapped to 256 `80`/`123` and 16-colour `bright cyan`. Reserved semantic colours stay separate. See `UX.md` §11.1. |
+| D5 | Config format | **YAML**, loaded strictly with `goccy/go-yaml`: unknown keys and duplicate keys are errors with a line and column, which is what `omssh config check` reports. Deploy profiles nested under `deploy.profiles.<name>` read better in YAML than as TOML tables of tables. |
+| D6 | Quit and `Esc` | Quit is **`Ctrl+Q`** (and `F10`), rebindable via `keys.quit`. **`Esc` is never quit**: it dismisses, cancels and goes back. At the top level with nothing to dismiss, `Esc` explains how to quit instead of quitting. `Ctrl+C` stays *copy*, with a `Ctrl+Q quits` hint when nothing is selected. |
 
 ### 9.2 Still open
 
-1. **Config format** — TOML is assumed (comments and tables suit deploy profiles
-   well). Confirm no preference for YAML.
-2. **Trash defaults** — 7-day retention and `.omssh-trash/` in the remote home
+1. **Trash defaults** — 7-day retention and `.omssh-trash/` in the remote home
    are assumed. Should local deletes prefer the freedesktop trash spec where it
-   exists, or always use our own directory for predictability?
-3. **`Ctrl+C`** — ADR 0006 binds it to copy and prints a `Ctrl+Q quits` hint
-   when nothing is selected. Confirm that over the alternative (`Ctrl+C` quits,
-   `Ctrl+Insert` copies).
+   exists, or always use our own directory for predictability? (Or drop trash
+   entirely and rely on a confirm dialog — see `UX.md` §5 and `PLAN.md` §4.2 for
+   what it buys.)

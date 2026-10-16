@@ -16,9 +16,10 @@ all being solid.
 
 **Goal:** the app launches, looks like the product, and does nothing yet.
 
-- `go.mod` with module `github.com/fakih/omssh`, package layout from
+- `go.mod` with module `github.com/fakihariefnoto/omssh`, package layout from
   `ARCHITECTURE.md`.
-- Config loading and XDG paths, `omssh config path|edit|check`.
+- Config loading (strict YAML via `goccy/go-yaml`) and XDG paths, with
+  `omssh config path|edit|check` reporting unknown and duplicate keys by line.
 - Lip Gloss v2 theme engine with `midnight`/`dawn`/`mono`, colour-profile
   negotiation, `NO_COLOR`.
 - `internal/actions` registry and `internal/keymap` presets, so the palette,

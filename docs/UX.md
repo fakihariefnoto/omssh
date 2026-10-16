@@ -145,8 +145,9 @@ Learn this once and the rest of the app is guessable:
 | **Ctrl + letter** | An *action* or a *dialog* | `Ctrl+C` copy, `Ctrl+E` extract, `Ctrl+F` search, `Ctrl+L` path, `Ctrl+K` palette |
 | **F-keys** | Classic file-manager operations | `F2` rename, `F3` view, `F4` edit, `F5` copy, `F6` move, `F7` new folder, `F8` delete, `F9` menu, `F10` quit |
 
-`Enter` opens or confirms. `Esc` goes back one level of context and never
-destroys anything. `Tab` switches pane.
+`Enter` opens or confirms. `Esc` goes back one level of context, never destroys
+anything and never quits: at the top level it tells you how to quit rather than
+quitting. `Tab` switches pane.
 
 ---
 
@@ -302,8 +303,9 @@ delete:
 | `F9` / right-click | Context menu — every operation for the selection | discovery net |
 | `Ctrl+K` | Command palette — every action, searchable, with its shortcut | discovery net |
 | `F1` / `?` | Help — searchable keymap grouped by task | discovery net |
-| `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | |
-| `Esc` | Back / dismiss / clear | never destructive |
+| `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | rebindable via `keys.quit` |
+| `Esc` | Back / dismiss / clear | never destructive, **never quits** |
+| `Esc` at the top level | Nothing to dismiss → shows `Ctrl+Q to quit` | so quitting is never guessed |
 
 ### 7.3 Vim preset (optional)
 
@@ -511,3 +513,12 @@ Tab, pane-switch and terminal-tab switching depend on the terminal emitting
 modified keys. `Ctrl+PgUp/PgDn` and `Alt+1…9` cover most, and the palette covers
 the rest; on startup the app probes capabilities and drops the shortcuts the
 terminal cannot express instead of silently doing nothing.
+
+**Quit is `Ctrl+Q` (or `F10`), never `Esc`.** `Esc` has three jobs already —
+cancel a dialog, leave search, go up a level — and it is a single `0x1B` byte
+that terminals also use to begin escape sequences, so it can arrive late or
+ambiguously. Binding it to quit would mean that a reflexive `Esc`-`Esc` after a
+search, or one stray byte from an arrow key, closes the app mid-transfer. `Esc`
+therefore never quits; at the top level it answers with `Ctrl+Q to quit`, which
+teaches the shortcut at exactly the moment someone wants it. Anyone who insists
+can set `keys.quit = "esc"`.

@@ -16,7 +16,7 @@ created in the app are appended as normal `Host` blocks with our own settings
 in a structured comment that OpenSSH ignores (for example the deploy profile
 name and a stable id), so the file stays valid for `ssh(1)`, `scp(1)` and every
 other tool. Anything that is not a connection — UI preferences, themes,
-deploy profiles — lives in `~/.config/omssh/config.toml`.
+deploy profiles — lives in `~/.config/omssh/config.yaml`.
 
 ## Consequences
 
