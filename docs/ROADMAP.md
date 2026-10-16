@@ -80,9 +80,11 @@ clear message.
 - Operations: mkdir, new file, rename, delete, chmod, symlink — the standard
   set (`F2`/`F3`/`F4`/`F5`/`F6`/`F7`/`F8`, `Ctrl+C/X/V`), plus the `F9` context
   menu and the action bar listing the verbs for the current selection.
-- `internal/trash`: delete → trash (XDG locally, `.omssh-trash/` remotely) with
-  `Ctrl+Z` undo for delete, rename and move; explicit permanent-delete path when
-  a host has no writable home. `omssh trash list|restore|empty`.
+- Delete confirmation that is the safety net (no trash, no undo): exact items,
+  size and path; expanded short lists; depth and counts for recursive deletes;
+  type-the-path for root-ish targets. `Ctrl+Z`/`Ctrl+Y` stay unbound.
+- No `internal/trash`. Any scratch/backup directory we create is our own naming:
+  `.omssh-tmp` for atomic writes, `.omssh-backup/` for deploy backups.
 - Preview pane: syntax-highlighted text, hex, archive listing, dir summary.
 - Sync browse (`Alt+S`), reveal in other pane (`Alt+O`), `Send →` / `Fetch ←`
   quick actions, drag between panes to copy, new-tab-at-this-directory
@@ -93,8 +95,9 @@ clear message.
 responsive while scrolling; every key in `UX.md` §5 and §7.1 works; the cursor
 is restored on returning to a directory; a permission-denied directory shows an
 explanatory row with actions instead of an error screen; a new user can copy a
-file to the server and undo the delete of another using only the action bar,
-the context menu or the palette — without reading `UX.md`.
+file to the server and delete a file safely using only the action bar, the
+context menu or the palette — without reading `UX.md`; deleting a recursive
+selection names the file count and size before it proceeds.
 
 ---
 
@@ -110,7 +113,7 @@ the context menu or the palette — without reading `UX.md`.
 - Conflict policies with the conflict dialog (reversible choice first) and
   apply-to-all.
 - Inline confirmation line for bulk or destructive operations; operations under
-  the threshold start immediately with an undoable toast.
+  the threshold start immediately and report with a plain toast.
 - Pause / resume / cancel / retry; `.part` resume for large files.
 - Fast paths: SFTP rename, `copy-data`, server-side `cp -a` — in that order.
 - Transfer queue panel with item detail.
@@ -251,8 +254,8 @@ after M1.
 3. Every new user-facing action is added to `internal/actions` (palette,
    context menu and action bar pick it up automatically) — a stray key handler
    is a review failure.
-4. Any new destructive action has a confirm, an undo, or a documented reason it
-   cannot.
+4. Any new destructive action confirms with the facts (items, size, path) — v1
+   has no undo, so a missing confirmation is a review failure.
 5. `docs/` updated where behaviour differs from what is written here.
 6. Conventional commits, milestone tagged `v0.<n>.0`.
 7. The binary from that milestone is genuinely usable for what it covers —

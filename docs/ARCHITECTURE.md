@@ -13,7 +13,6 @@ internal/vfs         unified filesystem interface + local implementation
 internal/xfer        copy engine: plan, queue, workers, resume, conflicts, progress
 internal/archive     detect, read, write, extract with safety limits
 internal/deploy      profiles, diff planner, runner, hooks, history
-internal/trash       undo/redo, local + remote trash, retention, restore
 internal/actions     the action registry: one entry per user-facing action
 internal/keymap      keymap presets and validation, built from the registry
 internal/config      config, ssh_config read/write, XDG paths
@@ -116,7 +115,7 @@ side-agnostic by construction.
 | Deploy a tree | `deploy.Plan` walks `local_root` and `remote_root` with `fs.WalkDir`, then `xfer` runs the plan |
 | Dry-run diff | The plan, rendered. No execution path involved. |
 | Remote→remote | Two different `vfs.FS` handles; the copy engine notices and streams through |
-| Delete + undo | `trash.Discard` **renames** into the trash (`vfs.FS.Rename`), so undo is a rename back — no special I/O path |
+| Delete | `vfs.FS.Remove` / `RemoveAll`, with no undo path — so the confirming dialog in the UI is the only safety net and must state items, size and path |
 
 There is no "upload" function and no "download" function. There is one copy
 function. This is the decision that keeps the feature list small in code and
@@ -263,9 +262,9 @@ type Plan struct {
 | Themes | `.../omssh/themes/*.yaml`, built-ins embedded |
 | Connections | `~/.ssh/config` (read/write, OpenSSH-compatible) |
 | Secrets | OS keyring, keys under `omssh/<connection-id>` |
-| Local trash | freedesktop trash when present, else `~/.local/share/omssh/trash/` |
-| Remote trash | `<remote home>/.omssh-trash/<timestamp>/`, 7-day retention, swept on connect |
-| State (history, deploy logs, undo log) | `$XDG_STATE_HOME/omssh/` |
+| Atomic-write scratch | `.omssh-tmp` beside the destination, renamed into place on close |
+| Deploy backups | `.omssh-backup/` beside the target when `backup = true` |
+| State (history, deploy logs, recent paths) | `$XDG_STATE_HOME/omssh/` |
 | Cache (previews, listings) | `$XDG_CACHE_HOME/omssh/` |
 | Logs | `.../omssh/logs/`, rotated, redacted |
 

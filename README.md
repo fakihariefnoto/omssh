@@ -13,8 +13,8 @@ makes moving files between local and remote machines pleasant:
 - **Discoverable by design** — a contextual action bar, a command palette and a
   context menu over one action registry, plus the shortcuts you already know
   (`Ctrl+C`/`Ctrl+V`, `F2`–`F8`, `Alt+←/→`, `Ctrl+Z`). No manual required.
-- **Reversible and safe** — deletes go to a trash on either side, `Ctrl+Z`
-  undoes, bulk and destructive operations confirm before starting.
+- **Safe** — bulk and destructive operations confirm with the facts before
+  starting, and root-ish targets need the path typed out.
 - **Transfers that behave** — queue, parallel workers, pause/resume, retry,
   conflict policies, server-side copy when both ends are the same host.
 - **Archives both directions** — extract an archive that lives on the remote

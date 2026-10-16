@@ -31,8 +31,8 @@ The tagline we design against:
 | G6 | Best-in-class folder walking | Fuzzy path jump, bookmarks, incremental filter, preview, history, no dead ends |
 | G7 | Beautiful, modern, keyboard-first UI | Command palette, themes, mouse support, no layout breakage at any width |
 | G8 | One static binary, cross-platform | macOS/Linux/Windows, no `ssh`, `scp`, `tar` or `unzip` required on either end |
-| G9 | Intuitive without a manual | A new user can connect, copy to the server and undo a mistake using only what the screen shows: the action bar, the palette, the context menu and standard shortcuts |
-| G10 | Safe by default | Nothing irreversible happens without a deliberate confirm, and delete is undoable via trash |
+| G9 | Intuitive without a manual | A new user can connect, copy to the server and delete safely using only what the screen shows: the action bar, the palette, the context menu and standard shortcuts |
+| G10 | Safe by default | Every irreversible action confirms first, and the confirmation states exactly what is affected (items, size, path) |
 
 ## 3. Personas
 
@@ -84,12 +84,11 @@ The tagline we design against:
 - Multi-select: `space` to toggle, `Shift+arrows` to extend a run (like every
   GUI list), `Ctrl+A` all, `Alt+A` invert. Selection survives navigation and its
   count and total size are always in the status bar.
-- **Undo and trash**: deletes move to a trash (XDG trash locally, an
-  `.omssh-trash/<timestamp>/` directory on the remote so the move stays on the
-  same filesystem and is instant). `Ctrl+Z` undoes delete, rename, move and
-  overwrite; when a host has no writable home the dialog says so and requires an
-  explicit permanent-delete confirmation. Retention and restore are available
-  from `omssh trash` and the queue's Trash tab.
+- **Delete is deliberate, not reversible.** No trash and no undo in v1
+  (`Ctrl+Z` is unbound). `F8`/`Del` confirms with the facts —
+  `Delete 3 items · 1.4 GB · prod-api:/srv/api` — recursive deletes state depth
+  and counts, and root-ish targets require typing the path. The confirmation is
+  the safety net, so it is never skipped and never "remembered".
 - Preview pane: syntax-highlighted text (Chroma), hex for binaries, image
   preview where the terminal supports graphics, archive content listing,
   directory tree summary.
@@ -121,8 +120,11 @@ The tagline we design against:
   pane). Bulk or destructive operations confirm on one inline line rather than
   with a modal: `Copy 200 files → prod-api:/srv/api · Enter to start · Esc to
   cancel`.
-- Undoable: `Ctrl+Z` reverses a move, rename or overwrite; deletes go to trash
-  (§4.2) rather than being permanent.
+- Bulk or destructive operations always confirm, and the confirmation states the
+  facts rather than asking "are you sure": `Delete 3 items · 1.4 GB ·
+  prod-api:/srv/api`.
+- No undo in v1: rename and move are reversible only by doing the opposite,
+  which the action bar makes one key away.
 - Preserve mode bits and mtimes; optional `fsync`-on-close for local writes.
 - **Server-side copy**: when source and destination are on the same remote,
   try `cp -a` (or SFTP `copy-data` extension) first and only stream bytes if
@@ -292,7 +294,6 @@ omssh ls host:path             # list
 omssh rm host:path...          # remove
 omssh extract <archive> --to <dest> [--format auto] [--strip N]
 omssh compress <path...> -o <archive> [--format tar.zst] [--level 3]
-omssh trash list|restore <id>|empty   # deleted-file recovery on either side
 omssh deploy <profile> [--dry-run] [--yes]
 omssh exec <host> -- <cmd...>  # non-interactive, streams output
 omssh exec <host>              # interactive PTY without the TUI
@@ -345,7 +346,7 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
 | Multiple concurrent sessions leaking resources | Hangs, fd exhaustion | Connection pool with refcounts, per-session context cancellation, goroutine-leak tests (`goleak`) in CI |
 | Terminals do not deliver modified keys (`Ctrl+Shift+…`, `Ctrl+Tab`, F-keys behind `Fn`) | A shortcut silently does nothing | Probe capabilities at startup, drop undeliverable shortcuts instead of ignoring them, avoid keys terminals reserve (§13 of `UX.md`), and make the palette/context menu the universal fallback |
 | Discoverability decays as features land | New actions become key-only again | Palette, context menu and action bar are three views over **one action registry**; an action missing from the registry is a bug. Enforced by a test that every registered action is reachable from the palette |
-| Undo/trash grows into its own product (retention, quota, cross-device) | Scope creep, and a trash that fails on read-only hosts | Bounded v1: single-level undo per session, trash on the same filesystem only, explicit permanent-delete path when trash is unavailable, 7-day retention, CLI management |
+| Destructive actions have no undo | One mistaken `F8` on an `rm -rf`-equivalent is unrecoverable, and users notice | The confirmation is the safety net: exact counts and sizes, expanded short lists, depth for recursive deletes, type-the-path for root-ish targets, and no "don't ask again". `--yes` exists only on the CLI, never in the TUI |
 
 ## 9. Decisions and open questions
 
@@ -359,11 +360,9 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
 | D4 | Colour identity | **Signature accent**: `#57D9C9` aqua/teal, with `#8FF5E6` for emphasis, mapped to 256 `80`/`123` and 16-colour `bright cyan`. Reserved semantic colours stay separate. See `UX.md` §11.1. |
 | D5 | Config format | **YAML**, loaded strictly with `goccy/go-yaml`: unknown keys and duplicate keys are errors with a line and column, which is what `omssh config check` reports. Deploy profiles nested under `deploy.profiles.<name>` read better in YAML than as TOML tables of tables. |
 | D6 | Quit and `Esc` | Quit is **`Ctrl+Q`** (and `F10`), rebindable via `keys.quit`. **`Esc` is never quit**: it dismisses, cancels and goes back. At the top level with nothing to dismiss, `Esc` explains how to quit instead of quitting. `Ctrl+C` stays *copy*, with a `Ctrl+Q quits` hint when nothing is selected. |
+| D7 | Deletes | **Confirm-only and permanent.** No trash, no undo: `Ctrl+Z`/`Ctrl+Y` are unbound in v1. The confirmation states items, size and path, expands short lists, reports depth and counts for recursive deletes, and requires typing the path for root-ish targets. We use our own naming for our own artefacts — `.omssh-tmp` for atomic writes, `.omssh-backup/` beside the target when `backup = true` — and do **not** adopt the freedesktop trash spec. |
 
 ### 9.2 Still open
 
-1. **Trash defaults** — 7-day retention and `.omssh-trash/` in the remote home
-   are assumed. Should local deletes prefer the freedesktop trash spec where it
-   exists, or always use our own directory for predictability? (Or drop trash
-   entirely and rely on a confirm dialog — see `UX.md` §5 and `PLAN.md` §4.2 for
-   what it buys.)
+Nothing blocking M0; the plan is frozen for implementation. New questions are
+recorded here as they arise.

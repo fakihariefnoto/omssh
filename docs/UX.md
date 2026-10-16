@@ -14,10 +14,10 @@ keymap; §8–13 cover dialogs, feedback, safety, onboarding and terminal limits
 
 | # | Principle | Consequence in the UI |
 | --- | --- | --- |
-| P1 | **Conventions before cleverness** | `Ctrl+C`/`Ctrl+X`/`Ctrl+V`, `F2`–`F8`, `Alt+←/→`, `Ctrl+F`, `Ctrl+L`, `Ctrl+Z` all mean what they mean everywhere else |
+| P1 | **Conventions before cleverness** | `Ctrl+C`/`Ctrl+X`/`Ctrl+V`, `F2`–`F8`, `Alt+←/→`, `Ctrl+F`, `Ctrl+L`, `Ctrl+Q` all mean what they mean everywhere else |
 | P2 | **Nothing is key-only** | Every action is in the command palette, in the `F9` context menu, and clickable. The palette prints each action's shortcut, so shortcuts are *learned by using* |
 | P3 | **The app shows you what it can do** | A contextual action bar under the active pane lists the relevant verbs for the current selection, with their keys |
-| P4 | **Safe by default, reversible** | Delete goes to a trash; `Ctrl+Z` undoes; destructive or bulk actions show an inline confirm line before starting |
+| P4 | **Safe by default** | Destructive and bulk actions confirm before starting — and the confirmation says exactly what is at stake (items, size, path) |
 | P5 | **Two speeds for everything** | Quick path (`Ctrl+C` → `Tab` → `Ctrl+V`) and guided path (`F5` opens a dialog with options). Neither is second-class |
 | P6 | **Few modes, always labelled** | Modes: Normal, Search, Dialog, Terminal. Selection is *not* a mode. The current mode is named in the status bar |
 | P7 | **Never a dead end** | `Esc` always goes back one level of context; every empty, loading and error state offers the action that fixes it |
@@ -51,7 +51,7 @@ No prior knowledge, in the order they would try it:
 | Copy many files | Click rows or `Space` to select; the action bar shows `Send → prod-api (4 files · 1.2 MB)` |
 | Work out what an archive holds | `Enter` or `F3` on it — contents are listed, no extraction |
 | Extract it to the machine on the other side | Select it, `Ctrl+E`, pick the destination side in the dialog |
-| Undo a mistake | The toast after a delete says `Moved 3 files to trash · Ctrl+Z to undo`. `Ctrl+Z` also just works |
+| Avoid deleting something you need | `F8` shows `Delete 3 items · 1.4 GB · prod-api:/srv/api` and waits — deletes are permanent, so the dialog is the safety net |
 | Find a file | Start typing — the cursor jumps to matching names (type-ahead) |
 | Find a file anywhere in the tree | `Alt+F` |
 | Deploy | `Alt+D` on a session, or the `Deploy` button in the session header |
@@ -100,8 +100,8 @@ No prior knowledge, in the order they would try it:
   Extract` appears; select nothing and it shows pane-level verbs.
 - **Status bar** names the mode, the selection summary, and live job state. It
   answers "what is happening and what mode am I in" without moving the eyes far.
-- **Toasts** (bottom-right, 4 s) report completions and offer an undo where one
-  exists.
+- **Toasts** (bottom-right, 4 s) report completions in one line, and after a
+  delete they say what was removed so a mis-click is noticed immediately.
 
 ### Panes and direction
 
@@ -235,23 +235,24 @@ no dialog. The status bar shows `2 files staged · Ctrl+V to paste into REMOTE`.
   `Ctrl+V` of 200 files: `Copy 200 files → prod-api:/srv/api · Enter to start ·
   Esc to cancel · o options`. One line, no interruption, still a deliberate
   confirmation. Operations under ~20 files or under 10 MB skip the prompt
-  entirely and just start (with a toast that carries `Ctrl+Z` / `Cancel`).
+  entirely and just start.
 
-**Undo** — `Ctrl+Z` (redo `Ctrl+Y`). Backed by a trash rather than a permanent
-delete:
+**Deleting is permanent, so deleting is deliberate.** There is no trash and no
+undo (`Ctrl+Z` is unbound in v1). Instead:
 
-- Local deletes move to the XDG trash (or `~/.local/share/omssh/trash` when no
-  freedesktop trash exists).
-- Remote deletes move to `.omssh-trash/<timestamp>/` in the remote home
-  directory, so the file is still on the same filesystem and the move is
-  instant.
-- If the remote has no writable home (or the filename is unrecoverable), the
-  dialog says so plainly — `This host has no trash. Delete permanently?` — and
-  requires an explicit confirm. No silent permanent deletes.
-- Rename, move and overwrite are undoable too; overwrites keep the previous
-  version when `backup` is on.
-- Trash is retained for 7 days by default and manageable from the CLI:
-  `omssh trash list | restore <id> | empty`. `Alt+J` → Queue → Trash tab in the UI.
+- `F8`/`Del` always opens a confirmation showing what is at stake:
+  `Delete 3 items · 1.4 GB · prod-api:/srv/api/current` with the list expanded
+  when it is short, and `Enter` on the confirm button never the default action
+  for a multi-item or large selection.
+- Recursive deletes state the depth and counts: `Delete public/ (412 files,
+  38 MB)`. Confirming a directory is never ambiguous.
+- Root-ish targets (`/`, `/etc`, `$HOME`, a mount point) switch to
+  **type-the-path-to-confirm**, per §8.
+- The toast afterwards is plain: `Deleted 3 items`, with no undo affordance
+  offered.
+- Anything that *can* be undone cheaply still is not framed as undo: rename and
+  move are simply reversible by doing the opposite, and `F6`/`F2` are available
+  immediately.
 
 ---
 
@@ -287,19 +288,19 @@ delete:
 | `Space` | Toggle select and advance | selection is not a mode |
 | `Shift+↑` `Shift+↓` | Extend selection | like every GUI list |
 | `Ctrl+A` / `Alt+A` | Select all / invert | |
-| `Ctrl+C` `Ctrl+X` `Ctrl+V` | Copy / cut / paste | standard; see §13 for `Ctrl+C` as quit |
+| `Ctrl+C` `Ctrl+X` `Ctrl+V` | Copy / cut / paste | standard; see §13 for `Ctrl+C` and quitting |
 | `F5` / `F6` | Copy to… / Move to… | dialog, destination defaults to the other pane |
 | `F3` / `Enter` | View (preview pane) | archives list their contents |
 | `F4` | Edit (local `$EDITOR`; remote download-edit-upload) | |
 | `F2` | Rename (batch rename when multi-selected) | |
 | `F7` / `Ctrl+N` | New folder / new file | |
-| `F8` / `Del` | Delete → trash | confirm; undoable |
+| `F8` / `Del` | Delete | always confirms: items, size, path |
 | `Ctrl+E` | Extract… | destination side is chosen in the dialog |
 | `Ctrl+G` | Compress selection… | format + destination side |
-| `Ctrl+Z` / `Ctrl+Y` | Undo / redo | |
 | `Alt+S` | Toggle sync browse | panes mirror the relative path |
 | `Alt+C` | Compare the two panes (read-only diff) | |
 | `Alt+B` `Alt+J` `Alt+D` | Sidebar / jobs queue / deploy | view toggles |
+| — | `Ctrl+Z` / `Ctrl+Y` are **unbound in v1** (no undo; delete confirms instead) | free for rebinding |
 | `F9` / right-click | Context menu — every operation for the selection | discovery net |
 | `Ctrl+K` | Command palette — every action, searchable, with its shortcut | discovery net |
 | `F1` / `?` | Help — searchable keymap grouped by task | discovery net |
@@ -373,7 +374,8 @@ this dialog exists; they are never hidden behind a scroll.
 **Dangerous targets** — replacing or deleting at a root-ish path
 (`/`, `/etc`, `$HOME`, a mount point) turns the confirm button into a
 type-the-path confirmation. Cheap, and it stops the one mistake that cannot be
-undone.
+undone. Since v1 has no trash and no undo, this confirmation *is* the safety
+net, so it is not skippable and not remembered as "always allow".
 
 ---
 
@@ -384,7 +386,7 @@ undone.
 | < 200 ms | Nothing (no flash of spinner) |
 | 200 ms – 2 s | A spinner in the status bar, the action named |
 | > 2 s | Determinate progress, speed, ETA, and cancel |
-| Finished | A toast, with `Ctrl+Z` where undo applies |
+| Finished | A one-line toast naming what happened (`Deleted 3 items`, `Copied 200 files`) |
 
 A slim aggregate progress strip sits above the status bar whenever anything is
 running, so a transfer is visible even when the queue is collapsed. `Alt+J`
@@ -425,7 +427,7 @@ things that actually matter:
 │  Getting around:                                                 │
 │   • Ctrl+K  find any action        • F5      copy to the server   │
 │   • Ctrl+C / Ctrl+V  copy & paste  • Ctrl+E  extract an archive   │
-│   • Ctrl+Z  undo                   • F1/?    full help            │
+│   • Ctrl+Q  quit                   • F1/?    full help            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -461,7 +463,7 @@ semantic colours, which are reserved:
 | Token | Meaning | Never used for |
 | --- | --- | --- |
 | `success` | ready, done, healthy | decoration |
-| `warning` | unhealthy deploy, no-trash delete, degraded link | — |
+| `warning` | unhealthy deploy, degraded link, unusual permissions | — |
 | `danger` | delete, errors, changed host key | — |
 | `muted` | metadata, hints, disabled | text you must read |
 

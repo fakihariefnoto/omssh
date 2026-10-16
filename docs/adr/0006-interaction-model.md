@@ -24,7 +24,7 @@ The first UX draft was vim-first and letter-keyed: `c` copy, `M` move,
    already exist in editors and file managers: `Ctrl+C/Ctrl+X/Ctrl+V`,
    `F2` rename, `F3` view, `F4` edit, `F5` copy, `F6` move, `F7` new folder,
    `F8` delete, `F9` context menu, `F10` quit, `Ctrl+F` find, `Ctrl+L` path,
-   `Ctrl+R` refresh, `Alt+←/→` history, `Ctrl+Z` undo.
+   `Ctrl+R` refresh, `Alt+←/→` history, `Ctrl+Q` quit.
 2. **Nothing is key-only.** Every action is reachable from the command palette,
    the `F9` context menu, and the mouse. The palette prints shortcuts next to
    actions, so shortcuts are learned by using the app.
@@ -34,9 +34,11 @@ The first UX draft was vim-first and letter-keyed: `c` copy, `M` move,
 4. **A modifier grammar** so new keys are guessable: `Ctrl+letter` = action or
    dialog, `Alt+letter` = view toggle, `F-keys` = classic file ops, plain
    letters = type-ahead, `Shift+arrows` = extend selection, `Esc` = back.
-5. **Reversible by default.** Delete moves to a trash (XDG trash locally,
-   `.omssh-trash/` remotely) and `Ctrl+Z` undoes delete, rename, move and
-   overwrite. Bulk or destructive operations confirm inline, not with a modal.
+5. **Reversible where it is cheap, explicit where it is not.** Rename and move
+   are naturally reversible by doing the opposite. Delete is **not** reversible
+   in v1 — there is no trash and `Ctrl+Z` is unbound — so delete always confirms
+   with the facts (items, size, path), states depth and counts for recursive
+   targets, and requires typing the path for root-ish targets.
 6. **Direction is spelled out.** Panes are `LOCAL` and `REMOTE`; the verbs are
    `Send` and `Fetch`.
 7. **Vim is a navigation preset, not a fork.** `keys.preset = "vim"` restores
@@ -56,9 +58,10 @@ The first UX draft was vim-first and letter-keyed: `c` copy, `M` move,
 - The palette, context menu and action bar are three views over one action
   registry, so a new feature is discoverable by default — and an action that is
   missing from the registry is a bug, not an oversight.
-- Undo and trash are load-bearing: they require `internal/trash`, remote trash
-  handling, retention, and a graceful "no trash available" path that asks before
-  deleting permanently.
+- Without undo, the confirm dialog carries the whole safety burden, so it is
+  specified precisely (facts, depth, counts, type-the-path) and is never
+  bypassable in the TUI. The CLI's `--yes` flag is the only skip, and it is
+  explicit.
 - `Ctrl+C` means copy, which is a deliberate, documented break from "quit". The
   mitigation is a toast that names `Ctrl+Q`, plus a configurable alternative.
 - `Esc` never quits, so quitting has to be learned (`Ctrl+Q`/`F10`). The top
