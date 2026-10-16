@@ -7,8 +7,14 @@ A modern SSH/SFTP client for the terminal. Built in Go with
 `omssh` is a single binary that manages many SSH/SFTP connections at once and
 makes moving files between local and remote machines pleasant:
 
-- **Dual-pane file manager** with a first-class directory-walking experience
-  (fuzzy jump, bookmarks, incremental filter, preview, visual multi-select).
+- **Dual-pane file manager** built around a first-class directory-walking
+  experience: type-ahead navigation, incremental filter, recursive find,
+  bookmarks, clickable breadcrumbs, preview pane, and standard multi-select.
+- **Discoverable by design** — a contextual action bar, a command palette and a
+  context menu over one action registry, plus the shortcuts you already know
+  (`Ctrl+C`/`Ctrl+V`, `F2`–`F8`, `Alt+←/→`, `Ctrl+Z`). No manual required.
+- **Reversible and safe** — deletes go to a trash on either side, `Ctrl+Z`
+  undoes, bulk and destructive operations confirm before starting.
 - **Transfers that behave** — queue, parallel workers, pause/resume, retry,
   conflict policies, server-side copy when both ends are the same host.
 - **Archives both directions** — extract an archive that lives on the remote
@@ -21,9 +27,10 @@ makes moving files between local and remote machines pleasant:
   emulator, scrollback, resize and clipboard.
 - **Many hosts at once** — tabbed sessions, a connection pool with keepalive
   and reconnect, imported from `~/.ssh/config` and written back compatibly.
-- **Modern UI** — command palette, themes with light/dark adaptation, honest
-  degradation to 256/16 colours, Nerd Font icons with ASCII fallback,
-  full mouse support.
+- **Modern UI** — contextual action bar, command palette that shows every
+  shortcut, themes with light/dark adaptation, honest degradation to 256/16
+  colours, Nerd Font icons with ASCII fallback, full mouse support, and a
+  `contrast` theme plus reduced-motion mode.
 
 > Status: **planning**. This repository currently contains the design and
 > implementation plan. See [`docs/PLAN.md`](docs/PLAN.md).

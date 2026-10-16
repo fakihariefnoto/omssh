@@ -13,6 +13,9 @@ internal/vfs         unified filesystem interface + local implementation
 internal/xfer        copy engine: plan, queue, workers, resume, conflicts, progress
 internal/archive     detect, read, write, extract with safety limits
 internal/deploy      profiles, diff planner, runner, hooks, history
+internal/trash       undo/redo, local + remote trash, retention, restore
+internal/actions     the action registry: one entry per user-facing action
+internal/keymap      keymap presets and validation, built from the registry
 internal/config      config, ssh_config read/write, XDG paths
 internal/keys        keyring, agent, key loading
 internal/version     version/commit/date
@@ -113,6 +116,7 @@ side-agnostic by construction.
 | Deploy a tree | `deploy.Plan` walks `local_root` and `remote_root` with `fs.WalkDir`, then `xfer` runs the plan |
 | Dry-run diff | The plan, rendered. No execution path involved. |
 | Remote→remote | Two different `vfs.FS` handles; the copy engine notices and streams through |
+| Delete + undo | `trash.Discard` **renames** into the trash (`vfs.FS.Rename`), so undo is a rename back — no special I/O path |
 
 There is no "upload" function and no "download" function. There is one copy
 function. This is the decision that keeps the feature list small in code and
@@ -146,6 +150,32 @@ func (a *App) RunDeploy(ctx context.Context, profile string, opt DeployOptions, 
   passes a closure that posts to the Bubble Tea program; the CLI passes one
   that draws a progress bar; a test passes one that counts. One implementation,
   three front ends.
+
+### 3.1 The action registry
+
+`internal/actions` holds one record per user-facing action — its id, label,
+category, the operation it invokes, and its default binding:
+
+```go
+type Action struct {
+    ID       string   // "file.copy"
+    Label    string   // "Copy"
+    Category string   // "File"
+    Default  key.Binding
+    Enabled  func(app.State) bool   // contextual availability
+    Run      func(ctx context.Context, a *app.App, s app.State) tea.Msg
+}
+```
+
+The palette (`Ctrl+K`), the `F9` context menu and the contextual action bar are
+**three renderers over this one list**, filtered by `Enabled`. A feature that
+exists only as a stray key handler is not added to the app: it is added to the
+registry, and it becomes discoverable, searchable and clickable for free. A test
+asserts every registered action is reachable from the palette, which is what
+keeps the "nothing is key-only" promise from decaying as the app grows.
+
+`internal/keymap` resolves bindings for the active preset, detects duplicates and
+unbindable keys, and feeds `omssh config check` and `omssh keys --show`.
 
 ## 4. Concurrency model
 
@@ -233,7 +263,9 @@ type Plan struct {
 | Themes | `.../omssh/themes/*.toml`, built-ins embedded |
 | Connections | `~/.ssh/config` (read/write, OpenSSH-compatible) |
 | Secrets | OS keyring, keys under `omssh/<connection-id>` |
-| State (history, deploy logs) | `$XDG_STATE_HOME/omssh/` |
+| Local trash | freedesktop trash when present, else `~/.local/share/omssh/trash/` |
+| Remote trash | `<remote home>/.omssh-trash/<timestamp>/`, 7-day retention, swept on connect |
+| State (history, deploy logs, undo log) | `$XDG_STATE_HOME/omssh/` |
 | Cache (previews, listings) | `$XDG_CACHE_HOME/omssh/` |
 | Logs | `.../omssh/logs/`, rotated, redacted |
 

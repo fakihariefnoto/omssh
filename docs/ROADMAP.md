@@ -20,15 +20,24 @@ all being solid.
 - Config loading and XDG paths, `omssh config path|edit|check`.
 - Lip Gloss v2 theme engine with `midnight`/`dawn`/`mono`, colour-profile
   negotiation, `NO_COLOR`.
-- App shell: session tab bar, sidebar, pane frame, status bar, toast system,
-  command palette with a few stub commands, responsive breakpoints.
+- `internal/actions` registry and `internal/keymap` presets, so the palette,
+  context menu and action bar are renderers over one list from the start.
+- App shell: session tab bar, sidebar, pane frame, **contextual action bar**,
+  status bar, toast system, command palette (showing shortcuts), `F9` context
+  menu, first-run onboarding card, responsive breakpoints.
+- Terminal capability probe: detect undeliverable keys and drop them rather
+  than binding something that does nothing.
 - Logging with redaction, panic handler that restores the terminal.
-- CI: build, `go vet`, `golangci-lint`, `go test -race`, gofmt check. Makefile
+- CI: build, `go vet`, `golangci-lint`, `go test -race`, gofmt check, plus a
+  test asserting every registered action is reachable from the palette. Makefile
   targets working. `goreleaser` config checked in but not yet releasing.
 
-**Acceptance:** `make run` shows the UI from the mock in `UX.md` at 140 cols and
-100 cols without layout breakage; theme switch changes everything; `?` shows
-the keymap; `q` exits and leaves the terminal usable.
+**Acceptance:** `make run` shows the UI from `UX.md` §2 at 140 and 100 cols
+without layout breakage; theme switch changes everything; `F1` shows the
+searchable keymap; `Ctrl+K` finds a stub action and displays its shortcut;
+`omssh keys --show` prints the effective map; with nothing selected, `Ctrl+C`
+shows the `Ctrl+Q quits` hint rather than doing nothing; `Esc` from every screen
+returns one level and the terminal is usable on exit.
 
 ---
 
@@ -61,18 +70,29 @@ clear message.
 - `vfstest` conformance suite; all three implementations pass.
 - Dual-pane file manager: listings, columns, sorting, hidden toggle, async
   fetch with cancellation and per-directory cache.
-- Navigation: history, `~` `-`, fuzzy jump (`g/`), frecency (`z`), breadcrumb,
-  editable path bar (`Ctrl+L`).
-- Selection: `space`, visual, glob, invert, all; selection survives navigation.
-- Operations: mkdir, touch, rename, delete, chmod, symlink.
+- Navigation: history (`Alt+←/→`), breadcrumb with sibling dropdowns, editable
+  path bar (`Ctrl+L`), fuzzy jump (`Ctrl+P`), type-ahead, incremental filter
+  (`Ctrl+F`), recursive find (`Alt+F`).
+- Selection: `Space`, `Shift+arrows`, select all, invert; survives navigation;
+  count and size always in the status bar.
+- Operations: mkdir, new file, rename, delete, chmod, symlink — the standard
+  set (`F2`/`F3`/`F4`/`F5`/`F6`/`F7`/`F8`, `Ctrl+C/X/V`), plus the `F9` context
+  menu and the action bar listing the verbs for the current selection.
+- `internal/trash`: delete → trash (XDG locally, `.omssh-trash/` remotely) with
+  `Ctrl+Z` undo for delete, rename and move; explicit permanent-delete path when
+  a host has no writable home. `omssh trash list|restore|empty`.
 - Preview pane: syntax-highlighted text, hex, archive listing, dir summary.
-- Sync browse, reveal-in-other-pane, `Open shell here` placeholder.
-- Bookmarks.
+- Sync browse (`Alt+S`), reveal in other pane (`Alt+O`), `Send →` / `Fetch ←`
+  quick actions, drag between panes to copy, new-tab-at-this-directory
+  placeholder.
+- Bookmarks, and teaching empty/loading/error states with the fixing action.
 
 **Acceptance:** a 5,000-file remote directory lists in under a second and stays
-responsive while scrolling; every navigation key in `UX.md` §3 works; the
-cursor is restored on returning to a directory; a permission-denied directory
-shows an explanatory row instead of an error screen.
+responsive while scrolling; every key in `UX.md` §5 and §7.1 works; the cursor
+is restored on returning to a directory; a permission-denied directory shows an
+explanatory row with actions instead of an error screen; a new user can copy a
+file to the server and undo the delete of another using only the action bar,
+the context menu or the palette — without reading `UX.md`.
 
 ---
 
@@ -82,8 +102,13 @@ shows an explanatory row instead of an error screen.
 
 - `xfer.Engine`: planning, worker pool, per-item and aggregate progress, speed
   and ETA, throttled progress events.
-- Copy / move in every direction including remote→remote.
-- Conflict policies with the conflict dialog and apply-to-all.
+- Copy / move in every direction including remote→remote, with the `F5`/`F6`
+  dialog whose destination defaults to the other pane.
+- Quick path (`Ctrl+C` → `Tab` → `Ctrl+V`) with a staged-selection indicator.
+- Conflict policies with the conflict dialog (reversible choice first) and
+  apply-to-all.
+- Inline confirmation line for bulk or destructive operations; operations under
+  the threshold start immediately with an undoable toast.
 - Pause / resume / cancel / retry; `.part` resume for large files.
 - Fast paths: SFTP rename, `copy-data`, server-side `cp -a` — in that order.
 - Transfer queue panel with item detail.
@@ -110,16 +135,21 @@ without a local temp file.
   UI, the CLI (`omssh extract`) and the deploy runner.
 - `safeJoin` with the attack test corpus (zip-slip, absolute paths, `..`,
   symlink escape, bombs, oversize entries, permission escalation).
-- Extract-to dialog with destination picker, strip components, "new folder
-  named after the archive", and the safety summary.
-- Compress selection (`z`) to either side.
+- Extract-to dialog with destination filter, destination **side** (local / this
+  host / other host), strip components, "new folder named after the archive",
+  and the safety summary.
+- `Enter`/`F3` on an archive lists its entries in the preview, so the feature is
+  discoverable without knowing a key.
+- Compress selection (`Ctrl+G`) to either side; `Ctrl+E` extracts.
 - `omssh extract` / `omssh compress` CLI commands with `--json`.
 
 **Acceptance:** extract a remote `.tar.gz` into a chosen local directory and a
 local `.zip` onto the remote, both with live per-entry progress; a crafted
 zip-slip archive is refused with a precise message and nothing is written
 outside the destination; a 40 GB-expanding bomb is stopped by the ratio/size
-cap; a single-file `.gz` extracts to one file with the right name.
+cap; a single-file `.gz` extracts to one file with the right name; a user who
+has never extracted an archive finds `Ctrl+E Extract` in the action bar with an
+archive selected.
 
 ---
 
@@ -146,26 +176,31 @@ terminal mid-`less` reflows correctly; scrollback holds and searches.
 
 ## M6 — Deployment
 
-**Goal:** `D`, preview, run, done — repeatably.
+**Goal:** `Alt+D`, preview, run, done — repeatably.
 
 - Profile schema, parsing, validation, and the add/edit forms.
+- Entry points that are all discoverable: `Alt+D`, a `Deploy` button in the
+  session header, the tab's right-click menu, the palette and the action bar.
 - `deploy.Plan`: walk the local tree and the remote tree, apply excludes
   (gitignore syntax) and the mode (`sync` vs `update`), resolve actions.
-- Dry-run rendering (the plan view) with per-action groups and a summary.
+- Dry-run rendered first by default, with per-action groups and a summary.
+- Danger guard: a root-ish `remote_root` (`/`, `/etc`, `$HOME`, a mount point)
+  requires typing the path to confirm.
 - Runner: execute via `xfer`, atomic writes, optional backups, live log with
   follow, per-hook streaming output and exit codes.
 - Hooks: `local_pre`, `local_post`, `remote_pre`, `remote_post`, `on_failure`,
   with template variables and defined working directories.
 - Run history with records, logs on disk, re-run, and status
   (`success` / `deployed but unhealthy` / `failed`).
-- Comparison mode (diff without running).
+- Comparison mode (diff without running) via `Alt+C` and the palette.
 - `omssh deploy <profile> [--dry-run] [--yes]`.
 
 **Acceptance:** a profile with a `local_pre` build, a sync with excludes and one
 deletion, and a `remote_post` health check runs green end to end; the same
 profile with a failing health check is recorded as deployed-but-unhealthy and
 is visibly different in history; `--dry-run` lists exactly what a run then
-does; a mid-run disconnection leaves no half-written files in the target.
+does; a mid-run disconnection leaves no half-written files in the target;
+setting `remote_root = "/"` cannot be run without typing the path.
 
 ---
 
@@ -174,8 +209,14 @@ does; a mid-run disconnection leaves no half-written files in the target.
 **Goal:** ship it.
 
 - Remaining themes (`mist`, `ember`, `contrast`), full icon fallback audit,
-  mouse coverage across every view.
-- Settings screen; `omssh config check` with line numbers; example config.
+  mouse coverage across every view, `motion = "reduced"`.
+- Settings screen; `omssh config check` with line numbers and keymap validation;
+  `omssh keys --show`; example config; `Ctrl+K` → `Tour`.
+- Accessibility pass: verify no state is carried by colour alone, verify the
+  `contrast` theme and `--no-icons` at 16 colours, and audit every failure
+  message for "what happened / why / what to do".
+- Discoverability audit: every action reachable from the palette, and the
+  palette/keymap test extended so this cannot regress.
 - Performance pass: cold start under 150 ms, listing of 10k entries smooth,
   memory ceiling under 100 MB during a large transfer; pprof-driven.
 - Cross-host copy UX (source and destination on different remotes).
@@ -188,7 +229,9 @@ does; a mid-run disconnection leaves no half-written files in the target.
 
 **Acceptance:** `brew install` then `omssh` on a clean macOS and a clean Linux
 box connects to a host and moves files with no additional tooling; the recorded
-demo covers connect → browse → copy → extract → deploy → terminal.
+demo covers connect → browse → copy → extract → deploy → terminal; a fresh user
+reaches each of those in the demo **without being shown a shortcut**, using the
+palette, the action bar or the mouse.
 
 ---
 
@@ -203,7 +246,12 @@ after M1.
 
 1. `make check` passes: gofmt, `go vet`, `golangci-lint`, `go test -race`.
 2. New public behaviour has tests, including at least one failure path.
-3. `docs/` updated where behaviour differs from what is written here.
-4. Conventional commits, milestone tagged `v0.<n>.0`.
-5. The binary from that milestone is genuinely usable for what it covers —
+3. Every new user-facing action is added to `internal/actions` (palette,
+   context menu and action bar pick it up automatically) — a stray key handler
+   is a review failure.
+4. Any new destructive action has a confirm, an undo, or a documented reason it
+   cannot.
+5. `docs/` updated where behaviour differs from what is written here.
+6. Conventional commits, milestone tagged `v0.<n>.0`.
+7. The binary from that milestone is genuinely usable for what it covers —
    no "coming soon" dialogs in shipped screens.

@@ -31,6 +31,8 @@ The tagline we design against:
 | G6 | Best-in-class folder walking | Fuzzy path jump, bookmarks, incremental filter, preview, history, no dead ends |
 | G7 | Beautiful, modern, keyboard-first UI | Command palette, themes, mouse support, no layout breakage at any width |
 | G8 | One static binary, cross-platform | macOS/Linux/Windows, no `ssh`, `scp`, `tar` or `unzip` required on either end |
+| G9 | Intuitive without a manual | A new user can connect, copy to the server and undo a mistake using only what the screen shows: the action bar, the palette, the context menu and standard shortcuts |
+| G10 | Safe by default | Nothing irreversible happens without a deliberate confirm, and delete is undoable via trash |
 
 ## 3. Personas
 
@@ -65,12 +67,29 @@ The tagline we design against:
 
 ### 4.2 File manager (dual pane)
 
-- Two panes, each bound to `local` or `host:path`. Either pane can be remote:
-  a `remote ↔ remote` layout is a normal configuration, not a special mode.
+- Two panes, each bound to `local` or `host:path`. Left is local and right is
+  remote by default, with the direction spelled out in the UI as **`Send →`**
+  and **`Fetch ←`** rather than "copy". Either pane can be remote: a
+  `remote ↔ remote` layout is a normal configuration, not a special mode.
+- A **contextual action bar** under the active pane lists the verbs that apply
+  to the current selection, with their keys, and every one is clickable; plus a
+  `F9` context menu and a `Ctrl+K` command palette as discovery nets. Nothing is
+  reachable only by memorising a key.
 - Directory listing with the columns that matter (perms, size, mtime, owner),
   sortable, with hidden-file toggle and a live byte total of the selection.
-- Multi-select: `space` to toggle, `v` visual range, `*` invert, `%` by glob,
-  `V` all. Selection survives navigation and is shown in the status bar.
+- **Type-ahead navigation**: start typing and the cursor jumps to the matching
+  name, with repeat-to-cycle — classic file-manager behaviour, no key to learn.
+  Backed by an incremental filter (`Ctrl+F`) and a recursive find (`Alt+F`) for
+  the cases type-ahead cannot reach.
+- Multi-select: `space` to toggle, `Shift+arrows` to extend a run (like every
+  GUI list), `Ctrl+A` all, `Alt+A` invert. Selection survives navigation and its
+  count and total size are always in the status bar.
+- **Undo and trash**: deletes move to a trash (XDG trash locally, an
+  `.omssh-trash/<timestamp>/` directory on the remote so the move stays on the
+  same filesystem and is instant). `Ctrl+Z` undoes delete, rename, move and
+  overwrite; when a host has no writable home the dialog says so and requires an
+  explicit permanent-delete confirmation. Retention and restore are available
+  from `omssh trash` and the queue's Trash tab.
 - Preview pane: syntax-highlighted text (Chroma), hex for binaries, image
   preview where the terminal supports graphics, archive content listing,
   directory tree summary.
@@ -78,10 +97,10 @@ The tagline we design against:
   recursive operations unless asked.
 - Async listing with per-directory cache and cancellation, so a slow remote
   never blocks typing.
-- **Sync browse** (`Ctrl+S`): panes mirror the same relative path, so
+- **Sync browse** (`Alt+S`): panes mirror the same relative path, so
   `local/src/` face `remote/app/src/` while you move through both.
-- **Open shell here** (`t`): a terminal tab already `cd`'d into the highlighted
-  remote directory.
+- **New tab at this directory** (`Ctrl+T`): a terminal tab already `cd`'d into
+  the highlighted remote directory.
 - Edit remote files: download to a temp file, open `$EDITOR`, upload on change
   (mtime + size check before overwrite).
 
@@ -94,8 +113,16 @@ The tagline we design against:
   speed and ETA.
 - Pause / resume / cancel / retry per item and for the whole queue. Large files
   resume from a `.part` offset rather than restarting.
-- Conflict policy: ask, overwrite, skip, rename, update-if-newer (size+mtime),
-  or compare checksum. Choices can be applied to all remaining items.
+- Conflict policy: ask, overwrite, keep-both (rename), skip, update-if-newer
+  (size+mtime), or compare checksum. Choices can be applied to all remaining
+  items, and the conflict dialog offers the reversible choice first.
+- Two speeds for every operation: the quick path (`Ctrl+C`, `Tab`, `Ctrl+V`) and
+  the guided path (`F5`/`F6` dialogs whose destination defaults to the other
+  pane). Bulk or destructive operations confirm on one inline line rather than
+  with a modal: `Copy 200 files → prod-api:/srv/api · Enter to start · Esc to
+  cancel`.
+- Undoable: `Ctrl+Z` reverses a move, rename or overwrite; deletes go to trash
+  (§4.2) rather than being permanent.
 - Preserve mode bits and mtimes; optional `fsync`-on-close for local writes.
 - **Server-side copy**: when source and destination are on the same remote,
   try `cp -a` (or SFTP `copy-data` extension) first and only stream bytes if
@@ -135,11 +162,15 @@ remote archive  download+extract streamed to remote
 ```
 
 - Destinations: same directory, a new directory named after the archive,
-  or a picked directory (the same directory picker used by transfers).
+  or a picked directory (the same directory picker used by transfers). The
+  destination **side** (local / this host / other host) is an explicit choice in
+  the dialog, so both cross-machine directions are one screen.
+- Pressing `Enter`/`F3` on an archive lists its contents without extracting,
+  which is how most users will discover the feature.
 - Live entry list with per-entry progress, an overall bar, and a "skip errors"
   policy.
-- Compress: select files/dirs in a pane → `z` → choose format → the archive is
-  created on that same side (or the other side, by choosing the destination).
+- Compress: select files/dirs in a pane → `Ctrl+G` → choose format → the archive
+  is created on that same side (or the other side, by choosing the destination).
 
 Hard requirements (see §7 Security) — this is untrusted input:
 
@@ -212,19 +243,31 @@ on_failure   = ["echo 'deploy failed' >> /var/log/omssh-deploy.log"]
 ### 4.7 Modern UI
 
 - Layout: session tabs on top, a collapsible left sidebar (hosts + bookmarks +
-  transfer queue), the working pane in the middle, a contextual key-hint status
-  bar at the bottom, and a toast/notification area.
-- Command palette (`Ctrl+K`) over every action, bookmark, host and recent path.
+  transfer queue), the working pane in the middle, a **contextual action bar**
+  under the active pane, an always-visible mode/selection status bar, and a
+  toast area.
+- **The action bar shows the verbs that apply right now, with their keys, and is
+  clickable.** It is the primary way a new user learns the app.
+- Command palette (`Ctrl+K`) over every action, bookmark, host and recent path,
+  **printing each action's shortcut beside it** so shortcuts are learned by
+  using rather than by reading.
+- `F9` context menu and full mouse parity (tabs, breadcrumbs with sibling
+  dropdowns, buttons, rows, drag between panes, right-click).
+- First-run card offering to import `~/.ssh/config`, plus plain-language error
+  cards whose primary content is the action that fixes the problem.
 - Themes: `midnight`, `dawn`, `mist`, `ember`, `mono`, `contrast`, `auto`
   (follows terminal background detection). Per-theme `lipgloss` styles; true
   colour → 256 → 16 colour degradation driven by `colorprofile`, honouring
   `NO_COLOR` and `CLICOLOR_FORCE`.
 - Nerd Font icons throughout with an automatic ASCII fallback when the font is
   not detected or `icons = "ascii"` is configured.
-- Mouse: click to focus pane, click to select, wheel to scroll, drag-select in
-  the terminal, click on breadcrumbs to jump.
 - Responsive rules: below 100 columns the sidebar auto-collapses, below 80 the
-  metadata columns drop to the essentials. No pane ever renders garbage.
+  metadata columns drop to the essentials and the action bar collapses to
+  `F9 More…`. The breadcrumb and the mode indicator are never dropped.
+- Accessibility: no state conveyed by colour alone, `contrast` theme,
+  `motion = "reduced"` to replace animation with static text, `--no-icons`.
+- Keymap presets (`standard` default, `vim` for navigation) with validation in
+  `omssh config check`, and `omssh keys --show` to print the effective map.
 
 ## 5. Command line
 
@@ -240,9 +283,11 @@ omssh ls host:path             # list
 omssh rm host:path...          # remove
 omssh extract <archive> --to <dest> [--format auto] [--strip N]
 omssh compress <path...> -o <archive> [--format tar.zst] [--level 3]
+omssh trash list|restore <id>|empty   # deleted-file recovery on either side
 omssh deploy <profile> [--dry-run] [--yes]
 omssh exec <host> -- <cmd...>  # non-interactive, streams output
 omssh exec <host>              # interactive PTY without the TUI
+omssh keys --show              # print the effective keymap
 omssh config path|edit|check
 omssh version
 ```
@@ -258,6 +303,8 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
 - Synchronising a local directory continuously (a watcher daemon).
 - Mobile/Web front ends, and a Windows-native GUI.
 - A file browser for protocols other than SSH: no S3, WebDAV, FTP.
+- A fully vim-modal preset (`dd`, `yy`, `p`). The vim preset changes navigation
+  only, so a shortcut keeps exactly one meaning across presets (ADR 0006).
 
 ## 7. Security
 
@@ -287,6 +334,9 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
 | Archive breadth (7z/rar) | Feature expectations unmet | Ship the pure-Go set as first-class; external tools strictly optional and clearly labelled |
 | Scope creep across six big features | Never ships | Milestones in `ROADMAP.md` are ordered and each ends in a usable binary; deploy and terminal are firmly after the file manager |
 | Multiple concurrent sessions leaking resources | Hangs, fd exhaustion | Connection pool with refcounts, per-session context cancellation, goroutine-leak tests (`goleak`) in CI |
+| Terminals do not deliver modified keys (`Ctrl+Shift+…`, `Ctrl+Tab`, F-keys behind `Fn`) | A shortcut silently does nothing | Probe capabilities at startup, drop undeliverable shortcuts instead of ignoring them, avoid keys terminals reserve (§13 of `UX.md`), and make the palette/context menu the universal fallback |
+| Discoverability decays as features land | New actions become key-only again | Palette, context menu and action bar are three views over **one action registry**; an action missing from the registry is a bug. Enforced by a test that every registered action is reachable from the palette |
+| Undo/trash grows into its own product (retention, quota, cross-device) | Scope creep, and a trash that fails on read-only hosts | Bounded v1: single-level undo per session, trash on the same filesystem only, explicit permanent-delete path when trash is unavailable, 7-day retention, CLI management |
 
 ## 9. Open questions
 
@@ -300,3 +350,9 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
    require one host to be able to reach the other (`ssh` from the bastion)?
 5. **Colour identity** — pick a signature accent for the default theme, or stay
    entirely terminal-palette-driven (16-colour friendly)?
+6. **Trash defaults** — 7-day retention and `.omssh-trash/` in the remote home
+   are assumed; also, should deletes prefer the freedesktop trash spec where it
+   exists, or always use our own directory for predictability?
+7. **`Ctrl+C`** — the plan binds it to copy (ADR 0006) and prints a "Ctrl+Q
+   quits" hint when nothing is selected. Confirm that is the right default over
+   the alternative (`Ctrl+C` quits, `Ctrl+Insert` copies).

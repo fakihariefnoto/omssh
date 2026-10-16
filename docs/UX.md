@@ -1,266 +1,492 @@
 # omssh — UX and Interface
 
-The UI has one job: make it obvious which machine you are touching and what is
-about to happen. Everything below serves that.
+The UI has two jobs: make it obvious which machine you are touching and what is
+about to happen, **and** make the next action guessable without reading a manual.
+Everything below serves those two jobs.
 
-## 1. Anatomy of the screen
+This document is deliberately opinionated. §2 explains *why* the current design
+is intuitive; §3 is the screen; §4–6 are the interaction rules; §7 is the full
+keymap; §8–13 cover dialogs, feedback, safety, onboarding and terminal limits.
 
-```
-┌ omssh ───────────────────────────────────────────────────────────────────────────┐
-│  prod-api ●   staging ●   logs ⚠   localhost        ＋ (t)          ⌘ (ctrl+k)  │  session tabs
-├───────────────┬──────────────────────────────────────────────────────────────────┤
-│ HOSTS         │  ┌ LOCAL   ~/work/api/dist ─────────────────────────────────┐  │
-│ ▾ prod        │  │ ..                                      <DIR>            │  │
-│   prod-api  ● │  │ ▸ assets/                              4 items   1.2 MB │  │
-│   prod-db   ○ │  │   main.js                            980.1 KB  09:12    │  │
-│ ▾ staging     │  │ * server.js                           12.4 KB  09:12    │  │  ← * = selected
-│   staging   ○ │  │   config.json                          1.1 KB  09:12    │  │
-│               │  └──────────────────────────────────────────────────────┘  │
-│ BOOKMARKS     │                    ⇅  copy  4 files → remote                 │
-│  ⭐ /etc/nginx│  ┌ prod-api: /srv/api/current ──────────────────────────────┐  │
-│  ⭐ ~/deploys │  │ ..                                      <DIR>            │  │
-│               │  │ ▸ public/                              3 items   0.9 MB │  │
-│ TRANSFERS  2  │  │   main.js                            940.2 KB  Oct 15   │  │
-│  ↑ main.js 62%│  │   server.js                           12.4 KB  Oct 15   │  │
-│  ↓ logs.tgz 12%  └──────────────────────────────────────────────────────┘  │
-├───────────────┴──────────────────────────────────────────────────────────────────┤
-│ space select · c copy · M move · x extract · z compress · t shell · ? help · ⠿ 2 │  status bar
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
+---
 
-- **Session tabs** — one per connected host. A coloured dot carries state:
-  green ready, amber busy, grey idle, red error. `1`–`9` jump; `Ctrl+W` closes.
-- **Sidebar** — collapsible (`b`). Hosts (from `~/.ssh/config`, sorted, fuzzy),
-  bookmarks, and a live transfer queue. Collapses automatically under 100 cols.
-- **Panes** — the file manager, one or two. The active pane has a bright border
-  and its title is the full `host:path`.
-- **Status bar** — contextual key hints that change with mode, plus the
-  selection summary and a spinner with the count of running jobs. Never a
-  static wall of keys.
-- **Toasts** — bottom right, 4 s, one line, for "copied 4 files", "host key
-  changed", "deploy failed".
+## 1. Design principles
 
-## 2. Modes
-
-| Mode | Entered by | Leaves by |
+| # | Principle | Consequence in the UI |
 | --- | --- | --- |
-| Normal | default | any mode key |
-| Filter (in-pane incremental search) | `/` | `Esc` clears, `Enter` keeps |
-| Visual (range select) | `v` | `Esc`, or any action |
-| Jump (fuzzy path / host) | `Ctrl+P`, `g/` | `Enter` or `Esc` |
-| Command palette | `Ctrl+K` | `Run`, `Esc` |
-| Modal dialog (conflict, prompt, confirm) | an action | its buttons |
-| Terminal input passthrough | focus a terminal tab | `Ctrl+Space` prefix |
-| Deploy | `D` on a host | `Esc` |
+| P1 | **Conventions before cleverness** | `Ctrl+C`/`Ctrl+X`/`Ctrl+V`, `F2`–`F8`, `Alt+←/→`, `Ctrl+F`, `Ctrl+L`, `Ctrl+Z` all mean what they mean everywhere else |
+| P2 | **Nothing is key-only** | Every action is in the command palette, in the `F9` context menu, and clickable. The palette prints each action's shortcut, so shortcuts are *learned by using* |
+| P3 | **The app shows you what it can do** | A contextual action bar under the active pane lists the relevant verbs for the current selection, with their keys |
+| P4 | **Safe by default, reversible** | Delete goes to a trash; `Ctrl+Z` undoes; destructive or bulk actions show an inline confirm line before starting |
+| P5 | **Two speeds for everything** | Quick path (`Ctrl+C` → `Tab` → `Ctrl+V`) and guided path (`F5` opens a dialog with options). Neither is second-class |
+| P6 | **Few modes, always labelled** | Modes: Normal, Search, Dialog, Terminal. Selection is *not* a mode. The current mode is named in the status bar |
+| P7 | **Never a dead end** | `Esc` always goes back one level of context; every empty, loading and error state offers the action that fixes it |
+| P8 | **Predictable modifier grammar** | `Ctrl+letter` = an action or dialog · `Alt+letter` = a view toggle · `F-keys` = classic file operations · plain letters = type-ahead (or vim navigation) |
+| P9 | **Teaching empty states** | First run offers to import `~/.ssh/config`; an empty pane says what to press; a failed connect says what to try next |
+| P10 | **Mouse parity** | Tabs, breadcrumbs, buttons, list rows, the action bar and the queue are all clickable; right-click opens the context menu; drag between panes copies |
+| P11 | **Direction is spelled out** | The panes are labelled `LOCAL` and `REMOTE`, and the verbs are `Send` and `Fetch`, not "copy" |
 
-The mode name is always visible in the status bar. No mode is entered by
-guessing.
+### Why the old design was hard to learn
 
-## 3. Directory walking — the part that must be excellent
+The first draft leaned on vim muscle memory and arbitrary letters
+(`c` copy, `M` move, `x` extract, `z` compress, `Ctrl+S` sync). A new user had
+to read a table and remember it, and even then `M` versus `c` versus `d` gave no
+hint about which was destructive. The revision:
 
-This is the feature people will use a thousand times a day, so it gets the most
-attention.
+- replaces arbitrary letters with **standard shortcuts** that transfer from
+  every editor and file manager (P1),
+- makes **every key discoverable** through the palette, the context menu and the
+  action bar, so nobody needs the table at all (P2, P3),
+- keeps the old letters as an **optional vim navigation preset**, so the people
+  who liked them lose nothing (P8, §7.3).
 
-**Moving**
+### How a new user actually gets things done
 
-| Key | Action |
+No prior knowledge, in the order they would try it:
+
+| Task | How it is discoverable |
 | --- | --- |
-| `j` `k` / `↑` `↓` | Move cursor |
-| `J` `K` / `PgDn` `PgUp` | Move a page |
-| `g` `G` | Top / bottom |
-| `h` / `←` / `Backspace` | Parent directory |
-| `l` / `→` / `Enter` | Enter directory (or preview file) |
-| `~` | Home |
-| `-` | Last directory (like `cd -`) |
-| `Ctrl+O` / `Ctrl+I` | Back / forward through visit history |
-| `g/` | Fuzzy jump to a path — type `…/nginx/conf.d` and land there |
-| `z` | Frecency jump: type `ngx` and it ranks `~/work/nginx` above a fresh match |
+| Connect somewhere | First-run card: **"Import hosts from ~/.ssh/config"**. Otherwise `Ctrl+O` |
+| Copy a file to the server | The action bar under the pane literally reads `Send → prod-api`. Click it, or `F5`, or `Ctrl+C`/`Ctrl+V` |
+| Copy many files | Click rows or `Space` to select; the action bar shows `Send → prod-api (4 files · 1.2 MB)` |
+| Work out what an archive holds | `Enter` or `F3` on it — contents are listed, no extraction |
+| Extract it to the machine on the other side | Select it, `Ctrl+E`, pick the destination side in the dialog |
+| Undo a mistake | The toast after a delete says `Moved 3 files to trash · Ctrl+Z to undo`. `Ctrl+Z` also just works |
+| Find a file | Start typing — the cursor jumps to matching names (type-ahead) |
+| Find a file anywhere in the tree | `Alt+F` |
+| Deploy | `Alt+D` on a session, or the `Deploy` button in the session header |
+| Do anything else | `Ctrl+K` and type what you want in plain words |
 
-**Finding**
+---
 
-| Key | Action |
-| --- | --- |
-| `/` | Incremental filter of the current listing; type, it narrows live |
-| `n` / `N` | Next / previous match of the kept filter |
-| `f` | Find recursively under the cursor with a preview of hits |
-| `H` | Toggle hidden files (`.git` stays hidden by a built-in default list) |
-| `s` | Sort menu: name, size, time, extension, folders-first |
+## 2. Screen anatomy
 
-**Selecting**
+```
+┌ omssh ────────────────────────────────────────────────────────────────────────────┐
+│  1 prod-api ●   2 staging ○   3 logs ⚠   4 localhost            [ Deploy ]  ⌘ ⌃K  │  session tabs + actions
+├──────────────┬────────────────────────────────────────────────────────────────────┤
+│ ▾ HOSTS      │  LOCAL  ▸ ~ ▸ work ▸ api ▸ dist                   512 MB free      │  breadcrumb (clickable)
+│   prod-api ● │ ┌───────────────────────────────────────────────────────────────┐  │
+│   prod-db  ○ │ │ ..                                                ↑ 09:12  <DIR> │  │
+│ ▾ staging    │ │ ▸ assets/                              4 items    1.2 MB       │  │
+│   staging  ○ │ │   main.js                            980.1 KB    09:12  rw-r--r--│ │
+│ ▾ BOOKMARKS  │ │ ▓ server.js                          512.4 KB    09:12  rw-r--r--│ │  ← selected
+│   ⭐ /etc/n… │ │   config.json                          1.1 KB    09:12  rw-r--r--│ │
+│              │ │   deploy.tar.gz                        2.4 MB    09:10  rw-r--r--│ │
+│ TRANSFERS  2 │ └───────────────────────────────────────────────────────────────┘  │
+│  ↑ main.js 62%│  Send → prod-api (2 files · 1.5 MB)   F3 View  F4 Edit  F2 Rename │  action bar
+│  ↓ logs.tgz 12%  F5 Copy…  F6 Move…  F8 Delete  F9 More…                          │
+│              ├────────────────────────────────────────────────────────────────────┤
+│              │  REMOTE  prod-api ▸ / ▸ srv ▸ api ▸ current      28 GB free        │  breadcrumb
+│              │ ┌───────────────────────────────────────────────────────────────┐  │
+│              │ │ ..                                                Oct 15 <DIR> │  │
+│              │ │ ▸ public/                              3 items    0.9 MB       │  │
+│              │ │   main.js                            940.2 KB    Oct 15  rw-r--r--│ │
+│              │ └───────────────────────────────────────────────────────────────┘  │
+├──────────────┴────────────────────────────────────────────────────────────────────┤
+│ NORMAL · 2 selected · 1.5 MB ·  ↑ sending 2 files · 24 MB/s · 1m 08s left  · ? help│  status bar
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
 
-| Key | Action |
-| --- | --- |
-| `space` | Toggle select, move down (so selection is one key, repeated) |
-| `v` | Visual range from the cursor |
-| `%` | Select by glob, e.g. `*.log` |
-| `*` | Invert the selection |
-| `V` | Select all · `u` clear selection |
-| `Esc` | Clear selection (when not in another mode) |
+- **Session tabs** carry a state dot (green ready, amber busy, grey idle, red
+  error), a click target, and a right-click menu (close, close others,
+  reconnect, deploy, tab colour).
+- **Breadcrumb** is interactive: click a segment to jump, click a chevron for a
+  dropdown of sibling directories (Finder-style). `Ctrl+L` turns it into an
+  editable path.
+- **Action bar** sits under the active pane. It is the single biggest
+  discoverability change: it always shows the four to six verbs that apply right
+  now, with keys, and every one is clickable. Select an archive and `Ctrl+E
+  Extract` appears; select nothing and it shows pane-level verbs.
+- **Status bar** names the mode, the selection summary, and live job state. It
+  answers "what is happening and what mode am I in" without moving the eyes far.
+- **Toasts** (bottom-right, 4 s) report completions and offer an undo where one
+  exists.
 
-**Preview** — on by default in the right half of a pane under 160 cols; a
-keypress (`p`) toggles. Text gets syntax highlighting (Chroma), binaries a hex
-dump, archives their entry listing, images a graphics-protocol preview where
-supported, and directories a tree summary with sizes.
+### Panes and direction
+
+Two panes. By default the **left pane is local, the right pane is remote**, and
+the titles say so. Either pane can be local or remote — remote-on-remote is a
+normal layout, not a special mode — but the default is the one that covers the
+common case.
+
+Verbs are directional and plain: **`Send →`** moves the selection to the other
+pane, **`Fetch ←`** brings it here. "Copy" survives as the concept in the docs
+and CLI (`omssh cp`), but the UI never makes the user work out which way is
+which.
+
+---
+
+## 3. Modes
+
+| Mode | Entered by | Leaves by | Visible as |
+| --- | --- | --- | --- |
+| Normal | default | — | `NORMAL` |
+| Search | `Ctrl+F` (in-pane filter) or typing (type-ahead) | `Esc` | `SEARCH` + a query chip |
+| Dialog | a dialog opens | `Esc` or a button | the dialog card |
+| Palette | `Ctrl+K` | `Enter` / `Esc` | the palette |
+| Terminal | focus a terminal tab | prefix key | terminal chrome bar |
+| Deploy | `Alt+D` | `Esc` | deploy tab |
+
+Selection is **not** a mode: `Space` toggles, `Shift+↑/↓` extends like every GUI
+list, and the count is always in the status bar.
+
+---
+
+## 4. The modifier grammar
+
+Learn this once and the rest of the app is guessable:
+
+| Prefix | Meaning | Examples |
+| --- | --- | --- |
+| **Plain letters** | Type-ahead jump, or vim navigation in the vim preset | type `ngx` → cursor jumps to `nginx/` |
+| **Arrows / Shift+arrows** | Move, extend selection, `←` up a level, `→` open | `Shift+↓` selects a run |
+| **Alt + letter** | A *view* toggle or a named place | `Alt+B` sidebar, `Alt+J` jobs, `Alt+H` hidden, `Alt+D` deploy, `Alt+C` compare |
+| **Ctrl + letter** | An *action* or a *dialog* | `Ctrl+C` copy, `Ctrl+E` extract, `Ctrl+F` search, `Ctrl+L` path, `Ctrl+K` palette |
+| **F-keys** | Classic file-manager operations | `F2` rename, `F3` view, `F4` edit, `F5` copy, `F6` move, `F7` new folder, `F8` delete, `F9` menu, `F10` quit |
+
+`Enter` opens or confirms. `Esc` goes back one level of context and never
+destroys anything. `Tab` switches pane.
+
+---
+
+## 5. Directory walking — the part that must be excellent
+
+Used a thousand times a day, so it gets the most attention.
+
+**Moving** — `↑`/`↓` move, `→`/`Enter` open, `←` parent, `Home`/`End` and
+`PgUp`/`PgDn`, `Ctrl+Home`/`Ctrl+End` for first/last. `Alt+←`/`Alt+→` walk the
+visit history (same as a browser). `Ctrl+L` edits the path with completion.
+`Ctrl+R` refreshes.
+
+**Finding** — three levels, all obvious:
+
+1. **Type-ahead** — start typing and the cursor jumps to the first matching
+   name, matches are highlighted, `Esc` clears. Repeating the same letter cycles
+   through matches (classic file-manager behaviour). No key to learn.
+2. **Filter** — `Ctrl+F` narrows the current listing incrementally as you type,
+   `Esc` clears. Fast, and it never hides the current row.
+3. **Recursive find** — `Alt+F` searches the subtree and shows results with
+   paths, sizes and match highlighting; `Enter` reveals a result in the pane.
+
+Hidden files: `Alt+H`, with a built-in default ignore list (`.git`,
+`node_modules`, `__pycache__`, …) that `Alt+H` shows anyway.
+
+**Selecting** — `Space` toggles and advances, `Shift+arrows` extends a run, the
+same as any GUI list. `Ctrl+A` selects all, `Alt+A` inverts. The status bar
+always shows `N selected · <total size>`. Selection survives navigation, and
+every operation applies to the selection when there is one and to the cursor
+otherwise.
+
+**Preview** — the right half of the active pane below 160 columns, toggled with
+`Alt+P`: syntax-highlighted text (Chroma), hex for binaries, an entry listing for
+archives, a size tree for directories, and image preview where the terminal
+supports graphics. Preview cost is bounded: files over 1 MB stream the head and
+say so.
 
 **The rules that make it feel right**
 
-1. The cursor is never lost. Entering and leaving a directory restores the row
-   you came from, highlighted.
-2. Nothing blocks typing. Listings are fetched asynchronously; a slow remote
-   shows the previous listing with a subtle loading mark rather than freezing.
-3. Unreachable is not fatal. A `Permission denied` row is shown, selectable,
-   and explains itself on `Enter`; it does not abort the listing.
-4. Symlinks are visible as symlinks (`→ target`), followed only when asked.
-5. The path bar is editable — click it or `Ctrl+L`, type a path, `Enter`.
-6. Every operation works on the selection if there is one, and on the cursor
-   otherwise. No operation is cursor-only.
+1. **The cursor is never lost.** Returning to a directory restores the row you
+   left, highlighted.
+2. **Nothing blocks typing.** Listings are fetched asynchronously; a slow remote
+   shows the previous listing with a small loading mark.
+3. **Unreachable is not fatal.** An unreadable entry is a selectable row that
+   explains itself and offers `Retry` / `Open as root` / `Copy path`.
+4. **Symlinks look like symlinks** (`→ target`) and are followed only when
+   asked, never during recursive operations.
+5. **The path is editable.** Click the breadcrumb or `Ctrl+L`, type, `Enter`,
+   with completion.
+6. **Every operation works on a selection**, so "copy 200 files" is the same
+   gesture as "copy one file".
 
-## 4. Keybindings — file manager
+---
 
-| Key | Action |
-| --- | --- |
-| `Tab` / `Shift+Tab` | Switch pane |
-| `c` | Copy selection → other pane (queued, conflicts resolved) |
-| `M` | Move selection → other pane |
-| `d` | Delete (confirm, with a size/count summary) |
-| `r` | Rename (or batch-rename with a pattern when multi-selected) |
-| `a` / `A` | New file / new directory |
-| `C` | chmod (octal input, with a readable preview `rwxr-xr-x`) |
-| `L` | New symlink |
-| `e` | Edit: local opens `$EDITOR`; remote downloads, edits, re-uploads |
-| `y` | Yank paths to the system clipboard (OSC 52) |
-| `x` | Extract here · `X` extract to… (destination picker) |
-| `z` | Compress selection → archive (format + destination) |
-| `t` | Open a terminal tab at this directory |
-| `Ctrl+S` | Toggle sync browse (panes mirror the relative path) |
-| `Ctrl+D` | Diff the two panes (read-only view) |
-| `R` | Refresh · `w` toggle auto-refresh (watch the local dir) |
-| `b` | Toggle sidebar · `B` bookmark the current directory |
-| `o` | Reveal in the other pane (jump there, keep the file under the cursor) |
-| `?` | Full keymap |
+## 6. Operations: two speeds, always previewed
 
-## 5. Keybindings — global, transfers, deploy, terminal
+**Quick path** — `Ctrl+C` (or `Ctrl+X`), `Tab`, `Ctrl+V`. Standard, immediate,
+no dialog. The status bar shows `2 files staged · Ctrl+V to paste into REMOTE`.
 
-**Global**
-
-| Key | Action |
-| --- | --- |
-| `Ctrl+K` | Command palette (every action, host, bookmark, recent path) |
-| `Ctrl+P` | Fuzzy jump (paths and hosts) |
-| `1`–`9` | Switch session tab |
-| `N` | New connection (pick from `~/.ssh/config` or add one) |
-| `T` | New local tab (pure local two-pane work, no SSH needed) |
-| `Q` | Toggle the transfer queue panel |
-| `D` | Deploy menu for the current host |
-| `Ctrl+,` | Settings |
-| `?` | Help · `Esc` dismiss · `Ctrl+C`/`q` quit (confirm when jobs run) |
-
-**Transfer queue**
-
-| Key | Action |
-| --- | --- |
-| `j` `k` | Move | 
-| `p` | Pause / resume selected · `P` all |
-| `x` | Cancel · `X` cancel all |
-| `r` | Retry failed · `R` retry all failed |
-| `C` | Clear finished |
-| `+` `-` | Workers up / down (applies to queued items) |
-| `Enter` | Item detail: bytes, speed, ETA, per-chunk state, errors |
-
-**Deploy**
-
-| Key | Action |
-| --- | --- |
-| `p` | Compute and show the plan (dry run) — the default view |
-| `R` | Run the plan (confirm if it contains deletes) |
-| `a` `e` `d` | Add / edit / delete a profile |
-| `h` | Run history · `Enter` re-run · `L` open a run's log |
-| `f` | Follow / unfollow the live log |
-| `s` | Switch profile |
-
-**Terminal**
-
-| Key | Action |
-| --- | --- |
-| `Ctrl+Space` | Prefix — the next key is an omssh command, not sent remotely |
-| `Ctrl+Space n` | New terminal tab · `Ctrl+Space w` close |
-| `Ctrl+Space s` | Split vertically · `v` split horizontally |
-| `Ctrl+Space [` | Enter copy mode: `hjkl` + `v` + `y` to copy selection |
-| `Ctrl+Space q` | Leave the terminal, back to files (session stays alive) |
-
-Inside a terminal tab every other key goes to the remote shell verbatim,
-including `Ctrl+C`, `Ctrl+Z` and mouse events.
-
-## 6. Dialogs
-
-All dialogs share one visual language: a bordered card, a title, a body, and
-right-aligned buttons with the destructive one coloured and never default.
-
-**Conflict dialog** — shown per file, with an "apply to all" checkbox and a
-side-by-side compare (size, mtime, and a checksum on demand):
+**Guided path** — `F5` Copy / `F6` Move open the same dialog:
 
 ```
-┌ Conflict ──────────────────────────────────────────────────────┐
-│  main.js already exists                                        │
-│                                                                │
-│   local    ~/work/api/dist/main.js                             │
-│            980.1 KB   Oct 16 09:12   ● newer                   │
-│   remote   prod-api:/srv/api/current/main.js                   │
-│            940.2 KB   Oct 15 14:40                             │
-│                                                                │
-│  [ Overwrite ]  [ Skip ]  [ Rename ]  [ Update if newer ]  …   │
-│  ☐ apply to all 12 remaining                                   │
-└────────────────────────────────────────────────────────────────┘
+┌ Copy ────────────────────────────────────────────────────────────┐
+│  2 files · 1.5 MB                                                │
+│    main.js                           980.1 KB   09:12            │
+│    server.js                         512.4 KB   09:12            │
+│                                                                  │
+│  Destination   ( ) Other pane  ●  prod-api:/srv/api/current      │
+│                ( ) Same directory                                │
+│                ( ) Bookmark…  ( ) Recent…  ( ) Pick a directory… │
+│                                                                  │
+│  Options       Conflict: update if newer ▾   Preserve: mode+mtime│
+│                [ ] Skip files that already match                 │
+│                                                                  │
+│              [ Show plan ]   [ Cancel ]   [ Copy 2 files ]       │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-**Extract to…** — a small form: source archive (read-only), format (detected,
-overridable), destination side (local / this host / other host), destination
-path (with the directory picker and a "new folder named after the archive"
-shortcut), strip components, and the safety summary (entry count, total
-uncompressed size, or a warning when limits are exceeded).
+- Destination defaults to **the other pane's directory** — the answer 90% of the
+  time — and the alternatives are one click: same directory, a bookmark, a
+  recent destination, or the directory picker.
+- `Show plan` renders exactly what will happen (create / update / skip), which is
+  the same preview used by deploy and by extraction.
+- **Bulk or destructive operations confirm inline**, not with a modal. After
+  `Ctrl+V` of 200 files: `Copy 200 files → prod-api:/srv/api · Enter to start ·
+  Esc to cancel · o options`. One line, no interruption, still a deliberate
+  confirmation. Operations under ~20 files or under 10 MB skip the prompt
+  entirely and just start (with a toast that carries `Ctrl+Z` / `Cancel`).
 
-**Deploy plan** — a scrollable, filterable list of `+ create`, `~ update`,
-`- delete`, `= skip` entries grouped by action, with a summary footer
-(`2 create · 5 update · 1 delete · 1.4 MB`) and the delete rows in red.
+**Undo** — `Ctrl+Z` (redo `Ctrl+Y`). Backed by a trash rather than a permanent
+delete:
 
-## 7. Themes and colour
+- Local deletes move to the XDG trash (or `~/.local/share/omssh/trash` when no
+  freedesktop trash exists).
+- Remote deletes move to `.omssh-trash/<timestamp>/` in the remote home
+  directory, so the file is still on the same filesystem and the move is
+  instant.
+- If the remote has no writable home (or the filename is unrecoverable), the
+  dialog says so plainly — `This host has no trash. Delete permanently?` — and
+  requires an explicit confirm. No silent permanent deletes.
+- Rename, move and overwrite are undoable too; overwrites keep the previous
+  version when `backup` is on.
+- Trash is retained for 7 days by default and manageable from the CLI:
+  `omssh trash list | restore <id> | empty`. `Alt+J` → Queue → Trash tab in the UI.
 
-- Built-ins: `midnight` (default dark), `dawn` (light), `mist` (low-contrast
-  grey), `ember` (warm dark), `mono` (no colour, for monochrome terminals),
-  `contrast` (accessibility), and `auto`.
-- `auto` reads the terminal background (`COLORFGBG`, or an OSC 11 query on
-  startup when supported) and picks `midnight`/`dawn`.
-- Colour depth is negotiated once via `colorprofile` and every style is
-  defined for true colour, 256, and 16 colours, so `mono` and 16-colour
-  terminals are a supported configuration, not a degraded one.
-- `NO_COLOR` is honoured. `CLICOLOR_FORCE` overrides.
-- Nerd Font icons are used when the terminal advertises one or the user sets
-  `icons = "nerd"`; otherwise a curated ASCII/Unicode set is used. The app
-  never renders a tofu box.
-- Semantic colours, not hard-coded ones: `success`, `danger`, `warning`,
-  `muted`, `accent`, `selection`, `created`, `deleted`. Swapping a theme swaps
-  intent, not hex values scattered in views.
+---
 
-## 8. Responsiveness
+## 7. Keymap
+
+### 7.1 Navigation
+
+| Key | Action |
+| --- | --- |
+| `↑` `↓` | Move cursor |
+| `←` | Parent directory · `→` / `Enter` open (directory) or view (file) |
+| `PgUp` `PgDn` `Home` `End` | Page / first / last |
+| `Alt+←` `Alt+→` | History back / forward |
+| `Ctrl+L` | Edit the path (with completion) |
+| `Ctrl+R` | Refresh |
+| `Ctrl+P` | Fuzzy jump to a path (quick-open) |
+| `Alt+F` | Recursive find in the subtree |
+| `Ctrl+F` | Filter the current listing |
+| `Alt+H` | Toggle hidden files |
+| `Alt+P` | Toggle preview |
+| `Tab` `Shift+Tab` | Switch pane |
+| `Alt+O` | Reveal the selection in the other pane |
+| `Alt+1…9` · `Ctrl+PgUp/PgDn` | Switch session tab |
+| `Ctrl+O` | Open a connection (host picker) |
+| `Ctrl+T` | New tab at this directory (a terminal tab, already `cd`'d) |
+| `Ctrl+Space` `n` | New terminal tab in the current session |
+| `Ctrl+W` | Close the current tab |
+
+### 7.2 File operations
+
+| Key | Action | Notes |
+| --- | --- | --- |
+| `Space` | Toggle select and advance | selection is not a mode |
+| `Shift+↑` `Shift+↓` | Extend selection | like every GUI list |
+| `Ctrl+A` / `Alt+A` | Select all / invert | |
+| `Ctrl+C` `Ctrl+X` `Ctrl+V` | Copy / cut / paste | standard; see §13 for `Ctrl+C` as quit |
+| `F5` / `F6` | Copy to… / Move to… | dialog, destination defaults to the other pane |
+| `F3` / `Enter` | View (preview pane) | archives list their contents |
+| `F4` | Edit (local `$EDITOR`; remote download-edit-upload) | |
+| `F2` | Rename (batch rename when multi-selected) | |
+| `F7` / `Ctrl+N` | New folder / new file | |
+| `F8` / `Del` | Delete → trash | confirm; undoable |
+| `Ctrl+E` | Extract… | destination side is chosen in the dialog |
+| `Ctrl+G` | Compress selection… | format + destination side |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo | |
+| `Ctrl+D` | Compare the two panes (read-only diff) | |
+| `Alt+S` | Toggle sync browse | panes mirror the relative path |
+| `Alt+B` `Alt+J` `Alt+D` `Alt+C` | Sidebar / jobs queue / deploy / compare | view toggles |
+| `F9` / right-click | Context menu — every operation for the selection | discovery net |
+| `Ctrl+K` | Command palette — every action, searchable, with its shortcut | discovery net |
+| `F1` / `?` | Help — searchable keymap grouped by task | discovery net |
+| `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | |
+| `Esc` | Back / dismiss / clear | never destructive |
+
+### 7.3 Vim preset (optional)
+
+`keys.preset = "vim"` restores the navigation letters, and **only** navigation
+and selection change — operations keep the standard keys above, so both hands
+and both mental models keep working:
+
+| Key | Action |
+| --- | --- |
+| `h` `j` `k` `l` | parent / down / up / open |
+| `gg` `G` | top / bottom |
+| `~` `-` | home / last directory |
+| `/` `n` `N` | filter, next, previous match |
+| `v` | start a visual range (alias for `Shift+arrows`) |
+| `Ctrl+U` `Ctrl+D` | half-page up / down |
+
+A fully vim-modal preset (with `dd`, `yy`, `p`) is explicitly **not** in v1: the
+standard operations are what make the app learnable, and forking them by preset
+would break the palette's promise that a shortcut always means one thing. It is
+a candidate for post-1.0 if there is demand.
+
+Keymaps are configurable (`[keys]` in the config) with validation: duplicate
+binds, unbindable keys, and attempts to rebind `Esc` are rejected by
+`omssh config check`, which reports the file and line.
+
+---
+
+## 8. Dialogs
+
+One visual language: a bordered card, a sentence-case title, the facts, and
+right-aligned buttons where the destructive one is coloured and never the
+default. `Esc` cancels, `Enter` confirms the default.
+
+**Destination picker** — one component reused by copy, move, extract, compress
+and deploy. A single list of "the other pane", "same directory", bookmarks,
+recent destinations, then a browsable tree with a "new folder" row. Typing
+filters; the current choice is always spelled out as a full `host:path`.
+
+**Conflict** — shown per file with a side-by-side compare (size, mtime, optional
+checksum) and a real decision:
+
+```
+┌ File already exists ─────────────────────────────────────────────┐
+│  main.js                                                         │
+│   local   ~/work/api/dist/main.js    980.1 KB  Oct 16 09:12  newer│
+│   remote  prod-api:/srv/api/main.js  940.2 KB  Oct 15 14:40       │
+│                                                                  │
+│  [ Overwrite ]  [ Keep both ]  [ Skip ]  [ Always use newer ]     │
+│  ☐ apply to the other 12 files                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+`Keep both` renames to `main (2).js` — the safe default for people who don't
+want to think, and the button order puts the reversible choice in reach.
+
+**Extract** — source (read-only), detected format (overridable), destination
+side, destination directory (picker, plus a "new folder named after the
+archive" shortcut), strip components, and a safety summary: entry count, total
+uncompressed size, and a red warning when a limit would be hit.
+
+**Deploy plan** — a filterable list of `+ create`, `~ update`, `- delete`,
+`= skip` with a summary footer and delete rows in red. Deletes are the reason
+this dialog exists; they are never hidden behind a scroll.
+
+**Dangerous targets** — replacing or deleting at a root-ish path
+(`/`, `/etc`, `$HOME`, a mount point) turns the confirm button into a
+type-the-path confirmation. Cheap, and it stops the one mistake that cannot be
+undone.
+
+---
+
+## 9. Feedback and timing
+
+| Duration | What the user sees |
+| --- | --- |
+| < 200 ms | Nothing (no flash of spinner) |
+| 200 ms – 2 s | A spinner in the status bar, the action named |
+| > 2 s | Determinate progress, speed, ETA, and cancel |
+| Finished | A toast, with `Ctrl+Z` where undo applies |
+
+A slim aggregate progress strip sits above the status bar whenever anything is
+running, so a transfer is visible even when the queue is collapsed. `Alt+J`
+opens the full queue (per-item rows, per-item pause/retry, item detail with
+per-chunk state). Animations honour `motion = "reduced"`, which swaps spinners
+for static text.
+
+Errors are written as **what happened, why, and what to do**, with the action
+clickable:
+
+```
+┌ Connection failed ───────────────────────────────────────────────┐
+│  prod-api — could not start a session                            │
+│  The server refused authentication for user 'deploy'.            │
+│  Password authentication is disabled and no key was accepted.    │
+│                                                                  │
+│  [ Try a password ]  [ Pick a key ]  [ Edit host ]  [ Details ]   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+A host-key change is never a warning to click past: it explains that this can
+mean a rebuilt server *or* an attack, shows both fingerprints, and requires
+choosing `Forget and reconnect` deliberately.
+
+---
+
+## 10. Onboarding
+
+First run shows a single card, dismissible with `Esc`, that offers the two
+things that actually matter:
+
+```
+┌ Welcome to omssh ────────────────────────────────────────────────┐
+│  You have 7 hosts in ~/.ssh/config.                              │
+│                                                                  │
+│  [ Import 7 hosts ]   [ Add a connection ]   [ Skip for now ]     │
+│                                                                  │
+│  Getting around:                                                 │
+│   • Ctrl+K  find any action        • F5      copy to the server   │
+│   • Ctrl+C / Ctrl+V  copy & paste  • Ctrl+E  extract an archive   │
+│   • Ctrl+Z  undo                   • F1/?    full help            │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+After that, the app teaches by doing: the palette prints shortcuts beside every
+action, the action bar shows the verbs and their keys, and toasts name the
+shortcut for what just happened. There is no mandatory tour and no modal
+tutorial. `Ctrl+K` → `Tour` replays the six-line overview for anyone who wants
+it.
+
+---
+
+## 11. Themes, colour and accessibility
+
+- Built-ins: `midnight` (default dark), `dawn` (light), `mist` (low contrast),
+  `ember` (warm), `mono` (no colour), `contrast` (high contrast), `auto`
+  (follows the terminal background, via `COLORFGBG` or an OSC 11 query).
+- Every style is defined for true colour, 256 and 16 colours, so a 16-colour
+  terminal is a supported configuration rather than a broken one. `NO_COLOR` is
+  honoured; `CLICOLOR_FORCE` overrides.
+- Nerd Font icons when the terminal advertises one (or `icons = "nerd"`),
+  otherwise a curated Unicode/ASCII set. No tofu boxes, ever.
+- Semantic colours only (`success`, `danger`, `warning`, `muted`, `accent`,
+  `selection`), so a theme swaps intent, not hex values sprinkled through views.
+- Accessibility: every action keyboard-reachable, every dialog `Esc`-dismissible,
+  `motion = "reduced"`, `contrast` theme, optional `--no-icons`, and no
+  information carried by colour alone (state dots always pair with a word or a
+  glyph shape such as `● ready`, `○ idle`, `✖ error`).
+- Selection and cursor are visually distinct from each other **and** from the
+  focused pane, which matters more than any palette choice.
+
+---
+
+## 12. Responsiveness
 
 | Width | Behaviour |
 | --- | --- |
-| ≥ 140 | Two panes, sidebar open, preview on, all metadata columns |
-| 100–139 | Two panes, sidebar collapsed to an icon rail, preview on demand |
-| 80–99 | One pane at a time with `Tab` switching, minimal columns (name + size) |
-| < 80 | Single column, abbreviated status bar, dialogs take the full width |
+| ≥ 140 | Two panes, sidebar, preview, full metadata |
+| 100–139 | Two panes, sidebar as an icon rail, preview on demand |
+| 80–99 | One pane with `Tab` switching, name + size columns, abbreviated action bar |
+| < 80 | Single column, action bar collapses to `F9 More…`, dialogs take the width |
 
-Height is handled the same way: the transfer queue shows three rows by default
-and grows up to a third of the screen when focused.
+The action bar degrades first, because it is redundant with the context menu and
+the palette; the breadcrumb and the mode indicator are never dropped.
 
-## 9. Accessibility and manners
+---
 
-- Every action is reachable by keyboard alone, and every dialog is dismissible
-  with `Esc`.
-- Destructive actions never bind to a single unmodified key on a multi-select
-  (`d` requires confirmation; `Ctrl+Shift+D` is the no-dialog escape hatch).
-- Long operations are always cancellable and never leave the file system in a
-  half-written state (atomic writes, `.part` files, cleanup).
-- Progress is shown for anything over ~200 ms; nothing silently hangs.
-- The app restores the terminal cleanly on exit and on panic, and never leaves
-  the alt-screen buffer enabled.
+## 13. Terminal key limits (honesty section)
+
+Some keys cannot be bound because terminals already use them. The app avoids
+them rather than binding something that works for half the users:
+
+| Not used | Why | Bound instead |
+| --- | --- | --- |
+| `Ctrl+H` | sends `Backspace` (0x08) on many terminals | `Alt+H` |
+| `Ctrl+I` | is `Tab` (0x09) | — |
+| `Ctrl+J` | is `Enter`/`LF` (0x0A) on many terminals | `Alt+J` |
+| `Ctrl+M` | is `Enter`/`CR` (0x0D) | — |
+| `Ctrl+S` | is `XOFF` flow control in some setups | `Alt+S` |
+| `Ctrl+[` | is `Esc` | `Esc` |
+| `Ctrl+B` | is the tmux prefix | `Alt+B` |
+| `Ctrl+C` | conventionally quits, but is also the universal *copy* | **copy**; with nothing selected it shows `Nothing to copy · Ctrl+Q quits`, and `keys.copy = "ctrl+insert"` is offered for anyone who wants `Ctrl+C` to mean quit |
+
+Tab, pane-switch and terminal-tab switching depend on the terminal emitting
+modified keys. `Ctrl+PgUp/PgDn` and `Alt+1…9` cover most, and the palette covers
+the rest; on startup the app probes capabilities and drops the shortcuts the
+terminal cannot express instead of silently doing nothing.
