@@ -303,6 +303,8 @@ to stay under a minute with `-race`.
 
 ## 10. Packaging
 
+- Module path is `github.com/fakih/omssh` (PLAN §9 D1), so the binary is built
+  from `github.com/fakih/omssh/cmd/omssh`.
 - `goreleaser` for `darwin/linux/windows` × `amd64/arm64`, producing archives,
   checksums and a Homebrew tap formula.
 - `go install github.com/fakih/omssh/cmd/omssh@latest` works because the app is

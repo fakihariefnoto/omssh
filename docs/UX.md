@@ -296,9 +296,9 @@ delete:
 | `Ctrl+E` | Extract… | destination side is chosen in the dialog |
 | `Ctrl+G` | Compress selection… | format + destination side |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo | |
-| `Ctrl+D` | Compare the two panes (read-only diff) | |
 | `Alt+S` | Toggle sync browse | panes mirror the relative path |
-| `Alt+B` `Alt+J` `Alt+D` `Alt+C` | Sidebar / jobs queue / deploy / compare | view toggles |
+| `Alt+C` | Compare the two panes (read-only diff) | |
+| `Alt+B` `Alt+J` `Alt+D` | Sidebar / jobs queue / deploy | view toggles |
 | `F9` / right-click | Context menu — every operation for the selection | discovery net |
 | `Ctrl+K` | Command palette — every action, searchable, with its shortcut | discovery net |
 | `F1` / `?` | Help — searchable keymap grouped by task | discovery net |
@@ -440,13 +440,34 @@ it.
 - Built-ins: `midnight` (default dark), `dawn` (light), `mist` (low contrast),
   `ember` (warm), `mono` (no colour), `contrast` (high contrast), `auto`
   (follows the terminal background, via `COLORFGBG` or an OSC 11 query).
+
+### 11.1 The signature accent
+
+`omssh` has one signature colour, used for the focused pane border, the active
+breadcrumb segment, the primary button, the current tab and the cursor line —
+nothing else, so "where am I" is answered by the accent alone.
+
+| Token | True colour | 256 | 16-colour |
+| --- | --- | --- | --- |
+| `accent` | `#57D9C9` (aqua/teal) | `80` | `bright cyan` |
+| `accent.emphasis` | `#8FF5E6` | `123` | `bright cyan`, bold |
+
+Teal rather than the usual violet: it reads as instrument-panel rather than
+generic-AI-purple, it survives every colour profile, and it stays clear of the
+semantic colours, which are reserved:
+
+| Token | Meaning | Never used for |
+| --- | --- | --- |
+| `success` | ready, done, healthy | decoration |
+| `warning` | unhealthy deploy, no-trash delete, degraded link | — |
+| `danger` | delete, errors, changed host key | — |
+| `muted` | metadata, hints, disabled | text you must read |
+
 - Every style is defined for true colour, 256 and 16 colours, so a 16-colour
   terminal is a supported configuration rather than a broken one. `NO_COLOR` is
   honoured; `CLICOLOR_FORCE` overrides.
 - Nerd Font icons when the terminal advertises one (or `icons = "nerd"`),
   otherwise a curated Unicode/ASCII set. No tofu boxes, ever.
-- Semantic colours only (`success`, `danger`, `warning`, `muted`, `accent`,
-  `selection`), so a theme swaps intent, not hex values sprinkled through views.
 - Accessibility: every action keyboard-reachable, every dialog `Esc`-dismissible,
   `motion = "reduced"`, `contrast` theme, optional `--no-icons`, and no
   information carried by colour alone (state dots always pair with a word or a

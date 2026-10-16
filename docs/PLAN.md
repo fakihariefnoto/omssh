@@ -128,7 +128,9 @@ The tagline we design against:
   try `cp -a` (or SFTP `copy-data` extension) first and only stream bytes if
   that fails.
 - Remote→remote across different hosts streams through the client with
-  bounded buffers; never writes a temp file locally.
+  bounded buffers; never writes a temp file locally and never relies on one host
+  reaching the other (see PLAN §9 D3). Server-side `cp -a` is used only when
+  both ends are literally the same host.
 - Clipboard integration: yank selection as a newline-separated path list to the
   system clipboard over OSC 52.
 
@@ -196,7 +198,7 @@ mode          = "sync"              # "sync" (delete extraneous) | "update"
 exclude       = [".git/", "*.log", "node_modules/", ".env"]
 include_hidden = false
 follow_symlinks = false
-atomic        = true                # upload to *.omssh-tmp then rename
+atomic        = true                # upload to *.omssh-tmp then rename (default)
 preserve_perms = true
 backup        = true                # keep one previous version of changed files
 workers       = 4
@@ -338,21 +340,24 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
 | Discoverability decays as features land | New actions become key-only again | Palette, context menu and action bar are three views over **one action registry**; an action missing from the registry is a bug. Enforced by a test that every registered action is reachable from the palette |
 | Undo/trash grows into its own product (retention, quota, cross-device) | Scope creep, and a trash that fails on read-only hosts | Bounded v1: single-level undo per session, trash on the same filesystem only, explicit permanent-delete path when trash is unavailable, 7-day retention, CLI management |
 
-## 9. Open questions
+## 9. Decisions and open questions
 
-1. **Module path** — `github.com/fakih/omssh` or the vanity `fakih.net/omssh`?
-   Affects imports everywhere, so decide before M0 lands.
-2. **Config format** — TOML is assumed (comments + tables suit profiles well).
-   Confirm no preference for YAML.
-3. **Deploy "atomic" default** — on, at the cost of a second copy on disk
-   during upload. On by default, or opt-in per profile?
-4. **Remote→remote across hosts** — stream through the client (assumed) or
-   require one host to be able to reach the other (`ssh` from the bastion)?
-5. **Colour identity** — pick a signature accent for the default theme, or stay
-   entirely terminal-palette-driven (16-colour friendly)?
-6. **Trash defaults** — 7-day retention and `.omssh-trash/` in the remote home
-   are assumed; also, should deletes prefer the freedesktop trash spec where it
+### 9.1 Decided
+
+| # | Question | Decision |
+| --- | --- | --- |
+| D1 | Module path | `github.com/fakih/omssh`. A bare `omssh` module path would break `go install github.com/fakih/omssh/cmd/omssh@latest` and the goreleaser/Homebrew pipeline, both promised in the goals (§2 G8) and `ARCHITECTURE.md` §10. Renaming later is a one-line `go mod edit -module` plus an import rewrite, so this stays cheap to revisit. |
+| D2 | Deploy atomic writes | **On by default** (`atomic = true`), per profile opt-out. Correctness first: a dropped connection must never leave a half-written file in place. The cost is a temporary second copy during upload, which the plan accepts. |
+| D3 | Remote→remote across hosts | **Always stream through the client** with bounded buffers. No bastion-to-bastion `ssh`/`rsync` path: it would need a second credential context, a second quoting surface, and would not work when the two hosts cannot reach each other — which is the common case. |
+| D4 | Colour identity | **Signature accent**: `#57D9C9` aqua/teal, with `#8FF5E6` for emphasis, mapped to 256 `80`/`123` and 16-colour `bright cyan`. Reserved semantic colours stay separate. See `UX.md` §11.1. |
+
+### 9.2 Still open
+
+1. **Config format** — TOML is assumed (comments and tables suit deploy profiles
+   well). Confirm no preference for YAML.
+2. **Trash defaults** — 7-day retention and `.omssh-trash/` in the remote home
+   are assumed. Should local deletes prefer the freedesktop trash spec where it
    exists, or always use our own directory for predictability?
-7. **`Ctrl+C`** — the plan binds it to copy (ADR 0006) and prints a "Ctrl+Q
-   quits" hint when nothing is selected. Confirm that is the right default over
-   the alternative (`Ctrl+C` quits, `Ctrl+Insert` copies).
+3. **`Ctrl+C`** — ADR 0006 binds it to copy and prints a `Ctrl+Q quits` hint
+   when nothing is selected. Confirm that over the alternative (`Ctrl+C` quits,
+   `Ctrl+Insert` copies).
