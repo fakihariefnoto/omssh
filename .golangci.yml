@@ -1,0 +1,93 @@
+# golangci-lint configuration.
+#
+# The linter set is deliberately small and strict: a false positive costs more
+# than a rule is worth, and every rule here has caught a real bug in this
+# codebase's short life.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck # unchecked errors: the commonest silent failure
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - errname # error values are named like errors
+    - errorlint # %w wrapping, and errors.Is/As instead of ==
+    - exhaustive # switch statements over our own enums
+    - gocritic
+    - gosec # the app handles credentials and untrusted archives
+    - misspell
+    - nilerr # returning nil after a non-nil error
+    - noctx # HTTP/exec without a context
+    - nolintlint # a nolint must say why
+    - prealloc
+    - predeclared
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
+
+  settings:
+    errcheck:
+      # Deliberate, documented no-ops.
+      exclude-functions:
+        - (*os.File).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    exhaustive:
+      # Only our own enums are interesting; external ones change without warning.
+      default-signifies-exhaustive: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - opinionated
+        - performance
+      disabled-checks:
+        # Value semantics are deliberate: Context, Pane and Action are passed by
+        # value so a rendering pass cannot mutate the state it is describing.
+        - hugeParam
+        - rangeValCopy
+    gosec:
+      excludes:
+        # File modes come from the archive or the remote host, not from us.
+        - G302
+        - G304
+    revive:
+      rules:
+        - name: exported
+        - name: indent-error-flow
+        - name: errorf
+        - name: var-declaration
+        - name: unexported-return
+        - name: context-as-argument
+        - name: early-return
+
+  exclusions:
+    rules:
+      # Tests may use long functions and duplicated literals for clarity.
+      - path: _test\.go
+        linters:
+          - gocritic
+          - unparam
+          - gosec
+      # The command entry point reads the environment, which is the point.
+      - path: cmd/omssh/main.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

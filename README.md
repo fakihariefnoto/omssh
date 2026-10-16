@@ -32,8 +32,10 @@ makes moving files between local and remote machines pleasant:
   colours, Nerd Font icons with ASCII fallback, full mouse support, and a
   `contrast` theme plus reduced-motion mode.
 
-> Status: **planning**. This repository currently contains the design and
-> implementation plan. See [`docs/PLAN.md`](docs/PLAN.md).
+> Status: **M0 shipped** (`v0.1.0`) — the interface shell, action registry,
+> keymap, theme engine and strict config are in place. Files are browsable in
+> the local pane; connections arrive next. See
+> [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Documentation
 
@@ -45,15 +47,29 @@ makes moving files between local and remote machines pleasant:
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Milestones with deliverables and acceptance criteria |
 | [`docs/adr/`](docs/adr) | Architecture decision records |
 
-## Building
+## Building and running
 
 ```sh
-make build      # -> ./omssh
-make test
-make lint
+make run              # build and launch the interface
+make build            # -> ./omssh
+make check            # gofmt, vet, golangci-lint, tests with -race
+make help             # every target
 ```
 
-Requires Go 1.25+.
+Requires Go 1.26+ (the Charm v2 stack needs it).
+
+```sh
+omssh                 # the interface, in your current directory
+omssh keys            # print the effective keymap, including anything dropped
+omssh config path     # where the configuration lives
+omssh config init     # write a commented example config
+omssh config check    # validate it, with line numbers
+omssh version
+```
+
+While the interface is running: `Ctrl+K` finds every action, `F1` shows the
+keymap, `F9` opens the context menu for the selection, `Ctrl+Q` quits, and
+`Esc` goes back — never quits.
 
 ## Licence
 

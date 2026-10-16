@@ -6,11 +6,25 @@
 ## Context
 
 The UI is the product, so it should use the best-maintained TUI stack for Go
-rather than a hand-rolled renderer. The Charm v2 line (Bubble Tea v2.1.0,
-Lip Gloss v2.0.6, Bubbles v2.2.1, `x/ansi`, `colorprofile`) is current, has
+rather than a hand-rolled renderer. The Charm v2 line is current, has
 first-class mouse, colour-profile and layout support, and ships `x/vt`, a real
 VT emulator we can use for the terminal tabs. It is also, necessarily, a
 dependency that will see breaking changes over time.
+
+Two practical details settled during M0:
+
+- The v2 modules live on the `charm.land` vanity domain
+  (`charm.land/bubbletea/v2` v2.1.0, `charm.land/lipgloss/v2` v2.0.6,
+  `charm.land/bubbles/v2` v2.2.1) — not `github.com/charmbracelet/...`, which
+  is where v1 still lives.
+- Bubble Tea v2 requires **Go 1.26**, so that is the project's minimum version.
+- v2's `View` is a struct, key presses are `tea.KeyPressMsg`, and terminal
+  features (alt screen, mouse, window title) are declared on the view rather
+  than passed to the program.
+- Lip Gloss v2's `Width(n)` and `Height(n)` are **inclusive of the border**.
+  The interface depends on this, so it is pinned by a test
+  (`internal/theme/layout_contract_test.go`) rather than rediscovered every
+  time a pane wraps.
 
 ## Decision
 

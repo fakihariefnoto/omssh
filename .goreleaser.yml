@@ -1,0 +1,88 @@
+# goreleaser configuration.
+#
+# Checked in from M0 so the packaging path is decided early, but releases are
+# only cut from M7 onwards. `goreleaser build --snapshot` works today.
+version: 2
+
+project_name: omssh
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: omssh
+    main: ./cmd/omssh
+    binary: omssh
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - docs/*.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\(.+\))?:'
+      order: 1
+    - title: Everything else
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^test:"
+
+# Homebrew tap, published from M7.
+brews:
+  - name: omssh
+    repository:
+      owner: fakihariefnoto
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/fakihariefnoto/omssh
+    description: "A modern SSH/SFTP client for the terminal"
+    license: MIT
+    skip_upload: true
+
+release:
+  github:
+    owner: fakihariefnoto
+    name: omssh
+  draft: true
+  prerelease: auto

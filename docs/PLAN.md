@@ -278,7 +278,7 @@ deploy:
 - Accessibility: no state conveyed by colour alone, `contrast` theme,
   `motion = "reduced"` to replace animation with static text, `--no-icons`.
 - Keymap presets (`standard` default, `vim` for navigation) with validation in
-  `omssh config check`, and `omssh keys --show` to print the effective map.
+  `omssh config check`, and `omssh keys` to print the effective map.
 
 ## 5. Command line
 
@@ -297,7 +297,7 @@ omssh compress <path...> -o <archive> [--format tar.zst] [--level 3]
 omssh deploy <profile> [--dry-run] [--yes]
 omssh exec <host> -- <cmd...>  # non-interactive, streams output
 omssh exec <host>              # interactive PTY without the TUI
-omssh keys --show              # print the effective keymap
+omssh keys              # print the effective keymap
 omssh config path|edit|check
 omssh version
 ```

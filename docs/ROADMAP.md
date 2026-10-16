@@ -14,6 +14,8 @@ all being solid.
 
 ## M0 — Skeleton and visual identity
 
+**Status:** shipped as `v0.1.0`.
+
 **Goal:** the app launches, looks like the product, and does nothing yet.
 
 - `go.mod` with module `github.com/fakihariefnoto/omssh`, package layout from
@@ -37,7 +39,7 @@ all being solid.
 **Acceptance:** `make run` shows the UI from `UX.md` §2 at 140 and 100 cols
 without layout breakage; theme switch changes everything; `F1` shows the
 searchable keymap; `Ctrl+K` finds a stub action and displays its shortcut;
-`omssh keys --show` prints the effective map; with nothing selected, `Ctrl+C`
+`omssh keys` prints the effective map; with nothing selected, `Ctrl+C`
 shows the `Ctrl+Q quits` hint rather than doing nothing; `Esc` from every screen
 returns one level and the terminal is usable on exit.
 
@@ -216,7 +218,7 @@ setting `remote_root = "/"` cannot be run without typing the path.
 - Remaining themes (`mist`, `ember`, `contrast`), full icon fallback audit,
   mouse coverage across every view, `motion = "reduced"`.
 - Settings screen; `omssh config check` with line numbers and keymap validation;
-  `omssh keys --show`; example config; `Ctrl+K` → `Tour`.
+  `omssh keys`; example config; `Ctrl+K` → `Tour`.
 - Accessibility pass: verify no state is carried by colour alone, verify the
   `contrast` theme and `--no-icons` at 16 colours, and audit every failure
   message for "what happened / why / what to do".
@@ -257,6 +259,7 @@ after M1.
 4. Any new destructive action confirms with the facts (items, size, path) — v1
    has no undo, so a missing confirmation is a review failure.
 5. `docs/` updated where behaviour differs from what is written here.
-6. Conventional commits, milestone tagged `v0.<n>.0`.
+6. Conventional commits, milestone tagged (`v0.1.0` for M0, `v0.2.0` for M1, and
+   so on).
 7. The binary from that milestone is genuinely usable for what it covers —
    no "coming soon" dialogs in shipped screens.

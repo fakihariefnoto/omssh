@@ -174,7 +174,7 @@ asserts every registered action is reachable from the palette, which is what
 keeps the "nothing is key-only" promise from decaying as the app grows.
 
 `internal/keymap` resolves bindings for the active preset, detects duplicates and
-unbindable keys, and feeds `omssh config check` and `omssh keys --show`.
+unbindable keys, and feeds `omssh config check` and `omssh keys`.
 
 ## 4. Concurrency model
 
@@ -295,8 +295,14 @@ rejected rather than silently last-wins.
 | `xfer` | Table tests for planning, conflict policy and resume; fault injection for mid-transfer failures |
 | `archive` | A per-format corpus plus a dedicated attack corpus (zip-slip, links, bombs, bombs-in-zip, oversize) |
 | `deploy` | Plan snapshots (golden files) and a full run against the in-process server |
-| `tui` | `teatest` v2 golden renders for layouts at several widths; keymap-level tests for navigation and selection |
+| `actions` / `keymap` | Every action validated, every binding unique, undeliverable keys refused, preset semantics pinned |
+| `tui` | Layout invariants (boxes are exact, footers survive clipping, names beat metadata), plus behaviour tests for Esc, Ctrl+C, the palette, the context menu, type-ahead, delete confirmation and theme switching |
 | End to end | `-tags integration` with a real `openssh-server` container: connect, copy, extract, deploy |
+
+The TUI tests are deliberately about *invariants and behaviour* rather than
+pixel snapshots: a golden file tells you a layout changed, whereas "every pane
+line is exactly the pane's width" tells you the border detached, which is the
+failure a person actually sees.
 
 `make test` runs everything except the tagged integration suite and is expected
 to stay under a minute with `-race`.
