@@ -1,0 +1,27 @@
+# Binaries
+/omssh
+/dist/
+*.exe
+*.test
+*.out
+
+# Go
+/vendor/
+*.prof
+coverage.txt
+coverage.html
+
+# Local build/test state
+/build/
+/tmp/
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local config used while developing
+/.omssh-dev/
