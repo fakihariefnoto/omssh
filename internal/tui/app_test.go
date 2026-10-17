@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,9 @@ import (
 // in the terminal: escape sequences are not cells.
 func visibleWidth(line string) int { return lipgloss.Width(line) }
 
+// rgbaOf builds a colour for the messages a terminal sends back.
+func rgbaOf(r, g, b uint8) color.RGBA { return color.RGBA{R: r, G: g, B: b, A: 0xff} }
+
 // newTestModel builds an interface over a temporary directory with a known
 // shape, so rendering assertions have something real to describe.
 func newTestModel(t *testing.T, tune ...func(*config.Config)) *Model {
@@ -36,7 +40,6 @@ func newTestModel(t *testing.T, tune ...func(*config.Config)) *Model {
 	cfg := config.Default()
 	cfg.UI.Theme = "midnight"
 	cfg.UI.Icons = "ascii"
-	cfg.UI.Onboarding = true // most tests are not about the first-run card
 	cfg.Keys.Preset = "standard"
 	for _, fn := range tune {
 		fn(&cfg)
@@ -380,6 +383,55 @@ func TestTallCardsAreClippedNotBroken(t *testing.T) {
 	}
 }
 
+// The three columns of the body share one top edge and one bottom edge. Without
+// this, the sidebar's text floats a row above the pane borders and the whole
+// layout reads as misaligned.
+func TestSidebarAlignsWithPanes(t *testing.T) {
+	m := newTestModel(t)
+	resize(t, m, 140, 40)
+	body := m.renderBody(m.measure())
+	lines := strings.Split(body, "\n")
+
+	top, bottom := -1, -1
+	for i, line := range lines {
+		plain := ansi.Strip(line)
+		if top < 0 && strings.Count(plain, "╭") == 3 {
+			top = i
+		}
+		if strings.Count(plain, "╰") == 3 {
+			bottom = i
+		}
+	}
+	if top < 0 {
+		t.Fatalf("the three boxes do not share a top edge:\n%s", ansi.Strip(body))
+	}
+	if bottom < 0 {
+		t.Fatalf("the three boxes do not share a bottom edge:\n%s", ansi.Strip(body))
+	}
+	if bottom-top != m.measure().PaneRows+1 {
+		t.Errorf("the boxes span rows %d..%d, which is not the pane height", top, bottom)
+	}
+}
+
+// The sidebar is a box too, so its lines measure exactly its width.
+func TestSidebarBoxIsExact(t *testing.T) {
+	m := newTestModel(t)
+	resize(t, m, 160, 40)
+	l := m.measure()
+	content := m.renderSidebar(l)
+	for i, line := range strings.Split(content, "\n") {
+		if w := visibleWidth(line); w != l.SidebarWidth-2 {
+			t.Errorf("sidebar line %d is %d cells, want %d:\n%q", i, w, l.SidebarWidth-2, line)
+		}
+		if !strings.HasPrefix(ansi.Strip(line), " ") {
+			t.Errorf("sidebar line %d has no inner padding:\n%q", i, ansi.Strip(line))
+		}
+	}
+	if got := strings.Count(content, "\n") + 1; got != l.PaneRows {
+		t.Errorf("the sidebar has %d rows, want %d so it matches the panes", got, l.PaneRows)
+	}
+}
+
 // --- discoverability ---------------------------------------------------------
 
 // The palette finds an action by name and shows the shortcut beside it, which is
@@ -619,23 +671,132 @@ func TestCreateFolderAndRename(t *testing.T) {
 
 // --- overlays and settings ---------------------------------------------------
 
-func TestOnboardingAppearsOnFirstRunAndGoesAway(t *testing.T) {
-	m := newTestModel(t, func(c *config.Config) { c.UI.Onboarding = false })
+// The first-run card is only shown once the build can do what it offers. A card
+// that advertises an unavailable feature swallows every key, which reads as
+// "the interface is broken".
+func TestOnboardingIsOptInUntilHostImportExists(t *testing.T) {
+	m := newTestModel(t)
+	if m.Overlay != OverlayNone {
+		t.Fatalf("a first run with nothing to import should not open a card, got %v", m.Overlay)
+	}
+	// And navigation works immediately.
+	m.selectByName("assets")
+	press(t, m, keyNamed(tea.KeyDown))
+	if entry, _ := m.Pane().CursorEntry(); entry.Name == "assets" {
+		t.Error("the cursor should move on the very first key press")
+	}
+}
+
+func TestOnboardingAppearsWhenOfferedAndIsNavigable(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "a.txt"), "a\n")
+	cfg := config.Default()
+	cfg.UI.Theme = "midnight"
+	m, err := New(Options{
+		Config: cfg, Profile: colorprofile.TrueColor, HasDark: true,
+		OffersHostImport: true, Dir: dir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resize(t, m, 140, 40)
 	if m.Overlay != OverlayOnboarding {
-		t.Fatal("the first run should show the onboarding card")
+		t.Fatal("the first run should show the onboarding card when the build offers import")
 	}
 	out := render(m)
-	for _, want := range []string{"Welcome to omssh", "Ctrl+K", "Ctrl+Q", "F1"} {
+	for _, want := range []string{"Welcome to omssh", "Import hosts", "Ctrl+K", "Ctrl+Q", "F1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the onboarding card should mention %q:\n%s", want, out)
 		}
 	}
-	press(t, m, keyNamed(tea.KeyEsc))
+
+	// The card is a menu, not a trap: Tab and the arrow keys move between its
+	// buttons, Enter takes the focused one.
+	press(t, m, keyNamed(tea.KeyTab))
+	if m.onboarding.cursor != 1 {
+		t.Errorf("Tab should focus the second button, cursor is %d", m.onboarding.cursor)
+	}
+	press(t, m, keyNamed(tea.KeyRight))
+	if m.onboarding.cursor != 2 {
+		t.Errorf("right should focus the third button, cursor is %d", m.onboarding.cursor)
+	}
+	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayNone {
-		t.Error("Esc should dismiss the card")
+		t.Error("Enter should dismiss the card")
 	}
 	if !m.cfg.UI.Onboarding {
-		t.Error("dismissing the card should be remembered")
+		t.Error("activating a button should be remembered")
+	}
+	if len(m.toasts) == 0 {
+		t.Error("activating a button should say what it did")
+	}
+
+	// Esc always gets out, whichever button has focus.
+	m2 := newTestModel(t)
+	m2.Overlay = OverlayOnboarding
+	press(t, m2, keyNamed(tea.KeyEsc))
+	if m2.Overlay != OverlayNone {
+		t.Error("Esc should dismiss the card")
+	}
+}
+
+// The background colour is discovered inside the program. Asking the terminal
+// before the program starts blocks on stdin, which delays first paint and eats
+// whatever the user types while waiting.
+func TestBackgroundDetectionDoesNotBlockStartup(t *testing.T) {
+	if dark, known := BackgroundFromEnv([]string{"COLORFGBG=15;0"}); !known || !dark {
+		t.Errorf("COLORFGBG=15;0 should read as dark and known, got dark=%v known=%v", dark, known)
+	}
+	if dark, known := BackgroundFromEnv([]string{"COLORFGBG=0;15"}); !known || dark {
+		t.Errorf("COLORFGBG=0;15 should read as light and known, got dark=%v known=%v", dark, known)
+	}
+	if _, known := BackgroundFromEnv([]string{"COLORFGBG=default;default"}); known {
+		t.Error("an unparsable COLORFGBG should report itself unknown, not guess")
+	}
+	if _, known := BackgroundFromEnv(nil); known {
+		t.Error("with no COLORFGBG the answer is unknown")
+	}
+
+	// Nothing is asked at startup: the first frame must not wait for a reply.
+	cfg := config.Default()
+	cfg.UI.Theme = "auto"
+	m, err := New(Options{
+		Config: cfg, Profile: colorprofile.TrueColor,
+		HasDark: true, Dir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("Init should still schedule the size request and the heartbeat")
+	}
+
+	// The terminal's answer is only ever requested by the user, through the
+	// action that asks for it.
+	if _, ok := m.reg.Get("view.follow-background"); !ok {
+		t.Fatal("there should be an action to follow the terminal background")
+	}
+	if got := m.runAction("view.follow-background"); got == nil {
+		t.Error("follow-background should ask the terminal, i.e. return a command")
+	}
+	if m.cfg.UI.Theme != "auto" {
+		t.Errorf("follow-background should switch to auto, theme is %q", m.cfg.UI.Theme)
+	}
+	_, _ = m.Update(tea.BackgroundColorMsg{Color: rgbaOf(0xff, 0xff, 0xff)})
+	if m.themeName != "dawn" {
+		t.Errorf("a light background should resolve auto to dawn, got %q", m.themeName)
+	}
+
+	// A theme chosen by hand is never overridden by the terminal.
+	cfg.UI.Theme = "ember"
+	m, err = New(Options{Config: cfg, Profile: colorprofile.TrueColor, HasDark: true, Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = m.Update(tea.BackgroundColorMsg{Color: rgbaOf(0xff, 0xff, 0xff)})
+	if m.themeName != "ember" {
+		t.Errorf("a fixed theme must not change on a background report, got %q", m.themeName)
 	}
 }
 

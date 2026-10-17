@@ -36,6 +36,17 @@ all being solid.
   test asserting every registered action is reachable from the palette. Makefile
   targets working. `goreleaser` config checked in but not yet releasing.
 
+**Post-M0 fixes** (found by running the binary in a pty rather than in tests):
+
+- Removed a startup background-colour query. An unanswered query held the first
+  paint for ~1 s and consumed the keystrokes typed while it waited, which the
+  first user reported as "navigation is not working yet".
+- The first-run card is only shown once the build can do what it offers, and it
+  is navigable (Tab/arrows move between its buttons, Enter takes one, Esc
+  leaves). Until host import exists it would have been a modal trap.
+- The sidebar is framed and shares the header row with the panes: unframed, its
+  text floated a row above the pane borders and the layout read as misaligned.
+
 **Acceptance:** `make run` shows the UI from `UX.md` §2 at 140 and 100 cols
 without layout breakage; theme switch changes everything; `F1` shows the
 searchable keymap; `Ctrl+K` finds a stub action and displays its shortcut;

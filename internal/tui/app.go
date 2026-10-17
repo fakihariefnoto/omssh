@@ -2,13 +2,12 @@ package tui
 
 import (
 	"fmt"
-	"image/color"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
@@ -20,11 +19,25 @@ import (
 
 // Options configures a new interface.
 type Options struct {
-	Config   config.Config
-	Profile  colorprofile.Profile
-	HasDark  bool
-	Registry *actions.Registry
-	Keys     *keymap.Map
+	Config  config.Config
+	Profile colorprofile.Profile
+	// HasDark is the terminal's background darkness, normally read from
+	// COLORFGBG. When the terminal does not say, the dark themes are assumed and
+	// the user can pick another in settings.
+	//
+	// The interface never asks the terminal for its background on startup. A
+	// terminal query gates the first render until the reply arrives, so a
+	// terminal that does not answer (macOS Terminal, some multiplexers) shows an
+	// empty screen until the user presses a key. That reads as "the app is
+	// broken", so the query is offered as an action instead, where a brief pause
+	// is expected and the user asked for it.
+	HasDark bool
+	// OffersHostImport enables the first-run card. It stays false until host
+	// import exists, because a card that offers something the build cannot do
+	// is worse than no card: it swallows every key.
+	OffersHostImport bool
+	Registry         *actions.Registry
+	Keys             *keymap.Map
 	// Dir is the directory the local pane starts in.
 	Dir string
 }
@@ -67,13 +80,16 @@ type Model struct {
 	typeAheadBuf  string
 	typeAheadLast string
 
-	Overlay  Overlay
-	palette  paletteState
-	menu     menuState
-	help     helpState
-	settings settingsState
-	confirm  confirmState
-	prompt   promptState
+	Overlay    Overlay
+	palette    paletteState
+	menu       menuState
+	help       helpState
+	settings   settingsState
+	confirm    confirmState
+	prompt     promptState
+	onboarding onboardingState
+	// overlayCmd carries a command produced while handling an overlay key.
+	overlayCmd tea.Cmd
 
 	staged stagedState
 
@@ -95,6 +111,9 @@ type helpState struct {
 }
 
 type settingsState struct{ cursor int }
+
+// onboardingState tracks which button of the first-run card has focus.
+type onboardingState struct{ cursor int }
 
 type confirmState struct {
 	Title   string
@@ -180,7 +199,7 @@ func New(opts Options) (*Model, error) {
 		mode:       "NORMAL",
 	}
 	m.Panes[0].Load(m.showHidden)
-	if !cfg.UI.Onboarding {
+	if opts.OffersHostImport && !cfg.UI.Onboarding {
 		m.Overlay = OverlayOnboarding
 	}
 	return m, nil
@@ -190,7 +209,9 @@ func New(opts Options) (*Model, error) {
 // until then there is never anything running, and the interface says so.
 func (m *Model) Jobs() int { return 0 }
 
-// Init starts the heartbeat and asks the terminal for its size.
+// Init starts the heartbeat and asks the terminal for its size. Nothing here
+// waits for a reply, so the first frame is painted immediately: a startup query
+// is a startup delay at best and a blank screen at worst.
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(tea.RequestWindowSize, heartbeat())
 }
@@ -214,6 +235,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyboardEnhancementsMsg:
 		m.applyCapabilities(msg)
+		return m, nil
+
+	case tea.BackgroundColorMsg:
+		// Only reached when the user asked to follow the terminal background.
+		m.hasDark = msg.IsDark()
+		if m.cfg.UI.Theme == "auto" {
+			m.applyTheme("auto")
+		} else {
+			m.toastInfo("The terminal background is light")
+			if m.hasDark {
+				m.toastInfo("The terminal background is dark")
+			}
+		}
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -247,7 +281,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.handleOverlayKey(msg) {
-		return m, nil
+		cmd := m.overlayCmd
+		m.overlayCmd = nil
+		return m, cmd
 	}
 	if m.filtering {
 		return m.handleFilterKey(msg)
@@ -275,7 +311,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 				id := items[m.palette.cursor].ID
 				m.Overlay = OverlayNone
 				m.palette.input.Clear()
-				m.runAction(id)
+				m.overlayCmd = m.runAction(id)
 			}
 		default:
 			if m.palette.input.Handle(msg) {
@@ -297,7 +333,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 			if m.menu.cursor < len(items) {
 				id := items[m.menu.cursor].ID
 				m.Overlay = OverlayNone
-				m.runAction(id)
+				m.overlayCmd = m.runAction(id)
 			}
 		default:
 		}
@@ -361,16 +397,24 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		return true
 
 	case OverlayOnboarding:
+		// The card is a small menu, not a wall: Tab and the arrow keys move
+		// between its buttons, Enter takes the focused one. Esc always gets out.
 		switch msg.String() {
-		case "esc":
+		case "esc", "q":
 			m.Overlay = OverlayNone
 			m.markOnboarded()
-		case "enter":
-			m.Overlay = OverlayNone
-			m.markOnboarded()
-			m.toastInfo("Host import arrives with connections (M1)")
+		case "left", "shift+tab", "up", "k":
+			m.onboarding.cursor = (m.onboarding.cursor + 2) % 3
+		case "right", "tab", "down", "j":
+			m.onboarding.cursor = (m.onboarding.cursor + 1) % 3
 		case "i":
-			m.toastInfo("Host import arrives with connections (M1)")
+			m.onboarding.cursor = 0
+			m.activateOnboarding()
+		case "a":
+			m.onboarding.cursor = 1
+			m.activateOnboarding()
+		case "enter", "space":
+			m.activateOnboarding()
 		}
 		return true
 	}
@@ -406,8 +450,8 @@ func (m *Model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case out.Matched:
 		m.resetTypeAhead()
-		m.runAction(out.ID)
-		return m, nil
+		cmd := m.runAction(out.ID)
+		return m, cmd
 	case out.Pending:
 		// Half of a sequence is in; wait for the rest.
 		return m, nil
@@ -490,15 +534,16 @@ func (m *Model) clickAt(x, y int, l layout) {
 }
 
 // runAction executes an action by id, explaining rather than ignoring when it
-// does not apply.
-func (m *Model) runAction(id actions.ID) {
+// does not apply. It may return a command, because a few actions ask the
+// terminal a question.
+func (m *Model) runAction(id actions.ID) tea.Cmd {
 	a, ok := m.reg.Get(id)
 	if !ok {
-		return
+		return nil
 	}
 	if !a.Applicable(m.actionContext()) {
 		m.explainUnavailable(a)
-		return
+		return nil
 	}
 
 	switch id {
@@ -610,12 +655,20 @@ func (m *Model) runAction(id actions.ID) {
 		m.toastInfo(syncMessage(m.syncBrowse))
 	case "view.compare":
 		m.comparePanes()
+	case "view.follow-background":
+		// Deliberate: the user asked, so a brief pause is expected. The theme is
+		// switched to auto first, so the answer is applied when it arrives.
+		m.cfg.UI.Theme = "auto"
+		m.Overlay = OverlayNone
+		m.toastInfo("Asking the terminal for its background")
+		return tea.RequestBackgroundColor
 
 	case "file.copy":
 		m.quitHint = "Nothing to copy · Ctrl+Q quits"
 	default:
 		m.toastWarning(a.Label + " arrives with " + m.stageOf(id))
 	}
+	return nil
 }
 
 // stageOf names the milestone a not-yet-implemented action belongs to, so the
@@ -832,6 +885,21 @@ func (d terminalDeliverer) CanDeliver(key string) (string, bool) {
 	return "", true
 }
 
+// activateOnboarding runs the focused button of the first-run card.
+func (m *Model) activateOnboarding() {
+	choice := m.onboarding.cursor
+	m.Overlay = OverlayNone
+	m.markOnboarded()
+	switch choice {
+	case 0:
+		m.toastInfo("Host import arrives with connections (M1)")
+	case 1:
+		m.toastInfo("Adding a connection arrives with connections (M1)")
+	default:
+		m.toastInfo("Starting in " + m.Pane().Path)
+	}
+}
+
 // markOnboarded records that the first-run card has been seen.
 func (m *Model) markOnboarded() {
 	m.cfg.UI.Onboarding = true
@@ -891,10 +959,25 @@ func ProfileFor(out *os.File, env []string) colorprofile.Profile {
 	return colorprofile.Detect(out, env)
 }
 
-// HasDarkBackground asks the terminal whether its background is dark, falling
-// back to dark when it cannot say.
-func HasDarkBackground() bool {
-	return lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+// BackgroundFromEnv reads the terminal background darkness from COLORFGBG,
+// which most terminals set and which costs nothing to read. It reports whether
+// the answer is known; when it is not, the interface asks the terminal itself
+// once it is running (Options.DetectBackground).
+func BackgroundFromEnv(env []string) (dark, known bool) {
+	for _, entry := range env {
+		name, value, ok := strings.Cut(entry, "=")
+		if !ok || name != "COLORFGBG" {
+			continue
+		}
+		// The convention is "foreground;background", either as colour indices
+		// (0-15) or, in some terminals, as "default;default".
+		parts := strings.Split(value, ";")
+		last := strings.TrimSpace(parts[len(parts)-1])
+		index, err := strconv.Atoi(last)
+		if err != nil {
+			continue
+		}
+		return index < 8, true
+	}
+	return true, false
 }
-
-var _ = color.RGBA{} // keep image/color imported for future theme work

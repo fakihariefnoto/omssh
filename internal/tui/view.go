@@ -50,27 +50,31 @@ func (m *Model) render() string {
 }
 
 // renderBody draws the sidebar and the panes side by side.
+//
+// The sidebar is framed like the panes and given the same header row, so the
+// three boxes share a top and a bottom edge. Without that, the sidebar's text
+// floats a row above the pane borders and the layout reads as misaligned.
 func (m *Model) renderBody(l layout) string {
-	if l.Sidebar {
-		sidebar := lipgloss.NewStyle().
-			Width(l.SidebarWidth).
-			Height(l.Height - m.reservedRows(l)).
-			Render(m.renderSidebar(l))
-		return lipgloss.JoinHorizontal(lipgloss.Top, sidebar, m.renderPanes(l))
+	panes := m.renderPanes(l)
+	if !l.Sidebar {
+		return panes
 	}
-	return m.renderPanes(l)
+	column := lipgloss.JoinVertical(lipgloss.Left,
+		m.renderSidebarHeader(l.SidebarWidth),
+		m.st.PaneBorderBlur.
+			Width(l.SidebarWidth).
+			Height(l.PaneRows+2).
+			Render(m.renderSidebar(l)),
+	)
+	return lipgloss.JoinHorizontal(lipgloss.Top, column, " ", panes)
 }
 
-// reservedRows is the vertical chrome outside the body.
-func (m *Model) reservedRows(l layout) int {
-	rows := 1 // status bar
-	if l.Tabs {
-		rows++
-	}
-	if l.ActionBar {
-		rows += l.ActionBarRows
-	}
-	return rows
+// renderSidebarHeader fills the row the pane breadcrumbs occupy, so the sidebar
+// has the same vertical structure as everything beside it.
+func (m *Model) renderSidebarHeader(width int) string {
+	label := m.st.PaneTitleBlurred.Render("omssh")
+	build := m.st.StatusMuted.Render(version.Short())
+	return padVisible(ansi.Truncate(label+"  "+build, width, "…"), width)
 }
 
 // renderTabs draws the session tab bar, with a right-aligned hint pair so the
@@ -319,7 +323,10 @@ func (m *Model) renderRow(pane *Pane, e Entry, isCursor bool, width int, focused
 // renderSidebar draws hosts, bookmarks and the job queue. Every section states
 // what to do when it is empty rather than showing nothing.
 func (m *Model) renderSidebar(l layout) string {
-	width := l.SidebarWidth - 2
+	const chrome = 2 // the sidebar's border
+	// One cell of inner padding, so the text does not touch the border.
+	content := l.SidebarWidth - chrome
+	width := content - 1
 	rows := []string{
 		m.st.SidebarTitle.Render("HOSTS"),
 		m.st.PaneEmpty.Render(truncate("No connections yet", width)),
@@ -343,7 +350,20 @@ func (m *Model) renderSidebar(l layout) string {
 		rows = append(rows, "", m.st.Warning.Render("Keys unavailable"),
 			m.st.PaneEmpty.Render(truncate("Ctrl+K for alternatives", width)))
 	}
-	return strings.Join(rows, "\n")
+
+	// Every line measures exactly the interior width: a sidebar that wraps would
+	// break the border the same way an overflowing row breaks a pane.
+	out := make([]string, 0, len(rows))
+	for i, row := range rows {
+		if i >= l.PaneRows {
+			break
+		}
+		out = append(out, padVisible(" "+ansi.Truncate(row, width, "…"), content))
+	}
+	for len(out) < l.PaneRows {
+		out = append(out, strings.Repeat(" ", content))
+	}
+	return strings.Join(out, "\n")
 }
 
 // renderActionBar is the interface's main teaching surface: the verbs that apply

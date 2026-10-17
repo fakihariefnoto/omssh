@@ -82,7 +82,7 @@ func (m *Model) measure() layout {
 	body := max(availableRows, 1)
 	paneArea := width
 	if l.Sidebar {
-		paneArea -= l.SidebarWidth
+		paneArea -= l.SidebarWidth + 1 // the gap between the sidebar and the panes
 	}
 	if l.Panes == 2 {
 		l.PaneWidth = (paneArea - 1) / 2 // one cell of air between the panes

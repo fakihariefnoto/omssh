@@ -194,6 +194,15 @@ unbindable keys, and feeds `omssh config check` and `omssh keys`.
 - **Bubble Tea v2 discipline**: blocking work happens in `tea.Cmd`s; the
   `Update` function never blocks on I/O. Streaming progress arrives as
   `tea.Msg`s from a goroutine that reads the events channel.
+- **Nothing blocks the first frame.** A terminal query — the background colour,
+  a capability probe — is only sent in response to a user action, never on
+  startup. An unanswered query holds the first paint (measured: 37 ms becomes
+  480 ms, and longer on a terminal that never replies) and consumes the
+  keystrokes typed while the program waits, so the interface appears frozen and
+  unresponsive exactly when a new user is pressing keys to see what happens.
+  The background colour is therefore read from `COLORFGBG`, defaulting to the
+  dark themes, and `Follow terminal background` in the palette performs the
+  query on demand.
 - Tests use `goleak` to assert no goroutine outlives its operation.
 
 ## 5. Transfer engine detail

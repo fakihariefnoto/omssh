@@ -30,10 +30,15 @@ func runTUI(opts *Options) error {
 		profile = colorprofile.ASCII
 	}
 
+	// COLORFGBG is free to read and most terminals set it. When it is missing the
+	// dark themes are assumed: asking the terminal would gate the first paint on
+	// a reply that some terminals never send. `Follow terminal background` in the
+	// palette performs that query on demand.
+	dark, _ := tui.BackgroundFromEnv(os.Environ())
 	model, err := tui.New(tui.Options{
 		Config:   cfg,
 		Profile:  profile,
-		HasDark:  tui.HasDarkBackground(),
+		HasDark:  dark,
 		Registry: reg,
 		Keys:     keys,
 		Dir:      dir,
