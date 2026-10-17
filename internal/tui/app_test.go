@@ -45,6 +45,9 @@ func newTestModel(t *testing.T, tune ...func(*config.Config)) *Model {
 		fn(&cfg)
 	}
 
+	// Start on the file manager: these tests are about files. The launcher has
+	// its own tests.
+	cfg.UI.Start = "files"
 	m, err := New(Options{
 		Config:  cfg,
 		Profile: colorprofile.TrueColor,
@@ -692,9 +695,10 @@ func TestOnboardingAppearsWhenOfferedAndIsNavigable(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "a.txt"), "a\n")
 	cfg := config.Default()
 	cfg.UI.Theme = "midnight"
+	cfg.UI.Start = "files"
 	m, err := New(Options{
 		Config: cfg, Profile: colorprofile.TrueColor, HasDark: true,
-		OffersHostImport: true, Dir: dir,
+		OffersConnect: true, Dir: dir,
 	})
 	if err != nil {
 		t.Fatal(err)

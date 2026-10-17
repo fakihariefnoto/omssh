@@ -127,8 +127,10 @@ func NewStyles(t Theme) Styles {
 		BreadcrumbActive: accent.Bold(true),
 		PathInput:        lipgloss.NewStyle().Foreground(c.FG).Background(c.Subtle),
 
-		TabActive:   lipgloss.NewStyle().Foreground(c.BG).Background(c.Accent).Bold(true).Padding(0, 1),
-		TabInactive: lipgloss.NewStyle().Foreground(c.Muted).Background(c.Subtle).Padding(0, 1),
+		// A tab is text with an underline, not a coloured block: a filled chip
+		// reads as a floating badge or a tooltip rather than as chrome.
+		TabActive:   lipgloss.NewStyle().Foreground(c.Accent).Bold(true).Underline(true),
+		TabInactive: lipgloss.NewStyle().Foreground(c.Muted),
 		TabReady:    lipgloss.NewStyle().Foreground(c.Success),
 		TabBusy:     lipgloss.NewStyle().Foreground(c.Warning),
 		TabIdle:     muted,

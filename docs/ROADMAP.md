@@ -46,6 +46,9 @@ all being solid.
   leaves). Until host import exists it would have been a modal trap.
 - The sidebar is framed and shares the header row with the panes: unframed, its
   text floated a row above the pane borders and the layout read as misaligned.
+- Added the launcher (front door) with an ASCII plate and an icon menu, and
+  reworked the tab strip: labelled `sessions`, rules between tabs, active tab
+  underlined. The old filled tab chip read as a floating badge, not as chrome.
 
 **Acceptance:** `make run` shows the UI from `UX.md` §2 at 140 and 100 cols
 without layout breakage; theme switch changes everything; `F1` shows the

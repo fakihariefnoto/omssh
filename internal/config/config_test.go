@@ -34,6 +34,9 @@ func TestLoadMissingFileUsesDefaults(t *testing.T) {
 	if cfg.UI.Theme != "auto" || cfg.Transfers.Workers != 4 {
 		t.Errorf("unexpected defaults: %+v", cfg)
 	}
+	if cfg.UI.Start != "home" {
+		t.Errorf("a first run should open on the launcher, got %q", cfg.UI.Start)
+	}
 }
 
 // A typo in a key name must fail loudly with the file and line, because the

@@ -23,29 +23,35 @@ func (m *Model) View() tea.View {
 	return v
 }
 
-// render lays out the whole screen: chrome, body, overlay.
+// render lays out the whole screen: the launcher or the file manager, plus any
+// overlay on top.
 func (m *Model) render() string {
 	l := m.measure()
-	rows := make([]string, 0, 6)
 
+	content := m.renderFiles(l)
+	if m.screen == screenHome {
+		content = m.renderHome(l)
+	}
+	if card := m.renderOverlay(l); card != "" {
+		content = m.overlayOn(content, card, l)
+	}
+	if len(m.toasts) > 0 {
+		content = m.toastOn(content, l)
+	}
+	return content
+}
+
+// renderFiles draws the file manager: tab strip, panes, action bar, status bar.
+func (m *Model) renderFiles(l layout) string {
+	rows := make([]string, 0, 6)
 	if l.Tabs {
 		rows = append(rows, m.renderTabs(l))
 	}
-
-	body := m.renderBody(l)
-	if card := m.renderOverlay(l); card != "" {
-		body = m.overlayOn(body, card, l)
-	}
-	if len(m.toasts) > 0 {
-		body = m.toastOn(body, l)
-	}
-	rows = append(rows, body)
-
+	rows = append(rows, m.renderBody(l))
 	if l.ActionBar {
 		rows = append(rows, m.renderActionBar(l))
 	}
 	rows = append(rows, m.renderStatusBar(l))
-
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
@@ -77,13 +83,24 @@ func (m *Model) renderSidebarHeader(width int) string {
 	return padVisible(ansi.Truncate(label+"  "+build, width, "…"), width)
 }
 
-// renderTabs draws the session tab bar, with a right-aligned hint pair so the
-// two keys that are always available are always visible.
+// renderTabs draws the session strip. It is labelled "sessions" and separated by
+// rules so the row reads as a tab bar at a glance; the active tab is marked by
+// colour and an underline, never by a filled block that looks like a badge.
 func (m *Model) renderTabs(l layout) string {
 	var b strings.Builder
+	b.WriteString(m.st.StatusMuted.Render("sessions"))
+	sep := m.st.StatusMuted.Render("  │  ")
 	for i, tab := range m.tabs {
-		dot := m.stateDot(tab.State)
-		label := fmt.Sprintf("%s %s", dot, tab.Title)
+		b.WriteString(sep)
+		label := tab.Title
+		if len(m.tabs) > 1 {
+			label = fmt.Sprintf("%d %s", i+1, label)
+		}
+		// The local machine is always available, so it gets no state dot; a
+		// remote tab wears its connection state.
+		if tab.Host != "" {
+			label = m.stateDot(tab.State) + " " + label
+		}
 		if i == m.activeTab {
 			b.WriteString(m.st.TabActive.Render(label))
 		} else {

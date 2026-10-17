@@ -139,6 +139,14 @@ func fuzzyMatch(haystack, needle string) (int, bool) {
 	return score, true
 }
 
+// spaces returns n spaces.
+func spaces(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.Repeat(" ", n)
+}
+
 // clamp keeps v inside [lo, hi].
 func clamp(v, lo, hi int) int {
 	if v < lo {

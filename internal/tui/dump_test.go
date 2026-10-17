@@ -72,6 +72,25 @@ func TestDumpRender(t *testing.T) {
 	preview.selectByName("notes.txt")
 	fire(t, preview, "f3")
 	write("preview", preview, 170, 30)
+
+	// The front door, at the sizes where its layout has to change.
+	for _, size := range []struct {
+		name          string
+		width, height int
+		keys          []string
+	}{
+		{"home-wide", 140, 40, nil},
+		{"home-medium", 100, 30, nil},
+		{"home-narrow", 60, 20, nil},
+		{"home-selection", 120, 36, []string{"down", "down"}},
+	} {
+		m := dumpModel(t)
+		m.screen = screenHome
+		for _, k := range size.keys {
+			fire(t, m, k)
+		}
+		write(size.name, m, size.width, size.height)
+	}
 }
 
 // dumpModel builds an interface over a fixture directory with a known shape.

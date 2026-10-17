@@ -253,7 +253,11 @@ deploy:
 
 ### 4.7 Modern UI
 
-- Layout: session tabs on top, a collapsible left sidebar (hosts + bookmarks +
+- A **launcher** as the front door: wordmark, one-line description, and a menu
+  of what the build can do, each entry with a plain ASCII icon. `Esc` skips
+  straight to the files; `ui.start: files` skips it permanently.
+- Layout: session tabs on top (labelled, underline for the active tab), a
+  collapsible left sidebar (hosts + bookmarks +
   transfer queue), the working pane in the middle, a **contextual action bar**
   under the active pane, an always-visible mode/selection status bar, and a
   toast area.

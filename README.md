@@ -67,9 +67,10 @@ omssh config check    # validate it, with line numbers
 omssh version
 ```
 
-While the interface is running: `Ctrl+K` finds every action, `F1` shows the
-keymap, `F9` opens the context menu for the selection, `Ctrl+Q` quits, and
-`Esc` goes back — never quits.
+`omssh` opens on a launcher: pick "Browse local files", or press `Esc` to skip
+straight into the file manager. While it is running, `Ctrl+K` finds every action,
+`F1` shows the keymap, `F9` opens the context menu for the selection, `Ctrl+Q`
+quits, and `Esc` goes back — never quits.
 
 ## Licence
 

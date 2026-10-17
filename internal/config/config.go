@@ -32,6 +32,8 @@ type UI struct {
 	ShowHidden bool `yaml:"show_hidden"`
 	// ConfirmThreshold decides when a bulk operation asks before starting.
 	ConfirmThreshold ConfirmThreshold `yaml:"confirm_threshold"`
+	// Start is "home" (the launcher) or "files" (straight to the file manager).
+	Start string `yaml:"start"`
 	// Onboarding records that the first-run card has been dismissed.
 	Onboarding bool `yaml:"onboarding_done"`
 }
@@ -92,11 +94,12 @@ type Hooks struct {
 
 // Known values, kept in one place so validation and help text cannot drift.
 var (
-	Themes     = []string{"auto", "midnight", "dawn", "mist", "ember", "mono", "contrast"}
-	IconSets   = []string{"nerd", "ascii"}
-	Motions    = []string{"full", "reduced"}
-	KeyPresets = []string{"standard", "vim"}
-	DeployMode = []string{"sync", "update"}
+	Themes       = []string{"auto", "midnight", "dawn", "mist", "ember", "mono", "contrast"}
+	IconSets     = []string{"nerd", "ascii"}
+	Motions      = []string{"full", "reduced"}
+	KeyPresets   = []string{"standard", "vim"}
+	StartScreens = []string{"home", "files"}
+	DeployMode   = []string{"sync", "update"}
 )
 
 // Default returns the configuration omssh starts from on a machine with no
@@ -111,6 +114,7 @@ func Default() Config {
 			Sidebar:    true,
 			Preview:    true,
 			ShowHidden: false,
+			Start:      "home",
 			ConfirmThreshold: ConfirmThreshold{
 				Files: 20,
 				Bytes: 10 << 20, // 10 MiB
@@ -148,6 +152,9 @@ func (c Config) Validate() error {
 	}
 	if c.UI.ConfirmThreshold.Bytes < 0 {
 		return fmt.Errorf("ui.confirm_threshold.bytes: must not be negative")
+	}
+	if err := oneOf("ui.start", c.UI.Start, StartScreens); err != nil {
+		return err
 	}
 	if err := oneOf("keys.preset", c.Keys.Preset, KeyPresets); err != nil {
 		return err

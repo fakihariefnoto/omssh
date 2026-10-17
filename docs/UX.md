@@ -103,6 +103,49 @@ No prior knowledge, in the order they would try it:
 - **Toasts** (bottom-right, 4 s) report completions in one line, and after a
   delete they say what was removed so a mis-click is noticed immediately.
 
+### 2.1 The front door
+
+Every launch opens on a launcher: the wordmark, one line saying what the program
+is, and a menu of what this build can actually do. Each entry carries a plain
+ASCII icon, so it reads the same on any terminal before a theme is applied.
+
+```
+        ██████  ███    ███ ██████  ██████  ██    ██
+       ██    ██ ████  ████ ██      ██      ██    ██
+       ██    ██ ██ ████ ██ █████   █████   ████████
+       ██    ██ ██  ██  ██      ██      ██ ██    ██
+        ██████  ██      ██ ██████  ██████  ██    ██
+
+              SSH / SFTP for the terminal
+
+        ▸ [~] Browse local files        Enter
+          [/] Go to a folder            Ctrl+L
+          [?] Keyboard and help         F1
+          [+] Settings and theme        Ctrl+,
+          [x] Quit                      Ctrl+Q
+
+   ↑↓ choose · Enter open · Esc go to the files · Ctrl+K actions
+```
+
+- `↑↓`/`Tab` move, `Enter` opens, **`Esc` skips straight to the files** — the
+  launcher never traps someone who just wants to work.
+- **Only things that work appear.** A menu of dead ends teaches nothing, so
+  `Connect` joins this list when the SSH layer lands (M1), and `Deploy` when
+  profiles do (M6).
+- The plate and the menu are laid out as one block and centred as a unit, so the
+  icons form a column; centring each row separately leaves every line with a
+  different left edge.
+- `ui.start: files` skips the launcher for people who do not want a front door.
+- The whole menu is clickable.
+
+### 2.2 The tab strip
+
+The strip is labelled `sessions` and its tabs are separated by rules, so the row
+is self-explanatory. The active tab is marked with colour **and an underline**,
+never a filled block: a solid chip reads as a floating badge or a tooltip rather
+than as chrome. The local tab shows no state dot (it is always available); a
+remote tab wears its connection state.
+
 ### Panes and direction
 
 Two panes. By default the **left pane is local, the right pane is remote**, and

@@ -32,12 +32,12 @@ type Options struct {
 	// broken", so the query is offered as an action instead, where a brief pause
 	// is expected and the user asked for it.
 	HasDark bool
-	// OffersHostImport enables the first-run card. It stays false until host
-	// import exists, because a card that offers something the build cannot do
-	// is worse than no card: it swallows every key.
-	OffersHostImport bool
-	Registry         *actions.Registry
-	Keys             *keymap.Map
+	// OffersConnect enables the connection entries in the launcher and the
+	// first-run card. It stays false until the SSH layer exists, because a menu
+	// of dead ends teaches nothing.
+	OffersConnect bool
+	Registry      *actions.Registry
+	Keys          *keymap.Map
 	// Dir is the directory the local pane starts in.
 	Dir string
 }
@@ -79,6 +79,13 @@ type Model struct {
 
 	typeAheadBuf  string
 	typeAheadLast string
+
+	// screen is the launcher or the file manager.
+	screen screen
+	home   homeState
+	// offersConnect turns on the connection entries. It stays false until the
+	// SSH layer exists, so the launcher never advertises a dead end.
+	offersConnect bool
 
 	Overlay    Overlay
 	palette    paletteState
@@ -199,7 +206,11 @@ func New(opts Options) (*Model, error) {
 		mode:       "NORMAL",
 	}
 	m.Panes[0].Load(m.showHidden)
-	if opts.OffersHostImport && !cfg.UI.Onboarding {
+	m.screen = screenHome
+	if cfg.UI.Start == "files" {
+		m.screen = screenFiles
+	}
+	if opts.OffersConnect && !cfg.UI.Onboarding {
 		m.Overlay = OverlayOnboarding
 	}
 	return m, nil
@@ -283,6 +294,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.handleOverlayKey(msg) {
 		cmd := m.overlayCmd
 		m.overlayCmd = nil
+		return m, cmd
+	}
+	if m.screen == screenHome {
+		cmd := m.handleHomeKey(msg)
 		return m, cmd
 	}
 	if m.filtering {
@@ -477,6 +492,18 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	l := m.measure()
+	if m.screen == screenHome {
+		if click, ok := msg.(tea.MouseClickMsg); ok && click.Mouse().Button == ansi.MouseLeft {
+			_, top, itemStart := m.homeGeometry(l)
+			index := click.Mouse().Y - top - itemStart
+			if items := m.homeItems(); index >= 0 && index < len(items) {
+				m.home.cursor = index
+				cmd := m.activateHome(items[index])
+				return m, cmd
+			}
+		}
+		return m, nil
+	}
 	switch e := msg.(type) {
 	case tea.MouseWheelMsg:
 		switch e.Mouse().Button {
@@ -562,6 +589,12 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.Overlay = OverlayOnboarding
 	case "app.version":
 		m.toastInfo(m.versionLine())
+
+	case "app.files":
+		m.openFiles()
+	case "app.home":
+		m.screen = screenHome
+		m.home.cursor = 0
 
 	// Navigation
 	case "nav.up":

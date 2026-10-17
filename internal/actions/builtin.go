@@ -202,6 +202,10 @@ func standardPreset() []Action {
 			Desc: "Keep both panes on the same relative path", Enabled: f(func(ctx Context) bool { return ctx.Panes > 1 })},
 
 		// ---- Application -----------------------------------------------------
+		{ID: "app.files", Label: "Browse local files", Category: CatApp,
+			Desc: "Leave the launcher and open the local file manager", Enabled: always},
+		{ID: "app.home", Label: "Home screen", Category: CatApp,
+			Desc: "Return to the launcher", Enabled: always},
 		{ID: "app.palette", Label: "Command palette", Category: CatApp, Default: "ctrl+k",
 			Desc: "Find any action by name, with its shortcut", Enabled: always},
 		{ID: "app.help", Label: "Help", Category: CatApp, Default: "f1", Keys: []string{"?"},

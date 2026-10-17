@@ -25,6 +25,8 @@ ui:
   sidebar: true
   preview: true
   show_hidden: false
+  # home | files — the launcher, or straight into the file manager
+  start: home
   # Bulk operations above these thresholds ask before starting.
   confirm_threshold:
     files: 20
