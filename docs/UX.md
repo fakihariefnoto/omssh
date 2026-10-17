@@ -388,12 +388,13 @@ net, so it is not skippable and not remembered as "always allow".
 | > 2 s | Determinate progress, speed, ETA, and cancel |
 | Finished | A one-line toast naming what happened (`Deleted 3 items`, `Copied 200 files`) |
 
-**The first frame is painted before anything is asked of the terminal.** The
-interface never queries the terminal at startup: an unanswered query holds the
-first paint and eats the keys pressed while waiting, which a new user reads as
-"the app is broken". The background colour comes from `COLORFGBG` when the
-terminal sets it, and `Follow terminal background` performs that query on
-demand, where a brief pause is expected.
+**Nothing omssh sends can hold the first frame.** The interface queries the
+terminal only when asked to: an unanswered query holds the first paint and eats
+the keys pressed while waiting, which a new user reads as "the app is broken".
+The background colour comes from `COLORFGBG` when the terminal sets it, and
+`Follow terminal background` performs that query on demand, where a brief pause
+is expected. (Bubble Tea may make one capability probe of its own; it does not
+hold input, and `ARCHITECTURE.md` §4 records when.)
 
 A slim aggregate progress strip sits above the status bar whenever anything is
 running, so a transfer is visible even when the queue is collapsed. `Alt+J`
