@@ -123,9 +123,9 @@ func standardPreset() []Action {
 			Desc: "Copy the selection, choosing the destination", Enabled: f(fileSelected)},
 		{ID: "file.move-to", Label: "Move to…", Category: CatFile, Default: "M",
 			Desc: "Move the selection, choosing the destination", Enabled: f(fileSelected)},
-		{ID: "file.chmod", Label: "Change permissions", Category: CatFile,
+		{ID: "file.chmod", Label: "Change permissions", Category: CatFile, Default: "P",
 			Desc: "Change mode bits on the selection", Enabled: f(fileSelected)},
-		{ID: "file.symlink", Label: "Create symlink", Category: CatFile,
+		{ID: "file.symlink", Label: "Create symlink", Category: CatFile, Default: "L",
 			Desc: "Create a symbolic link pointing at the cursor", Enabled: f(func(ctx Context) bool {
 				return ctx.Cursor && (ctx.Local || ctx.Connected)
 			})},
@@ -207,7 +207,7 @@ func standardPreset() []Action {
 		{ID: "view.staged", Label: "Marked files", Category: CatView, Default: "s", Keys: []string{"alt+s"},
 			Desc:    "Review what is marked for copying or moving",
 			Enabled: func(ctx Context) bool { return ctx.Staged > 0 }},
-		{ID: "view.sync", Label: "Toggle sync browse", Category: CatView,
+		{ID: "view.sync", Label: "Toggle sync browse", Category: CatView, Default: "Y",
 			Desc: "Keep both panes on the same relative path", Enabled: f(func(ctx Context) bool { return ctx.Panes > 1 })},
 		{ID: "view.compare", Label: "Compare panes", Category: CatView, Default: "alt+c",
 			Desc: "Show a read-only diff of the two panes", Enabled: f(func(ctx Context) bool { return ctx.Panes > 1 })},

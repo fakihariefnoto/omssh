@@ -376,6 +376,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `Ctrl+R` | Refresh |
 | `Ctrl+P` | Fuzzy jump to a path |
 | `Alt+F` | Recursive find in the subtree |
+| `Y` | Sync browse: the other pane follows the same path |
 | `/` or `Ctrl+F` | Filter the listing |
 | `.` | Toggle hidden files |
 | `Alt+P` | Toggle preview |
@@ -398,11 +399,14 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `C` | Copy to… | choose the destination instead of using the other pane |
 | `M` | Move to… | same, for a move |
 | `v` / `F3` | View (preview pane) | archives list their contents |
-| `e` / `F4` | Edit (local `$EDITOR`; remote download-edit-upload) | |
+| `e` / `F4` | Edit in `$EDITOR` (remote: fetch, edit, send back; >16 MB refused) | |
+
 | `r` / `F2` | Rename (batch rename when multi-selected) | |
 | `n` / `N` | New file / new folder | |
 | `d` / `Ctrl+D` / `Del` | Delete → always asks | no trash, so the dialog is the safety net |
 | `Ctrl+E` | Extract… | destination side is chosen in the dialog |
+| `P` | Change permissions (octal) | |
+| `L` | Create a link to the cursor entry | |
 | `Ctrl+G` | Compress selection… | format + destination side |
 | `s` / `Alt+S` | Review marked files | what, where, and the conflict rule |
 | `Esc` | Cancel the marked set | the bar says so, and Escape keeps that promise |

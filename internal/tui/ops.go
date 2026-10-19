@@ -3,6 +3,8 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -161,7 +163,60 @@ func (m *Model) navigate(path string) tea.Cmd {
 	}
 	pane.History = append(pane.History, path)
 	pane.HIndex = len(pane.History) - 1
+
+	// Sync browse: the other pane follows to the same path when that path is a
+	// directory over there. Absolute paths line up because both filesystems are
+	// rooted at "/", so this walks two trees together without a translation
+	// table to get wrong.
+	if cmd := m.followOtherPanes(path); cmd != nil {
+		return tea.Batch(m.loadPaneAsync(m.Focused), cmd)
+	}
 	return m.loadPaneAsync(m.Focused)
+}
+
+// followOtherPanes asks the pane that is not focused to follow to path, if the
+// path exists there.
+func (m *Model) followOtherPanes(path string) tea.Cmd {
+	if !m.syncBrowse || len(m.Panes) < 2 {
+		return nil
+	}
+	index := 1 - m.Focused
+	pane := m.Panes[index]
+	if pane.FS == nil || pane.Path == path {
+		return nil
+	}
+	fsys := pane.FS
+	return func() tea.Msg {
+		info, err := fsys.Stat(path)
+		if err != nil || !info.IsDir() {
+			return nil
+		}
+		return syncPaneMsg{index: index, path: path}
+	}
+}
+
+// syncPaneMsg says the other pane can follow to this path.
+type syncPaneMsg struct {
+	index int
+	path  string
+}
+
+// followInPane moves a pane that is not the focused one, without disturbing the
+// focus: sync browse is a view, not a mode change.
+func (m *Model) followInPane(msg syncPaneMsg) tea.Cmd {
+	if msg.index < 0 || msg.index >= len(m.Panes) {
+		return nil
+	}
+	pane := &m.Panes[msg.index]
+	if pane.Path == msg.path {
+		return nil
+	}
+	pane.LastDir = pane.Path
+	pane.Path = msg.path
+	pane.Cursor, pane.Offset, pane.Filter = 0, 0, ""
+	pane.History = append(pane.History, msg.path)
+	pane.HIndex = len(pane.History) - 1
+	return m.loadPaneAsync(msg.index)
 }
 
 // historyBack and historyForward walk the visited-directory stack.
@@ -379,6 +434,58 @@ func (m *Model) renameCursor(newName string) tea.Cmd {
 	}
 	m.selectByName(newName)
 	m.toastSuccess("Renamed to " + newName)
+	return m.refresh()
+}
+
+// chmodTargets applies a mode from the prompt to every target. The mode is octal
+// because that is what people type and what every manual lists.
+//
+//nolint:unparam // the command is the refresh; callers hand it to the runtime
+func (m *Model) chmodTargets(value string) tea.Cmd {
+	mode, err := strconv.ParseUint(strings.TrimSpace(value), 8, 32)
+	if err != nil || mode > 0o7777 {
+		m.toastError("Permissions are octal, like 644 or 755")
+		return nil
+	}
+	fsys, err := m.paneFS()
+	if err != nil {
+		m.toastError(err.Error())
+		return nil
+	}
+	targets := m.targets()
+	failed := 0
+	for _, e := range targets {
+		if err := fsys.Chmod(fsys.Join(m.Pane().Path, e.Name), os.FileMode(mode)); err != nil {
+			failed++
+		}
+	}
+	if failed > 0 {
+		m.toastError(fmt.Sprintf("%d of %d could not be changed", failed, len(targets)))
+	} else {
+		m.toastSuccess(fmt.Sprintf("Permissions set to %o", mode))
+	}
+	return m.refresh()
+}
+
+// makeSymlink creates a link next to the cursor entry, pointing at it.
+func (m *Model) makeSymlink(name string) tea.Cmd {
+	entry, ok := m.Pane().CursorEntry()
+	if !ok {
+		return nil
+	}
+	fsys, err := m.paneFS()
+	if err != nil {
+		m.toastError(err.Error())
+		return nil
+	}
+	target := entry.Name
+	link := fsys.Join(m.Pane().Path, name)
+	if err := fsys.Symlink(target, link); err != nil {
+		m.toastError(fmt.Sprintf("Cannot create the link: %v", err))
+		return nil
+	}
+	m.selectByName(name)
+	m.toastSuccess("Linked " + name + " → " + target)
 	return m.refresh()
 }
 

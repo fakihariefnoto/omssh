@@ -306,7 +306,7 @@ func TestPrimaryShowsAReadableKey(t *testing.T) {
 	if got := m.Primary("nav.first"); got != "g g" {
 		t.Errorf("Primary(nav.first) = %q, want %q", got, "g g")
 	}
-	if got := m.Primary("file.chmod"); got != "" {
+	if got := m.Primary("deploy.run"); got != "" {
 		t.Errorf("an action with no binding should render as empty, got %q", got)
 	}
 }

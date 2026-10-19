@@ -374,6 +374,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyListing(msg)
 		return m, nil
 
+	case editReadyMsg:
+		cmd := m.openRemoteEditor(msg)
+		return m, cmd
+
+	case editClosedMsg:
+		cmd := m.uploadEditedFile(msg)
+		return m, cmd
+
+	case editFailedMsg:
+		m.mode = "NORMAL"
+		m.toastError("Edit failed: " + msg.err.Error())
+		return m, nil
+
+	case editReloadMsg:
+		m.mode = "NORMAL"
+		m.toastSuccess("Editor closed")
+		cmd := m.loadPaneAsync(msg.dirIdx)
+		return m, cmd
+
+	case syncPaneMsg:
+		cmd := m.followInPane(msg)
+		return m, cmd
+
 	case clipboardMsg:
 		if msg.err != nil {
 			m.toastWarning("Clipboard unavailable: " + msg.err.Error())
@@ -908,6 +931,12 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openPrompt("prompt.new")
 	case "file.rename":
 		m.openPrompt("prompt.rename")
+	case "file.edit":
+		return m.editCursor()
+	case "file.chmod":
+		m.openPrompt("prompt.chmod")
+	case "file.symlink":
+		m.openPrompt("prompt.symlink")
 	case "file.delete":
 		m.openDeleteConfirm()
 
@@ -955,8 +984,6 @@ func (m *Model) stageOf(id actions.ID) string {
 		return "the terminal (M5)"
 	case strings.HasPrefix(string(id), "session."):
 		return "connections (M1)"
-	case id == "file.edit", id == "file.chmod", id == "file.symlink":
-		return "the file tooling in M2"
 	default:
 		return "the transfer engine (M3)"
 	}
@@ -1041,6 +1068,16 @@ func (m *Model) openPrompt(action actions.ID) {
 	case "prompt.path":
 		m.prompt = promptState{Title: "Go to path", Hint: "Directory to open", Action: action, open: true}
 		m.prompt.input.Set(m.Pane().Path)
+	case "prompt.chmod":
+		m.prompt = promptState{Title: "Permissions", Hint: "Octal mode, like 644 or 755", Action: action, open: true}
+		m.prompt.input.Set("644")
+	case "prompt.symlink":
+		entry, ok := m.Pane().CursorEntry()
+		if !ok {
+			return
+		}
+		m.prompt = promptState{Title: "Link to " + entry.Name, Hint: "Name for the link", Action: action, open: true}
+		m.prompt.input.Set(entry.Name + "-link")
 	default:
 		return
 	}
