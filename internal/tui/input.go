@@ -13,21 +13,38 @@ import (
 type input struct {
 	Value  string
 	Cursor int // rune offset
+	// selectAll is set when Set pre-filled the value. The next insertion then
+	// replaces it, which is how a text field behaves when it takes focus: pasting
+	// a path into a prompt that already holds one must not concatenate the two.
+	// Any cursor movement cancels it, so editing a pre-filled name still works.
+	selectAll bool
 }
 
-// Set replaces the value and puts the cursor at the end.
+// Set replaces the value, puts the cursor at the end, and marks the value as
+// selected so the next insertion replaces it.
 func (in *input) Set(v string) {
 	in.Value = v
 	in.Cursor = len([]rune(v))
+	in.selectAll = true
+}
+
+// SetForEditing replaces the value with the cursor at the end and no selection,
+// for callers that are going to edit what is there rather than replace it.
+func (in *input) SetForEditing(v string) {
+	in.Set(v)
+	in.End()
 }
 
 // Clear empties the input.
-func (in *input) Clear() { in.Value, in.Cursor = "", 0 }
+func (in *input) Clear() { in.Value, in.Cursor, in.selectAll = "", 0, false }
 
-// Insert adds text at the cursor.
+// Insert adds text at the cursor, replacing a pre-filled selection.
 func (in *input) Insert(s string) {
 	if s == "" {
 		return
+	}
+	if in.selectAll {
+		in.Value, in.Cursor, in.selectAll = "", 0, false
 	}
 	runes := []rune(in.Value)
 	if in.Cursor > len(runes) {
@@ -43,6 +60,7 @@ func (in *input) Insert(s string) {
 
 // Backspace deletes the rune before the cursor.
 func (in *input) Backspace() {
+	in.selectAll = false
 	runes := []rune(in.Value)
 	if in.Cursor <= 0 || len(runes) == 0 {
 		return
@@ -56,6 +74,7 @@ func (in *input) Backspace() {
 
 // Delete removes the rune under the cursor.
 func (in *input) Delete() {
+	in.selectAll = false
 	runes := []rune(in.Value)
 	if in.Cursor >= len(runes) {
 		return
@@ -68,6 +87,7 @@ func (in *input) Delete() {
 
 // MoveLeft moves the cursor one rune left.
 func (in *input) MoveLeft() {
+	in.selectAll = false
 	if in.Cursor > 0 {
 		in.Cursor--
 	}
@@ -75,16 +95,17 @@ func (in *input) MoveLeft() {
 
 // MoveRight moves the cursor one rune right.
 func (in *input) MoveRight() {
+	in.selectAll = false
 	if in.Cursor < len([]rune(in.Value)) {
 		in.Cursor++
 	}
 }
 
 // Home moves the cursor to the start.
-func (in *input) Home() { in.Cursor = 0 }
+func (in *input) Home() { in.selectAll, in.Cursor = false, 0 }
 
 // End moves the cursor to the end.
-func (in *input) End() { in.Cursor = len([]rune(in.Value)) }
+func (in *input) End() { in.selectAll, in.Cursor = false, len([]rune(in.Value)) }
 
 // Handle applies an editing key. It reports whether the key was consumed.
 func (in *input) Handle(msg tea.KeyPressMsg) bool {
@@ -126,8 +147,35 @@ func (in *input) Handle(msg tea.KeyPressMsg) bool {
 	return true
 }
 
+// InsertPaste inserts pasted text into a single-line field: the first line only,
+// with control characters dropped, so a paste cannot smuggle a newline or an
+// escape sequence into a host name or a path.
+func (in *input) InsertPaste(s string) {
+	if s == "" {
+		return
+	}
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	in.Insert(sanitizePaste(s))
+}
+
+// sanitizePaste drops control characters and the escape character.
+func sanitizePaste(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r == 0x1b || r < 0x20 || r == 0x7f {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // deleteWord removes the word before the cursor.
 func (in *input) deleteWord() {
+	in.selectAll = false
 	runes := []rune(in.Value)
 	i := in.Cursor
 	for i > 0 && unicode.IsSpace(runes[i-1]) {

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/actions"
+	"github.com/fakihariefnoto/omssh/internal/clipboard"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keymap"
 	"github.com/fakihariefnoto/omssh/internal/sshconfig"
@@ -163,6 +165,23 @@ type stagedState struct {
 // heartbeatMsg drives toast expiry and clears transient hints.
 type heartbeatMsg struct{}
 
+// clipboardMsg carries the system clipboard's text, or the reason it could not
+// be read.
+type clipboardMsg struct {
+	text string
+	err  error
+}
+
+// pasteClipboard reads the system clipboard in the background. It runs as a
+// command rather than inline, because pbpaste is a process and spawning one
+// inside Update would stall the interface.
+func pasteClipboard() tea.Cmd {
+	return func() tea.Msg {
+		text, err := clipboard.Read(context.Background())
+		return clipboardMsg{text: text, err: err}
+	}
+}
+
 // heartbeat schedules the next tick. One recurring timer, so a burst of
 // completions cannot leave timers behind.
 func heartbeat() tea.Cmd {
@@ -276,6 +295,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.PasteMsg:
+		// The terminal's own paste (bracketed paste). It arrives as text, not as
+		// keystrokes, so it goes straight into whatever field has focus.
+		m.handlePaste(msg.Content)
+		return m, nil
+
+	case clipboardMsg:
+		if msg.err != nil {
+			m.toastWarning("Clipboard unavailable: " + msg.err.Error())
+			return m, nil
+		}
+		m.handlePaste(msg.text)
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
@@ -288,6 +321,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleKey routes a key press to the overlay, the filter, or the key map.
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+
+	// Ctrl+V pastes into a text field when one has focus. In the file manager no
+	// field has focus, so Ctrl+V keeps its documented meaning there: stage the
+	// selection for pasting into the other pane.
+	if key == "ctrl+v" && m.focusedInput() != nil {
+		return m, pasteClipboard()
+	}
 
 	// Keys that work everywhere, including inside overlays, so quitting and
 	// searching never depend on where you are.
@@ -498,8 +538,7 @@ func (m *Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.mode = "NORMAL"
 	default:
 		var buf input
-		buf.Set(m.Pane().Filter)
-		buf.End()
+		buf.SetForEditing(m.Pane().Filter)
 		if buf.Handle(msg) {
 			m.Pane().Filter = buf.Value
 			m.Pane().Cursor, m.Pane().Offset = 0, 0
@@ -883,6 +922,44 @@ func (m *Model) openPrompt(action actions.ID) {
 	}
 	m.rebuildPathSuggestions()
 	m.Overlay = OverlayPrompt
+}
+
+// focusedInput returns the text field that should receive typed or pasted text,
+// or nil when the focus is not on one.
+func (m *Model) focusedInput() *input {
+	switch m.Overlay {
+	case OverlayForm:
+		if len(m.form.fields) > 0 {
+			return &m.form.fields[m.form.focus].in
+		}
+	case OverlayPrompt:
+		return &m.prompt.input
+	case OverlayPalette:
+		return &m.palette.input
+	case OverlayHelp:
+		return &m.help.input
+	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm:
+		// These have no text field of their own. The connections filter below is
+		// the only field outside an overlay.
+	}
+	if m.screen == screenConnections && m.conn != nil && m.conn.filtering {
+		return &m.conn.filter
+	}
+	return nil
+}
+
+// handlePaste puts pasted text into the focused field.
+func (m *Model) handlePaste(text string) {
+	target := m.focusedInput()
+	if target == nil {
+		return
+	}
+	target.InsertPaste(text)
+	// A path prompt has to re-suggest, or the list would describe what was typed
+	// before the paste.
+	if m.prompt.Action == "prompt.path" {
+		m.rebuildPathSuggestions()
+	}
 }
 
 // hasSuggestions reports whether the prompt is showing a folder list.

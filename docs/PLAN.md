@@ -83,6 +83,9 @@ The tagline we design against:
   reachable only by memorising a key.
 - Directory listing with the columns that matter (perms, size, mtime, owner),
   sortable, with hidden-file toggle and a live byte total of the selection.
+- **Paste everywhere a field exists** (`Ctrl+V`, plus the terminal's bracketed
+  paste): host names, paths, filters. Single-line and sanitised, and a pre-filled
+  field is replaced rather than appended to.
 - **Folder suggestions** in the "go to a folder" prompt: matching directories
   appear as you type, folders only, dot-folders hidden until a dot is typed.
   Tab completes into the highlighted one, arrows pick, Enter goes.
