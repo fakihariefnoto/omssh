@@ -92,8 +92,15 @@ first-connect case and a hard stop for a changed key, `ProxyJump` chains where
 every hop is verified in its own right, and a connection pool that shares one
 connection between tabs, heartbeats it, and reaps it when idle. Every test runs
 against an in-process SSH server, so the handshake is real rather than mocked.
-Still to come here: the keyring for passwords, the SFTP filesystem, and the
-remote pane in the interface.
+Landed since: `internal/keys` (secrets in the OS keyring, or a prompt when there
+is none), `internal/vfs/sftp` (the same filesystem contract over the network,
+sharing the conformance suite with the local one), and `internal/session` — the
+layer that owns connecting, so no key handler ever dials anything:
+credentials from storage, a prompt for what is missing, consent for an unknown
+host key (remember, once, or refuse), a stale stored password dropped and
+re-asked rather than left for the user to clear, and one connection shared
+between sessions. Still to come: the remote pane in the interface, and
+`omssh <host>`.
 
 - `~/.ssh/config` parser (with `Include` and wildcards) and written-back
   metadata as OpenSSH-safe comments.

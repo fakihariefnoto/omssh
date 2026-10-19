@@ -318,12 +318,12 @@ func TestUnknownHostAsksAndRemembers(t *testing.T) {
 	// Saying yes connects, and stores the key.
 	var asked atomic.Int32
 	client, err := omssh.Dial(context.Background(), target, omssh.Auth{Keys: []string{keyPath}}, keys,
-		omssh.WithHostKeyConsent(func(host *omssh.UnknownHostError) error {
+		omssh.WithHostKeyConsent(func(host *omssh.UnknownHostError) (omssh.Consent, error) {
 			asked.Add(1)
 			if host.Fingerprint != unknown.Fingerprint {
 				t.Errorf("the consent prompt showed a different key: %s vs %s", host.Fingerprint, unknown.Fingerprint)
 			}
-			return nil
+			return omssh.ConsentRemember, nil
 		}))
 	if err != nil {
 		t.Fatalf("Dial with consent: %v", err)
@@ -361,8 +361,8 @@ func TestRefusedConsentStoresNothing(t *testing.T) {
 	writePrivateKey(t, keyPath, keyPrivate)
 
 	_, err := omssh.Dial(context.Background(), srv.target(t, keys, keyPath), omssh.Auth{Keys: []string{keyPath}}, keys,
-		omssh.WithHostKeyConsent(func(*omssh.UnknownHostError) error {
-			return errors.New("not this time")
+		omssh.WithHostKeyConsent(func(*omssh.UnknownHostError) (omssh.Consent, error) {
+			return omssh.ConsentRefuse, nil
 		}))
 	if err == nil {
 		t.Fatal("a refused host key should abort the connection")
@@ -393,9 +393,9 @@ func TestChangedHostKeyIsAHardStop(t *testing.T) {
 
 	consented := false
 	_, err := omssh.Dial(context.Background(), srv.target(t, keys, keyPath), omssh.Auth{Keys: []string{keyPath}}, keys,
-		omssh.WithHostKeyConsent(func(*omssh.UnknownHostError) error {
+		omssh.WithHostKeyConsent(func(*omssh.UnknownHostError) (omssh.Consent, error) {
 			consented = true
-			return nil
+			return omssh.ConsentRemember, nil
 		}))
 	if !errors.Is(err, omssh.ErrHostKeyMismatch) {
 		t.Fatalf("a changed host key should be ErrHostKeyMismatch, got %v", err)
@@ -541,7 +541,7 @@ func TestPoolSharesAndReapsConnections(t *testing.T) {
 
 	clock := &fakeClock{now: time.Now()}
 	pool := omssh.NewPool(omssh.PoolOptions{
-		Auth:      omssh.Auth{Keys: []string{keyPath}},
+		AuthFor:   fixedAuth(omssh.Auth{Keys: []string{keyPath}}),
 		Keys:      keys,
 		Idle:      50 * time.Millisecond,
 		KeepAlive: -1, // heartbeats are tested separately
@@ -612,7 +612,7 @@ func TestPoolDropsConnectionsThatFailTheirHeartbeat(t *testing.T) {
 	target := srv.target(t, keys, keyPath)
 
 	pool := omssh.NewPool(omssh.PoolOptions{
-		Auth:      omssh.Auth{Keys: []string{keyPath}},
+		AuthFor:   fixedAuth(omssh.Auth{Keys: []string{keyPath}}),
 		Keys:      keys,
 		Idle:      time.Minute,
 		KeepAlive: 10 * time.Millisecond,
@@ -650,7 +650,7 @@ func TestPoolSeparatesTargetsThatAreNotTheSame(t *testing.T) {
 		t.Fatal(err)
 	}
 	pool := omssh.NewPool(omssh.PoolOptions{
-		Auth: omssh.Auth{Keys: []string{keyPath}}, Keys: keys, Idle: time.Minute, KeepAlive: -1,
+		AuthFor: fixedAuth(omssh.Auth{Keys: []string{keyPath}}), Keys: keys, Idle: time.Minute, KeepAlive: -1,
 	})
 	defer func() { _ = pool.Close() }()
 
@@ -675,7 +675,11 @@ func TestPoolSeparatesTargetsThatAreNotTheSame(t *testing.T) {
 // A closed pool refuses new work rather than dialing into the void.
 func TestClosedPoolRefusesAcquisition(t *testing.T) {
 	keys := hostKeysAt(t)
-	pool := omssh.NewPool(omssh.PoolOptions{Keys: keys, KeepAlive: -1})
+	pool := omssh.NewPool(omssh.PoolOptions{
+		AuthFor:   fixedAuth(omssh.Auth{}),
+		Keys:      keys,
+		KeepAlive: -1,
+	})
 	target, err := omssh.TargetFrom(sshconfig.Spec{Alias: "anyhost", HostName: "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
@@ -692,6 +696,11 @@ func TestClosedPoolRefusesAcquisition(t *testing.T) {
 }
 
 // --- helpers ----------------------------------------------------------------
+
+// fixedAuth turns a chain into the per-target function the pool asks for.
+func fixedAuth(auth omssh.Auth) func(omssh.Target) omssh.Auth {
+	return func(omssh.Target) omssh.Auth { return auth }
+}
 
 type fakeClock struct {
 	mu  sync.Mutex

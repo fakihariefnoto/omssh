@@ -10,8 +10,12 @@ import (
 // PoolOptions configures a pool. The zero value is not useful: Auth and Keys are
 // required, and the defaults below are sensible.
 type PoolOptions struct {
-	Auth Auth
-	Keys HostKeys
+	// AuthFor builds the credential chain for a target, called when a connection
+	// is actually needed. It is a function rather than a value because the chain
+	// depends on the host: its identity file, its stored password, and what a
+	// person is willing to answer.
+	AuthFor func(Target) Auth
+	Keys    HostKeys
 	// Dial options applied to every connection the pool opens.
 	Dial []Option
 	// Idle is how long an unused connection is kept before it is closed. Zero
@@ -118,7 +122,7 @@ func (p *Pool) Acquire(ctx context.Context, target Target) (*Client, func(), err
 		p.inflight[key] = wait
 		p.mu.Unlock()
 
-		client, err := Dial(ctx, target, p.options.Auth, p.options.Keys, p.options.Dial...)
+		client, err := Dial(ctx, target, p.options.AuthFor(target), p.options.Keys, p.options.Dial...)
 
 		p.mu.Lock()
 		delete(p.inflight, key)

@@ -35,7 +35,7 @@ type Client struct {
 // DialOptions configures a handshake.
 type dialOptions struct {
 	policy    HostKeyPolicy
-	consent   func(*UnknownHostError) error
+	consent   func(*UnknownHostError) (Consent, error)
 	keepAlive time.Duration
 	dialer    func(ctx context.Context, network, address string) (net.Conn, error)
 	resolver  func(alias string) (sshconfig.Spec, bool)
@@ -52,10 +52,10 @@ func WithPolicy(policy HostKeyPolicy) Option {
 	return func(o *dialOptions) { o.policy = policy }
 }
 
-// WithHostKeyConsent is called when a host is unknown. Returning nil accepts the
-// key, and the client then stores it, which is exactly what "yes" on a
-// first-connect prompt means. Returning an error aborts the connection.
-func WithHostKeyConsent(consent func(*UnknownHostError) error) Option {
+// WithHostKeyConsent is called when a host is unknown. ConsentRemember stores the
+// key, ConsentOnce connects without writing anything, and ConsentRefuse aborts.
+// An error aborts as well, which is how a prompt that fails is reported.
+func WithHostKeyConsent(consent func(*UnknownHostError) (Consent, error)) Option {
 	return func(o *dialOptions) { o.consent = consent }
 }
 
@@ -201,15 +201,23 @@ func hostKeyCallbackFor(target Target, keys HostKeys, options dialOptions) ssh.H
 
 		var unknown *UnknownHostError
 		if errors.As(err, &unknown) && options.consent != nil {
-			if consentErr := options.consent(unknown); consentErr != nil {
+			decision, consentErr := options.consent(unknown)
+			if consentErr != nil {
 				return consentErr
 			}
-			// Consent given: store it under the alias people type, which is what
-			// ssh itself does.
-			if addErr := keys.Add(target.HostKeyAlias(), target.Port, key); addErr != nil {
-				return addErr
+			switch decision {
+			case ConsentRefuse:
+				return fmt.Errorf("ssh: %s refused; nothing was stored", target.Alias)
+			case ConsentOnce:
+				// Accepted for this connection and deliberately not written.
+				return nil
+			default:
+				// Store it under the alias people type, which is what ssh does.
+				if addErr := keys.Add(target.HostKeyAlias(), target.Port, key); addErr != nil {
+					return addErr
+				}
+				return nil
 			}
-			return nil
 		}
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -21,8 +22,15 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
+// ErrClosed is returned by every operation after Close. The library panics when
+// its client is used after closing, which a file manager must never do, so this
+// wrapper refuses first.
+var ErrClosed = errors.New("sftpfs: the connection is closed")
+
 // SFTP is a filesystem over an SFTP session.
 type SFTP struct {
+	mu     sync.RWMutex
+	closed bool
 	client *sftp.Client
 	// base is the directory "/" maps to. It is the server's working directory —
 	// the user's home, in practice — so a path in the interface reads like a path
@@ -51,12 +59,27 @@ func New(client *sftp.Client, base, label string) (*SFTP, error) {
 
 // Close ends the SFTP session. The SSH connection itself belongs to the pool.
 func (s *SFTP) Close() error {
-	if s.client == nil {
+	s.mu.Lock()
+	if s.closed || s.client == nil {
+		s.closed = true
+		s.mu.Unlock()
 		return nil
 	}
-	err := s.client.Close()
+	client := s.client
 	s.client = nil
-	return err
+	s.closed = true
+	s.mu.Unlock()
+	return client.Close()
+}
+
+// checkOpen reports whether the session is still usable.
+func (s *SFTP) checkOpen() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed || s.client == nil {
+		return ErrClosed
+	}
+	return nil
 }
 
 // String names the filesystem for logs.
@@ -95,6 +118,9 @@ func (s *SFTP) resolve(name string) string {
 
 // Open opens a file for reading.
 func (s *SFTP) Open(name string) (fs.File, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	file, err := s.client.Open(s.resolve(name))
 	if err != nil {
 		return nil, s.wrap("open", name, err)
@@ -104,6 +130,9 @@ func (s *SFTP) Open(name string) (fs.File, error) {
 
 // OpenFile opens with explicit flags.
 func (s *SFTP) OpenFile(name string, flag int, perm fs.FileMode) (vfs.WFile, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	file, err := s.client.OpenFile(s.resolve(name), flag)
 	if err != nil {
 		return nil, s.wrap("open", name, err)
@@ -119,6 +148,9 @@ func (s *SFTP) OpenFile(name string, flag int, perm fs.FileMode) (vfs.WFile, err
 
 // Create makes or truncates a file.
 func (s *SFTP) Create(name string) (vfs.WFile, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	file, err := s.client.Create(s.resolve(name))
 	if err != nil {
 		return nil, s.wrap("create", name, err)
@@ -129,6 +161,9 @@ func (s *SFTP) Create(name string) (vfs.WFile, error) {
 // ReadDir lists a directory, sorted by name the way every other implementation
 // of this interface does.
 func (s *SFTP) ReadDir(name string) ([]fs.DirEntry, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	entries, err := s.client.ReadDir(s.resolve(name))
 	if err != nil {
 		return nil, s.wrap("readdir", name, err)
@@ -143,6 +178,9 @@ func (s *SFTP) ReadDir(name string) ([]fs.DirEntry, error) {
 
 // Stat follows a final symlink.
 func (s *SFTP) Stat(name string) (fs.FileInfo, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	info, err := s.client.Stat(s.resolve(name))
 	if err != nil {
 		return nil, s.wrap("stat", name, err)
@@ -152,6 +190,9 @@ func (s *SFTP) Stat(name string) (fs.FileInfo, error) {
 
 // Lstat does not follow a final symlink.
 func (s *SFTP) Lstat(name string) (fs.FileInfo, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	info, err := s.client.Lstat(s.resolve(name))
 	if err != nil {
 		return nil, s.wrap("lstat", name, err)
@@ -162,6 +203,9 @@ func (s *SFTP) Lstat(name string) (fs.FileInfo, error) {
 // ReadFile reads a whole file. SFTP has no readfile request, so it is an open
 // and a read, which is what every client does.
 func (s *SFTP) ReadFile(name string) ([]byte, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	file, err := s.client.Open(s.resolve(name))
 	if err != nil {
 		return nil, s.wrap("read", name, err)
@@ -176,6 +220,9 @@ func (s *SFTP) ReadFile(name string) ([]byte, error) {
 
 // Mkdir creates one directory.
 func (s *SFTP) Mkdir(name string, perm fs.FileMode) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	target := s.resolve(name)
 	if err := s.client.Mkdir(target); err != nil {
 		return s.wrap("mkdir", name, err)
@@ -188,6 +235,9 @@ func (s *SFTP) Mkdir(name string, perm fs.FileMode) error {
 
 // MkdirAll creates a directory and its parents.
 func (s *SFTP) MkdirAll(name string, perm fs.FileMode) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	target := s.resolve(name)
 	if err := s.client.MkdirAll(target); err != nil {
 		return s.wrap("mkdirall", name, err)
@@ -200,6 +250,9 @@ func (s *SFTP) MkdirAll(name string, perm fs.FileMode) error {
 
 // Remove deletes one file or an empty directory. The root is never removed.
 func (s *SFTP) Remove(name string) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	if vfs.IsRoot(name) {
 		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrPermission}
 	}
@@ -216,6 +269,9 @@ func (s *SFTP) Remove(name string) error {
 // failure without checking first. The protocol reports "no such file" rather
 // than success, so that one status is swallowed.
 func (s *SFTP) RemoveAll(name string) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	if vfs.IsRoot(name) {
 		return &fs.PathError{Op: "removeall", Path: name, Err: fs.ErrPermission}
 	}
@@ -237,6 +293,9 @@ func (s *SFTP) RemoveAll(name string) error {
 // file manager means by rename. The OpenSSH posix-rename extension is tried
 // first, and the standard request is the fallback for servers without it.
 func (s *SFTP) Rename(oldpath, newpath string) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	from, to := s.resolve(oldpath), s.resolve(newpath)
 	if err := s.client.PosixRename(from, to); err != nil {
 		if status, ok := asStatus(err); ok && status.Code == codeOpUnsupported {
@@ -252,6 +311,9 @@ func (s *SFTP) Rename(oldpath, newpath string) error {
 
 // Chmod sets permission bits.
 func (s *SFTP) Chmod(name string, mode fs.FileMode) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	if err := s.client.Chmod(s.resolve(name), mode); err != nil {
 		return s.wrap("chmod", name, err)
 	}
@@ -260,6 +322,9 @@ func (s *SFTP) Chmod(name string, mode fs.FileMode) error {
 
 // Chtimes sets access and modification times.
 func (s *SFTP) Chtimes(name string, atime, mtime time.Time) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	if err := s.client.Chtimes(s.resolve(name), atime, mtime); err != nil {
 		return s.wrap("chtimes", name, err)
 	}
@@ -268,6 +333,9 @@ func (s *SFTP) Chtimes(name string, atime, mtime time.Time) error {
 
 // Readlink returns a symlink's target.
 func (s *SFTP) Readlink(name string) (string, error) {
+	if err := s.checkOpen(); err != nil {
+		return "", err
+	}
 	target, err := s.client.ReadLink(s.resolve(name))
 	if err != nil {
 		return "", s.wrap("readlink", name, err)
@@ -277,6 +345,9 @@ func (s *SFTP) Readlink(name string) (string, error) {
 
 // Symlink creates a symbolic link.
 func (s *SFTP) Symlink(target, name string) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	if err := s.client.Symlink(target, s.resolve(name)); err != nil {
 		return s.wrap("symlink", name, err)
 	}
@@ -285,6 +356,9 @@ func (s *SFTP) Symlink(target, name string) error {
 
 // Truncate resizes a file.
 func (s *SFTP) Truncate(name string, size int64) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
 	if err := s.client.Truncate(s.resolve(name), size); err != nil {
 		return s.wrap("truncate", name, err)
 	}

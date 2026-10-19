@@ -60,6 +60,23 @@ func (e *UnknownHostError) Error() string {
 // Unwrap lets errors.Is(err, ErrUnknownHost) work.
 func (e *UnknownHostError) Unwrap() error { return ErrUnknownHost }
 
+// Consent is what someone decided about a host key that has never been seen.
+// It lives here because it is a host-key concept, not an interface one: the
+// handshake is what knows whether a key was stored.
+type Consent int
+
+// Consent answers, in the order a prompt usually offers them.
+const (
+	// ConsentRemember accepts the key and stores it, which is what "yes, and do
+	// not ask again" means.
+	ConsentRemember Consent = iota
+	// ConsentOnce accepts it for this connection only. Nothing is written, so the
+	// next connection asks again.
+	ConsentOnce
+	// ConsentRefuse aborts the connection.
+	ConsentRefuse
+)
+
 // HostKeys is the known_hosts store: one file, read on demand, appended to after
 // consent, never rewritten wholesale.
 type HostKeys struct {
