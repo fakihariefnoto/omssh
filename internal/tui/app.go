@@ -45,6 +45,9 @@ type Options struct {
 	Keys          *keymap.Map
 	// Dir is the directory the local pane starts in.
 	Dir string
+	// Connect names a host to open as soon as the interface starts, so
+	// "omssh prod" lands where the person meant to be.
+	Connect string
 	// SSHConfigPath overrides ~/.ssh/config. Tests use it; the CLI leaves it
 	// empty so the real file is used.
 	SSHConfigPath string
@@ -140,6 +143,8 @@ type Model struct {
 	// for its host to finish connecting.
 	deploy        deployState
 	pendingDeploy string
+	// autoConnect is the host named on the command line, opened by Init.
+	autoConnect string
 
 	toasts   []toast
 	toastSeq int
@@ -260,25 +265,26 @@ func New(opts Options) (*Model, error) {
 	}
 
 	m := &Model{
-		cfg:        cfg,
-		st:         theme.NewStyles(resolved),
-		icons:      theme.IconsFor(cfg.UI.Icons),
-		reg:        opts.Registry,
-		keys:       paneKeys,
-		resolver:   paneKeys.Resolver(""),
-		profile:    opts.Profile,
-		hasDark:    opts.HasDark,
-		sshPath:    opts.SSHConfigPath,
-		themeName:  resolved.Name,
-		themeNames: theme.Names(),
-		dropped:    paneKeys.Dropped(),
-		tabs:       []Tab{{Title: "localhost", State: StateReady}},
-		Panes:      []Pane{NewPane(localFS, dir, home), NewRemotePane()},
-		Focused:    0,
-		preview:    cfg.UI.Preview,
-		sidebar:    cfg.UI.Sidebar,
-		showHidden: cfg.UI.ShowHidden,
-		mode:       "NORMAL",
+		cfg:         cfg,
+		st:          theme.NewStyles(resolved),
+		icons:       theme.IconsFor(cfg.UI.Icons),
+		reg:         opts.Registry,
+		keys:        paneKeys,
+		resolver:    paneKeys.Resolver(""),
+		profile:     opts.Profile,
+		hasDark:     opts.HasDark,
+		sshPath:     opts.SSHConfigPath,
+		themeName:   resolved.Name,
+		themeNames:  theme.Names(),
+		dropped:     paneKeys.Dropped(),
+		tabs:        []Tab{{Title: "localhost", State: StateReady}},
+		Panes:       []Pane{NewPane(localFS, dir, home), NewRemotePane()},
+		Focused:     0,
+		preview:     cfg.UI.Preview,
+		sidebar:     cfg.UI.Sidebar,
+		showHidden:  cfg.UI.ShowHidden,
+		mode:        "NORMAL",
+		autoConnect: opts.Connect,
 	}
 	m.prompts = make(chan *promptRequest, 8)
 	if opts.Sessions != nil {
@@ -319,7 +325,30 @@ func (m *Model) Init() tea.Cmd {
 		// The connection goroutines ask through this channel while they wait.
 		commands = append(commands, waitForPrompt(m.prompts))
 	}
+	if m.autoConnect != "" {
+		if cmd := m.connectOnStartup(); cmd != nil {
+			commands = append(commands, cmd)
+		}
+	}
 	return tea.Batch(commands...)
+}
+
+// connectOnStartup opens the host named on the command line. A name that is not
+// in the config is still a host: ssh's own defaults know how to reach it.
+func (m *Model) connectOnStartup() tea.Cmd {
+	alias := m.autoConnect
+	m.autoConnect = ""
+	if m.sessions == nil {
+		m.toastError("Connections are not available: " + alias + " was not opened")
+		return nil
+	}
+	target, ok := m.targetForAlias(alias)
+	if !ok {
+		m.toastError("Cannot open " + alias)
+		return nil
+	}
+	m.screen = screenFiles
+	return m.connect(target)
 }
 
 // Update handles one message. Nothing here blocks on I/O, so typing is never

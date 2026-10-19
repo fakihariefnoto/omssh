@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -31,6 +32,12 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 	root := newRoot(opts, stdout, stderr)
 	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
+		// A remote command's status is the interesting one, so exec passes it
+		// through instead of flattening everything to 1.
+		var status interface{ ExitCode() int }
+		if errors.As(err, &status) {
+			return status.ExitCode()
+		}
 		fmt.Fprintln(stderr, "omssh: "+err.Error())
 		return 1
 	}
@@ -50,10 +57,11 @@ func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			host := ""
 			if len(args) > 0 {
-				return fmt.Errorf("opening %q needs connections, which arrive in M1; run omssh with no arguments for the local interface", args[0])
+				host = args[0]
 			}
-			return runTUI(opts)
+			return runTUI(opts, host)
 		},
 	}
 
@@ -66,6 +74,7 @@ func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 
+	root.AddCommand(newExecCmd(opts, stdout, stderr))
 	root.AddCommand(newConfigCmd(opts, stdout))
 	root.AddCommand(newKeysCmd(opts, stdout))
 	root.AddCommand(newVersionCmd(stdout))

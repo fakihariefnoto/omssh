@@ -75,6 +75,8 @@ the terminal and credential paths have not been exercised there yet.
 
 ```sh
 omssh                 # the interface, in your current directory
+omssh prod            # the interface, connected to prod on startup
+omssh exec prod -- systemctl status api   # one command, its exit status
 omssh keys            # print the effective keymap, including anything dropped
 omssh config path     # where the configuration lives
 omssh config init     # write a commented example config

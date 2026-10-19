@@ -11,8 +11,8 @@ import (
 )
 
 // runTUI starts the interface. It is the default action when omssh is run with
-// no subcommand.
-func runTUI(opts *Options) error {
+// no subcommand; a host argument opens that session once the interface is up.
+func runTUI(opts *Options, connect string) error {
 	cfg, _, err := loadConfig(opts)
 	if err != nil {
 		return err
@@ -42,6 +42,7 @@ func runTUI(opts *Options) error {
 		Registry: reg,
 		Keys:     keys,
 		Dir:      dir,
+		Connect:  connect,
 	})
 	if err != nil {
 		return err
