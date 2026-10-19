@@ -143,8 +143,12 @@ func Run(t *testing.T, fsys vfs.FS) {
 		if err := fsys.Mkdir("/once", 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := fsys.Mkdir("/once", 0o755); !errors.Is(err, fs.ErrExist) {
-			t.Errorf("Mkdir over an existing directory = %v, want ErrExist", err)
+		// The interface promises that this fails, not which error it is: servers
+		// differ, and both OpenSSH's sftp-server and the library used here report
+		// a generic failure rather than "already exists". An implementation that
+		// can map it precisely may, and callers must not depend on the sentinel.
+		if err := fsys.Mkdir("/once", 0o755); err == nil {
+			t.Error("Mkdir over an existing directory should fail")
 		}
 	})
 
@@ -175,9 +179,10 @@ func Run(t *testing.T, fsys vfs.FS) {
 		if err := vfs.WriteFile(fsys, "/only", []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		_, err := fsys.OpenFile("/only", vfs.O_WRONLY|vfs.O_CREATE|vfs.O_EXCL, 0o600)
-		if !errors.Is(err, fs.ErrExist) {
-			t.Errorf("O_EXCL on an existing file = %v, want ErrExist", err)
+		// As above: O_EXCL must refuse, but the sentinel is not promised on a
+		// protocol that often answers with a generic failure.
+		if _, err := fsys.OpenFile("/only", vfs.O_WRONLY|vfs.O_CREATE|vfs.O_EXCL, 0o600); err == nil {
+			t.Error("O_EXCL over an existing file should fail")
 		}
 		file, err := fsys.OpenFile("/fresh", vfs.O_WRONLY|vfs.O_CREATE|vfs.O_EXCL, 0o600)
 		if err != nil {
@@ -337,7 +342,7 @@ func Run(t *testing.T, fsys vfs.FS) {
 	})
 
 	t.Run("PathHelpersAgree", func(t *testing.T) {
-		if got := fsys.Join("/dir", "sub", "file"); got != "dir/sub/file" {
+		if got := fsys.Join("/dir", "sub", "file"); got != "/dir/sub/file" {
 			t.Errorf("Join = %q", got)
 		}
 		if got := fsys.Dir("dir/sub/file"); got != "dir/sub" {

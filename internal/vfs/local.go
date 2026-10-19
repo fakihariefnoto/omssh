@@ -60,13 +60,14 @@ func (l *Local) Capabilities() Capabilities {
 	}
 }
 
-// Join builds a path inside the root.
+// Join builds a rooted path inside this filesystem, in the same shape the
+// interface uses everywhere: "/dir/sub/file".
 func (l *Local) Join(elem ...string) string {
 	cleaned := make([]string, 0, len(elem))
 	for _, e := range elem {
 		cleaned = append(cleaned, strings.Trim(e, "/"))
 	}
-	return filepath.Join(cleaned...)
+	return Clean(filepath.ToSlash(filepath.Join(cleaned...)))
 }
 
 // Dir is the platform's path arithmetic, so the local side behaves exactly like

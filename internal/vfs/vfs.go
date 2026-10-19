@@ -49,9 +49,10 @@ type WFile interface {
 // FS is the intersection of behaviour omssh needs, deliberately close to io/fs
 // so the standard library's helpers (WalkDir, Glob, ReadFile) keep working.
 //
-// Paths are always slash-separated and relative to the FS's root. Implementations
-// accept a leading slash and clean it away, because callers frequently have an
-// absolute-looking path from a UI.
+// Paths are slash-separated and rooted: they always start with "/", which is the
+// filesystem's own root, not the machine's. Join produces that form and every
+// method accepts it; a path without the leading slash is cleaned into the same
+// shape, because callers frequently build one from a listing.
 type FS interface {
 	fs.FS
 	fs.ReadDirFS
