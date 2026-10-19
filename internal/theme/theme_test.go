@@ -90,6 +90,14 @@ func TestAccentDownsamplesToTheTerminal(t *testing.T) {
 		t.Errorf("the signature accent should be #57D9C9, got %s", got)
 	}
 
+	amberTheme, err := Resolve("amber", colorprofile.TrueColor, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := amberTheme.Colors.Accent.(color.RGBA); !ok || rgbaToHex(got) != "#e8a33d" {
+		t.Errorf("amber's accent should be #E8A33D, got %v", amberTheme.Colors.Accent)
+	}
+
 	none, err := Resolve("midnight", colorprofile.NoTTY, true)
 	if err != nil {
 		t.Fatal(err)

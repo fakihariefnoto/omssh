@@ -5,19 +5,19 @@ import (
 	"os"
 
 	"github.com/fakihariefnoto/omssh/internal/cli"
-	"github.com/fakihariefnoto/omssh/internal/version"
+	internal "github.com/fakihariefnoto/omssh/internal/version"
 )
 
-// Injected at link time by the Makefile and goreleaser.
+// Injected at link time by the Makefile and goreleaser (-X main.version=...).
 var (
-	version_ = "dev"
-	commit   = "none"
-	date     = "unknown"
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func main() {
-	version.Version = version_
-	version.Commit = commit
-	version.Date = date
+	internal.Version = version
+	internal.Commit = commit
+	internal.Date = date
 	os.Exit(cli.Execute(os.Args[1:], os.Stdout, os.Stderr))
 }

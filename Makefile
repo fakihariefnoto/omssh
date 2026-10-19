@@ -55,9 +55,17 @@ check: fmt vet lint test ## Format, vet, lint, test
 clean: ## Remove build artifacts
 	rm -rf $(BINARY) dist coverage.txt coverage.html
 
+.PHONY: snapshot
+snapshot: ## Build release artifacts into dist/ without publishing
+	goreleaser release --snapshot --clean --skip=publish
+
 .PHONY: release
-release: ## Cross-compile release archives with goreleaser
-	goreleaser release --clean
+release: ## Tag and release, updating the Homebrew tap; V=minor (or patch|major|1.2.3)
+	./scripts/release.sh $(V)
+
+.PHONY: token-store
+token-store: ## Save the Homebrew tap token in the macOS keychain
+	./scripts/release.sh --store-token
 
 .PHONY: help
 help: ## List targets

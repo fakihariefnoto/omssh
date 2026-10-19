@@ -64,6 +64,9 @@ type Context struct {
 	Local bool
 	// Terminal is true when a terminal tab has focus.
 	Terminal bool
+	// Screen is the top-level screen: "home", "files" or "connections". Actions
+	// that only make sense in one place check it.
+	Screen string
 	// Overlay is the name of the open overlay ("palette", "menu", "dialog",
 	// "help", "settings", "onboarding"), empty when none is open.
 	Overlay string

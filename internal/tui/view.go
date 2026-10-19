@@ -29,8 +29,13 @@ func (m *Model) render() string {
 	l := m.measure()
 
 	content := m.renderFiles(l)
-	if m.screen == screenHome {
+	switch m.screen {
+	case screenHome:
 		content = m.renderHome(l)
+	case screenConnections:
+		content = m.renderConnections(l)
+	case screenFiles:
+		// Already rendered above; named so the switch is exhaustive.
 	}
 	if card := m.renderOverlay(l); card != "" {
 		content = m.overlayOn(content, card, l)

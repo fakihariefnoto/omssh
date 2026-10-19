@@ -18,7 +18,7 @@ import (
 
 // Names of the built-in themes, in the order the settings screen lists them.
 // config.Themes must match; a test enforces it.
-var names = []string{"auto", "midnight", "dawn", "mist", "ember", "mono", "contrast"}
+var names = []string{"auto", "amber", "midnight", "dawn", "mist", "mono", "contrast"}
 
 // Names returns the built-in theme names.
 func Names() []string {
@@ -164,19 +164,19 @@ func builtin(name string) (palette, bool) {
 			danger:         triple{"1", "174", "#C08080"},
 			muted:          triple{"8", "242", "#5C656E"},
 		}, true
-	case "ember":
+	case "amber":
 		return palette{
 			dark:           true,
-			bg:             triple{"0", "233", "#1A1410"},
-			fg:             triple{"7", "253", "#E8D9C5"},
-			subtle:         triple{"0", "235", "#241C16"},
-			selection:      triple{"3", "236", "#2E231A"},
-			accent:         triple{"11", "216", "#EFA87A"},
-			accentEmphasis: triple{"11", "223", "#F7C9A6"},
-			success:        triple{"2", "107", "#8BB06A"},
-			warning:        triple{"3", "179", "#D7B26A"},
-			danger:         triple{"1", "167", "#D96C5F"},
-			muted:          triple{"8", "243", "#7A6A5C"},
+			bg:             triple{"0", "233", "#191411"},
+			fg:             triple{"7", "253", "#EADFD1"},
+			subtle:         triple{"0", "235", "#221B16"},
+			selection:      triple{"3", "236", "#32261D"},
+			accent:         triple{"11", "179", "#E8A33D"},
+			accentEmphasis: triple{"11", "222", "#F7CE8B"},
+			success:        triple{"2", "107", "#8FB56A"},
+			warning:        triple{"3", "173", "#E07A4F"},
+			danger:         triple{"1", "167", "#D45D5D"},
+			muted:          triple{"8", "243", "#8A7A6A"},
 		}, true
 	case "contrast":
 		return palette{

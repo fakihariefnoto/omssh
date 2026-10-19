@@ -31,6 +31,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderConfirm(l)
 	case OverlayPrompt:
 		return m.renderPrompt(l)
+	case OverlayForm:
+		return m.renderConnectionForm(l)
 	default:
 		return ""
 	}
@@ -291,6 +293,9 @@ func (m *Model) renderConfirm(l layout) string {
 }
 
 // renderPrompt draws a single-field prompt: new folder, new file, rename, path.
+//
+// The path prompt adds the folders that continue what is typed, so going to a
+// directory is choosing from a list rather than recalling a path.
 func (m *Model) renderPrompt(l layout) string {
 	width := cardWidth(l, 44, 70)
 	content := cardContent(width)
@@ -299,9 +304,31 @@ func (m *Model) renderPrompt(l layout) string {
 		"",
 		m.st.CardMuted.Render(truncate(m.prompt.Hint, content)),
 		m.st.PathInput.Width(content).Render(truncate(m.prompt.input.Rendered(), content)),
-		"",
-		m.st.CardMuted.Render("Enter confirm · Esc cancel"),
 	}
+
+	if m.hasSuggestions() {
+		lines = append(lines, "")
+		limit := min(6, len(m.prompt.suggestions))
+		start := clamp(m.prompt.suggestCursor-limit/2, 0, max(0, len(m.prompt.suggestions)-limit))
+		for i := start; i < start+limit; i++ {
+			suggestion := m.prompt.suggestions[i]
+			label := truncate(contractHome(suggestion), content-2)
+			if i == m.prompt.suggestCursor && m.prompt.suggestPicked {
+				lines = append(lines, m.st.Accent.Bold(true).Render("▸ "+label))
+				continue
+			}
+			if i == 0 && !m.prompt.suggestPicked {
+				// The first entry is what Tab would take; mark it quietly.
+				lines = append(lines, m.st.CardText.Render("  "+label)+m.st.CardMuted.Render("  Tab"))
+				continue
+			}
+			lines = append(lines, m.st.CardMuted.Render("  "+label))
+		}
+		lines = append(lines, "", m.st.CardMuted.Render("↑↓ pick · Tab complete · Enter go · Esc cancel"))
+		return m.card(width, lines)
+	}
+
+	lines = append(lines, "", m.st.CardMuted.Render("Enter confirm · Esc cancel"))
 	return m.card(width, lines)
 }
 

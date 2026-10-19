@@ -256,6 +256,7 @@ const (
 	OverlaySettings
 	OverlayConfirm
 	OverlayPrompt
+	OverlayForm
 )
 
 // Name returns the identifier the action registry expects in Context.Overlay.
@@ -271,7 +272,7 @@ func (o Overlay) Name() string {
 		return "onboarding"
 	case OverlaySettings:
 		return "settings"
-	case OverlayConfirm, OverlayPrompt:
+	case OverlayConfirm, OverlayPrompt, OverlayForm:
 		return "dialog"
 	default:
 		return ""
@@ -281,6 +282,7 @@ func (o Overlay) Name() string {
 // actionContext builds the state the registry uses to decide what applies.
 func (m *Model) actionContext() actions.Context {
 	ctx := actions.Context{
+		Screen:   m.screenName(),
 		Focused:  m.Focused,
 		Panes:    len(m.Panes),
 		Overlay:  m.Overlay.Name(),
@@ -299,6 +301,13 @@ func (m *Model) actionContext() actions.Context {
 		ctx.Cursor = true
 		ctx.CursorIsDir = e.Dir
 		ctx.CursorIsArchive = IsArchive(e.Name)
+	}
+	if m.screen == screenConnections {
+		ctx.Connected = false
+		if _, ok := m.currentConnection(); ok {
+			ctx.Cursor = true
+		}
+		ctx.Selection = 0
 	}
 	ctx.Back = m.Overlay != OverlayNone || pane.SelectedCount() > 0 || pane.Filter != ""
 	return ctx

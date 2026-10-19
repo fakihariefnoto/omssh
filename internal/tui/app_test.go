@@ -793,13 +793,13 @@ func TestBackgroundDetectionDoesNotBlockStartup(t *testing.T) {
 	}
 
 	// A theme chosen by hand is never overridden by the terminal.
-	cfg.UI.Theme = "ember"
+	cfg.UI.Theme = "amber"
 	m, err = New(Options{Config: cfg, Profile: colorprofile.TrueColor, HasDark: true, Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _ = m.Update(tea.BackgroundColorMsg{Color: rgbaOf(0xff, 0xff, 0xff)})
-	if m.themeName != "ember" {
+	if m.themeName != "amber" {
 		t.Errorf("a fixed theme must not change on a background report, got %q", m.themeName)
 	}
 }

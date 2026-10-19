@@ -31,7 +31,7 @@ func TestLoadMissingFileUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.UI.Theme != "auto" || cfg.Transfers.Workers != 4 {
+	if cfg.UI.Theme != "amber" || cfg.Transfers.Workers != 4 {
 		t.Errorf("unexpected defaults: %+v", cfg)
 	}
 	if cfg.UI.Start != "home" {
@@ -120,7 +120,7 @@ func TestDeployProfileValidation(t *testing.T) {
 func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.yaml")
 	cfg := Default()
-	cfg.UI.Theme = "ember"
+	cfg.UI.Theme = "amber"
 	cfg.UI.Icons = "ascii"
 	cfg.Keys.Overrides = map[string]string{"file.delete": "ctrl+d"}
 	cfg.Deploy.Profiles = map[string]Profile{
@@ -138,7 +138,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.UI.Theme != "ember" || loaded.UI.Icons != "ascii" {
+	if loaded.UI.Theme != "amber" || loaded.UI.Icons != "ascii" {
 		t.Errorf("ui not round-tripped: %+v", loaded.UI)
 	}
 	if loaded.Keys.Overrides["file.delete"] != "ctrl+d" {
@@ -164,8 +164,8 @@ func TestExampleConfigIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the example config does not load: %v", err)
 	}
-	if cfg.UI.Theme != "auto" {
-		t.Errorf("the example should leave the theme on auto, got %q", cfg.UI.Theme)
+	if cfg.UI.Theme != "amber" {
+		t.Errorf("the example should ship the default theme, got %q", cfg.UI.Theme)
 	}
 	if cfg.Keys.Quit != "ctrl+q" {
 		t.Errorf("the example should document Ctrl+Q as quit, got %q", cfg.Keys.Quit)

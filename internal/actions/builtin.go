@@ -6,6 +6,16 @@ func fileSelected(ctx Context) bool { return ctx.Cursor || ctx.Selection > 0 }
 // always is the predicate for actions that apply whenever a pane has focus.
 func always(Context) bool { return true }
 
+// onScreen scopes an action to one top-level screen.
+func onScreen(name string) func(Context) bool {
+	return func(ctx Context) bool { return ctx.Screen == name }
+}
+
+// onScreenWithCursor is onScreen plus "the list has a highlighted row".
+func onScreenWithCursor(name string) func(Context) bool {
+	return func(ctx Context) bool { return ctx.Screen == name && ctx.Cursor }
+}
+
 // f identifies the common case: an action available while a file pane has focus.
 //
 // Applicability is a question about state, not about what is on top of the
@@ -147,8 +157,18 @@ func standardPreset() []Action {
 			Enabled: f(func(ctx Context) bool { return ctx.CursorIsArchive })},
 
 		// ---- Sessions and terminals -----------------------------------------
-		{ID: "session.open", Label: "Open a connection", Category: CatSession, Default: "ctrl+o",
-			Desc: "Pick a host and open it in a new tab", Enabled: always},
+		{ID: "session.open", Label: "SSH connections", Category: CatSession, Default: "ctrl+o",
+			Desc: "Manage the hosts in ~/.ssh/config", Enabled: always},
+		{ID: "session.add", Label: "Add connection", Category: CatSession, Default: "a",
+			Desc: "Add a host block to ~/.ssh/config", Enabled: onScreen("connections")},
+		{ID: "session.edit", Label: "Edit connection", Category: CatSession, Default: "e",
+			Desc: "Edit the highlighted host", Enabled: onScreenWithCursor("connections")},
+		{ID: "session.delete", Label: "Delete connection", Category: CatSession, Default: "d", Danger: true,
+			Desc: "Remove the highlighted host from ~/.ssh/config", Enabled: onScreenWithCursor("connections")},
+		{ID: "session.reload", Label: "Reload hosts", Category: CatSession, Default: "r",
+			Desc: "Re-read ~/.ssh/config from disk", Enabled: onScreen("connections")},
+		{ID: "session.open-config", Label: "Edit ~/.ssh/config", Category: CatSession, Default: "o",
+			Desc: "Open the file in $EDITOR", Enabled: onScreen("connections")},
 		{ID: "session.new-tab", Label: "New tab here", Category: CatSession, Default: "ctrl+t",
 			Desc:    "Open a terminal tab in this directory",
 			Enabled: f(func(ctx Context) bool { return ctx.Local || ctx.Connected })},

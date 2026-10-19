@@ -14,6 +14,7 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/actions"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keymap"
+	"github.com/fakihariefnoto/omssh/internal/sshconfig"
 	"github.com/fakihariefnoto/omssh/internal/theme"
 )
 
@@ -40,6 +41,9 @@ type Options struct {
 	Keys          *keymap.Map
 	// Dir is the directory the local pane starts in.
 	Dir string
+	// SSHConfigPath overrides ~/.ssh/config. Tests use it; the CLI leaves it
+	// empty so the real file is used.
+	SSHConfigPath string
 }
 
 // Model is the whole interface state. There is one of these, and only Update
@@ -54,6 +58,7 @@ type Model struct {
 
 	profile    colorprofile.Profile
 	hasDark    bool
+	sshPath    string
 	themeName  string
 	themeNames []string
 	dropped    []keymap.Dropped
@@ -80,13 +85,12 @@ type Model struct {
 	typeAheadBuf  string
 	typeAheadLast string
 
-	// screen is the launcher or the file manager.
+	// screen is the launcher, the file manager or the host manager.
 	screen screen
 	home   homeState
-	// offersConnect turns on the connection entries. It stays false until the
-	// SSH layer exists, so the launcher never advertises a dead end.
-	offersConnect bool
-
+	// conn is the SSH host manager, and form is its add/edit card.
+	conn       *connectionsState
+	form       connForm
 	Overlay    Overlay
 	palette    paletteState
 	menu       menuState
@@ -97,6 +101,10 @@ type Model struct {
 	onboarding onboardingState
 	// overlayCmd carries a command produced while handling an overlay key.
 	overlayCmd tea.Cmd
+	// connReturn remembers where the host manager was opened from.
+	connReturn screen
+	// confirmAlias carries the host name a confirmation is about.
+	confirmAlias string
 
 	staged stagedState
 
@@ -128,7 +136,9 @@ type confirmState struct {
 	Danger  bool
 	Action  actions.ID
 	Entries []Entry
-	open    bool
+	// Alias is set when the confirmation is about a connection.
+	Alias string
+	open  bool
 }
 
 type promptState struct {
@@ -137,6 +147,10 @@ type promptState struct {
 	Action actions.ID
 	input  input
 	open   bool
+	// Path prompts suggest matching folders as you type.
+	suggestions   []string
+	suggestCursor int
+	suggestPicked bool
 }
 
 // stagedState is what Ctrl+C or Ctrl+X put on the "clipboard".
@@ -194,6 +208,7 @@ func New(opts Options) (*Model, error) {
 		resolver:   paneKeys.Resolver(),
 		profile:    opts.Profile,
 		hasDark:    opts.HasDark,
+		sshPath:    opts.SSHConfigPath,
 		themeName:  resolved.Name,
 		themeNames: theme.Names(),
 		dropped:    paneKeys.Dropped(),
@@ -297,8 +312,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	if m.screen == screenHome {
-		cmd := m.handleHomeKey(msg)
-		return m, cmd
+		if cmd, handled := m.handleHomeKey(msg); handled {
+			return m, cmd
+		}
+	}
+	if m.screen == screenConnections {
+		if cmd, handled := m.handleConnectionsKey(msg); handled {
+			return m, cmd
+		}
 	}
 	if m.filtering {
 		return m.handleFilterKey(msg)
@@ -389,6 +410,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		case "enter":
 			entries := m.confirm.Entries
 			action := m.confirm.Action
+			m.confirmAlias = m.confirm.Alias
 			m.confirm = confirmState{}
 			m.Overlay = OverlayNone
 			m.applyConfirmed(action, entries)
@@ -400,15 +422,42 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		case "esc":
 			m.prompt = promptState{}
 			m.Overlay = OverlayNone
+		case "up", "shift+tab":
+			if m.hasSuggestions() {
+				m.prompt.suggestCursor = (m.prompt.suggestCursor - 1 + len(m.prompt.suggestions)) % len(m.prompt.suggestions)
+				m.prompt.suggestPicked = true
+			}
+		case "down":
+			if m.hasSuggestions() {
+				m.prompt.suggestCursor = (m.prompt.suggestCursor + 1) % len(m.prompt.suggestions)
+				m.prompt.suggestPicked = true
+			}
+		case "tab":
+			if m.hasSuggestions() {
+				m.prompt.input.Set(m.prompt.suggestions[m.prompt.suggestCursor])
+				m.prompt.input.End()
+				m.rebuildPathSuggestions()
+			}
 		case "enter":
 			value := m.prompt.input.Value
+			// Enter takes the highlighted suggestion when the user moved into the
+			// list; otherwise it takes what they typed.
+			if m.hasSuggestions() && m.prompt.suggestPicked {
+				value = strings.TrimSuffix(m.prompt.suggestions[m.prompt.suggestCursor], "/")
+			}
 			action := m.prompt.Action
 			m.prompt = promptState{}
 			m.Overlay = OverlayNone
 			m.applyPrompt(action, value)
 		default:
-			m.prompt.input.Handle(msg)
+			if m.prompt.input.Handle(msg) {
+				m.rebuildPathSuggestions()
+			}
 		}
+		return true
+
+	case OverlayForm:
+		m.overlayCmd = m.handleFormKey(msg)
 		return true
 
 	case OverlayOnboarding:
@@ -464,6 +513,17 @@ func (m *Model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	out := m.resolver.Feed(msg.String())
 	switch {
 	case out.Matched:
+		// A bound key that does not apply here must not swallow printable input:
+		// typing "d" in the file manager is type-ahead, even though "d" deletes a
+		// connection on the connections screen. Type-ahead state survives the
+		// fall-through, so repeating a letter still cycles through matches.
+		if a, ok := m.reg.Get(out.ID); ok && !a.Applicable(m.actionContext()) {
+			key := msg.Key()
+			if key.Text != "" && !key.Mod.Contains(tea.ModCtrl) && !key.Mod.Contains(tea.ModAlt) && msg.String() != "space" {
+				m.typeAhead(key.Text)
+				return m, nil
+			}
+		}
 		m.resetTypeAhead()
 		cmd := m.runAction(out.ID)
 		return m, cmd
@@ -592,6 +652,30 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 
 	case "app.files":
 		m.openFiles()
+
+	case "session.open":
+		m.loadConnections()
+		m.connReturn = m.screen
+		m.screen = screenConnections
+		m.mode = "CONNECTIONS"
+	case "session.add":
+		m.openConnectionForm("", sshconfig.Spec{})
+	case "session.edit":
+		if entry, ok := m.currentConnection(); ok {
+			if !entry.Editable {
+				m.toastWarning(entry.Alias + " lives in " + entry.Source + "; edit that file")
+				break
+			}
+			block, _ := m.conn.main.Lookup(entry.Alias)
+			m.openConnectionForm(entry.Alias, block.Spec())
+		}
+	case "session.delete":
+		m.deleteConnection()
+	case "session.reload":
+		m.loadConnections()
+		m.toastInfo("Reloaded ~/.ssh/config")
+	case "session.open-config":
+		return m.editConfigFile()
 	case "app.home":
 		m.screen = screenHome
 		m.home.cursor = 0
@@ -624,9 +708,22 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "nav.path":
 		m.openPrompt("prompt.path")
 	case "nav.refresh":
+		if m.screen == screenConnections {
+			m.loadConnections()
+			m.toastInfo("Reloaded ~/.ssh/config")
+			break
+		}
 		m.refresh()
 		m.toastInfo("Refreshed")
 	case "nav.filter":
+		if m.screen == screenConnections {
+			if m.conn == nil {
+				m.loadConnections()
+			}
+			m.conn.filtering = true
+			m.mode = "FILTER"
+			break
+		}
 		m.filtering = true
 		m.mode = "SEARCH"
 	case "nav.hidden":
@@ -753,6 +850,9 @@ func (m *Model) goBack() {
 	case m.Pane().SelectedCount() > 0:
 		m.clearSelection()
 		m.mode = "NORMAL"
+	case m.screen == screenConnections:
+		m.screen = m.connReturn
+		m.mode = "NORMAL"
 	case m.resolver.Pending() != "":
 		m.resolver.Reset()
 	case m.dismissToast():
@@ -781,7 +881,24 @@ func (m *Model) openPrompt(action actions.ID) {
 	default:
 		return
 	}
+	m.rebuildPathSuggestions()
 	m.Overlay = OverlayPrompt
+}
+
+// hasSuggestions reports whether the prompt is showing a folder list.
+func (m *Model) hasSuggestions() bool {
+	return m.prompt.Action == "prompt.path" && len(m.prompt.suggestions) > 0
+}
+
+// rebuildPathSuggestions refreshes the folder list under the typed path.
+func (m *Model) rebuildPathSuggestions() {
+	m.prompt.suggestCursor = 0
+	m.prompt.suggestPicked = false
+	if m.prompt.Action != "prompt.path" {
+		m.prompt.suggestions = nil
+		return
+	}
+	m.prompt.suggestions = pathSuggestions(m.prompt.input.Value, 8)
 }
 
 // applyPrompt runs whatever the prompt was for.
@@ -838,8 +955,11 @@ func (m *Model) openDeleteConfirm() {
 // applyConfirmed runs the action a confirmation dialog approved. Deletion is the
 // only destructive action in this build; the others arrive with their features.
 func (m *Model) applyConfirmed(action actions.ID, entries []Entry) {
-	if action == "file.delete" {
+	switch action {
+	case "file.delete":
 		m.deleteTargets(entries)
+	case "session.delete":
+		m.applyDeleteConnection(m.confirmAlias)
 	}
 }
 

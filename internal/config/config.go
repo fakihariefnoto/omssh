@@ -94,7 +94,7 @@ type Hooks struct {
 
 // Known values, kept in one place so validation and help text cannot drift.
 var (
-	Themes       = []string{"auto", "midnight", "dawn", "mist", "ember", "mono", "contrast"}
+	Themes       = []string{"auto", "amber", "midnight", "dawn", "mist", "mono", "contrast"}
 	IconSets     = []string{"nerd", "ascii"}
 	Motions      = []string{"full", "reduced"}
 	KeyPresets   = []string{"standard", "vim"}
@@ -108,7 +108,7 @@ func Default() Config {
 	return Config{
 		Version: 1,
 		UI: UI{
-			Theme:      "auto",
+			Theme:      "amber",
 			Icons:      "nerd",
 			Motion:     "full",
 			Sidebar:    true,

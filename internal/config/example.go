@@ -16,8 +16,9 @@ const exampleConfig = `# omssh configuration
 version: 1
 
 ui:
-  # auto | midnight | dawn | mist | ember | mono | contrast
-  theme: auto
+  # auto | amber | midnight | dawn | mist | mono | contrast
+  # amber is the default; auto follows the terminal (midnight or dawn)
+  theme: amber
   # nerd | ascii
   icons: nerd
   # full | reduced (swaps animation for static text)

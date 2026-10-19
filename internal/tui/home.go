@@ -18,7 +18,22 @@ const (
 	screenHome screen = iota
 	// screenFiles is the file manager.
 	screenFiles
+	// screenConnections manages the hosts in ~/.ssh/config.
+	screenConnections
 )
+
+// screenName is the value actions.Context sees, so an action can apply on one
+// screen and not another.
+func (m *Model) screenName() string {
+	switch m.screen {
+	case screenHome:
+		return "home"
+	case screenConnections:
+		return "connections"
+	default:
+		return "files"
+	}
+}
 
 // logo is the wordmark on the home screen. Five rows of equal width, so it
 // cannot shear; a test asserts that.
@@ -55,10 +70,8 @@ type homeItem struct {
 // ends teaches nothing. Connect joins this list in M1.
 func (m *Model) homeItems() []homeItem {
 	items := make([]homeItem, 0, 6)
-	if m.offersConnect {
-		items = append(items, homeItem{ID: "session.open", Icon: ">", Label: "Connect to a host", Hint: "Ctrl+O"})
-	}
 	return append(items,
+		homeItem{ID: "session.open", Icon: ">", Label: "SSH connections", Hint: "Ctrl+O"},
 		homeItem{ID: "app.files", Icon: "~", Label: "Browse local files", Hint: "Enter"},
 		homeItem{ID: "nav.path", Icon: "/", Label: "Go to a folder", Hint: "Ctrl+L"},
 		homeItem{ID: "app.help", Icon: "?", Label: "Keyboard and help", Hint: "F1"},
@@ -178,7 +191,14 @@ func (m *Model) renderHome(l layout) string {
 
 // handleHomeKey drives the launcher. Escape is the documented way straight into
 // the files, so the launcher can never trap someone who wants to start working.
-func (m *Model) handleHomeKey(msg tea.KeyPressMsg) tea.Cmd {
+//
+// It reports whether it consumed the key. Modified keys fall through to the
+// keymap, because the menu advertises shortcuts like Ctrl+O and a launcher that
+// swallowed them would be advertising keys that do nothing.
+func (m *Model) handleHomeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if msg.Key().Mod != 0 {
+		return nil, false
+	}
 	items := m.homeItems()
 	switch msg.String() {
 	case "up", "k", "shift+tab":
@@ -193,10 +213,16 @@ func (m *Model) handleHomeKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.openFiles()
 	case "enter", "space":
 		if m.home.cursor < len(items) {
-			return m.activateHome(items[m.home.cursor])
+			return m.activateHome(items[m.home.cursor]), true
+		}
+	default:
+		// Swallow other printable input: the file panes sit behind the launcher,
+		// and their type-ahead must not fire from here.
+		if msg.Key().Text != "" {
+			return nil, true
 		}
 	}
-	return nil
+	return nil, true
 }
 
 // activateHome runs a launcher entry.

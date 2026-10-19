@@ -13,6 +13,7 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/actions"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keymap"
+	"github.com/fakihariefnoto/omssh/internal/version"
 )
 
 // Options are the process-wide flags.
@@ -39,7 +40,9 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "omssh",
-		Short: "A modern SSH/SFTP client for the terminal",
+		Short: "Oh My SSH — a modern SSH/SFTP client for the terminal",
+		// --version, because that is the first thing a package manager runs.
+		Version: version.String(),
 		Long: "omssh manages many SSH and SFTP sessions in one terminal, moves files\n" +
 			"between any two machines without thinking about which side is which, and\n" +
 			"deploys a local tree to a remote host repeatably.",

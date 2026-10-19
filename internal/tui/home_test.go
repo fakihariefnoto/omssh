@@ -221,6 +221,37 @@ func TestHomeItemsAreRealActions(t *testing.T) {
 	}
 }
 
+// The launcher advertises shortcuts in its menu, so those shortcuts have to work
+// from the launcher: a menu entry that promises Ctrl+O and swallows it is worse
+// than no hint at all.
+func TestLauncherHonoursTheShortcutsItAdvertises(t *testing.T) {
+	m := newLauncher(t)
+	press(t, m, run('o', tea.ModCtrl, ""))
+	if m.screen != screenConnections {
+		t.Errorf("Ctrl+O should open the connections screen from the launcher, screen is %v", m.screen)
+	}
+	if m.connReturn != screenHome {
+		t.Errorf("Esc should return to the launcher, return screen is %v", m.connReturn)
+	}
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.screen != screenHome {
+		t.Errorf("Esc should come back to the launcher, screen is %v", m.screen)
+	}
+
+	// Ctrl+K still works from the launcher, and plain letters stay local.
+	m2 := newLauncher(t)
+	press(t, m2, run('k', tea.ModCtrl, ""))
+	if m2.Overlay != OverlayPalette {
+		t.Error("Ctrl+K should open the palette from the launcher")
+	}
+	m3 := newLauncher(t)
+	cursor := m3.home.cursor
+	press(t, m3, run('z', 0, "z"))
+	if m3.home.cursor != cursor {
+		t.Error("a plain letter should not move the launcher's cursor")
+	}
+}
+
 // The launcher is clickable, and a click means the same as Enter there.
 func TestHomeIsClickable(t *testing.T) {
 	m := newLauncher(t)

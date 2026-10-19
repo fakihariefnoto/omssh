@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -72,6 +73,17 @@ func TestDumpRender(t *testing.T) {
 	preview.selectByName("notes.txt")
 	fire(t, preview, "f3")
 	write("preview", preview, 170, 30)
+
+	// The connections screen and its form.
+	conn := dumpModel(t)
+	conn.sshPath = filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(conn.sshPath, []byte("Host prod-api\n    HostName 203.0.113.10\n    User deploy\n    Port 2222\n    IdentityFile ~/.ssh/id_ed25519\n\nHost staging\n    HostName staging.example.com\n    User ubuntu\n    ProxyJump prod-api\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fire(t, conn, "ctrl+o")
+	write("connections", conn, 140, 34)
+	fire(t, conn, "a")
+	write("connections-form", conn, 140, 34)
 
 	// The front door, at the sizes where its layout has to change.
 	for _, size := range []struct {
@@ -148,11 +160,9 @@ func dumpKey(key string) tea.KeyPressMsg {
 	if len(key) == 1 {
 		return tea.KeyPressMsg{Code: rune(key[0]), Text: key}
 	}
-	switch key {
-	case "ctrl+k":
-		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}
-	case "ctrl+a":
-		return tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl}
+	// Any ctrl+<letter>, so dumps can drive the whole interface.
+	if letter, ok := strings.CutPrefix(key, "ctrl+"); ok && len(letter) == 1 {
+		return tea.KeyPressMsg{Code: rune(letter[0]), Mod: tea.ModCtrl}
 	}
 	return tea.KeyPressMsg{}
 }
