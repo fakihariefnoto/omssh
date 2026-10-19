@@ -85,6 +85,16 @@ returns one level and the terminal is usable on exit.
 Host *management* landed early with M0 (the connections screen edits
 `~/.ssh/config`); this milestone is what turns a listed host into a session.
 
+Landed so far: `internal/ssh` — targets resolved from the config with ssh's own
+defaults, an auth chain that tries the agent and then the identity files before
+asking for anything, `known_hosts` verification with a typed verdict for the
+first-connect case and a hard stop for a changed key, `ProxyJump` chains where
+every hop is verified in its own right, and a connection pool that shares one
+connection between tabs, heartbeats it, and reaps it when idle. Every test runs
+against an in-process SSH server, so the handshake is real rather than mocked.
+Still to come here: the keyring for passwords, the SFTP filesystem, and the
+remote pane in the interface.
+
 - `~/.ssh/config` parser (with `Include` and wildcards) and written-back
   metadata as OpenSSH-safe comments.
 - Auth chain: explicit key → agent → keyring password; keyboard-interactive.
