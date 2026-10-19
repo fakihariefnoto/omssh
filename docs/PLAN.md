@@ -4,7 +4,7 @@
 
 ## 1. Summary
 
-`omssh` is a terminal UI SSH/SFTP client written in Go. It is aimed at people
+`omssh` — *Oh My SSH* — is a terminal UI SSH/SFTP client written in Go. It is aimed at people
 who spend their day moving between servers and strongly dislike typing `scp`,
 `rsync`, `tar -xzf` and remembering remote paths.
 

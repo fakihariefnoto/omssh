@@ -49,6 +49,9 @@ all being solid.
 - Added the launcher (front door) with an ASCII plate and an icon menu, and
   reworked the tab strip: labelled `sessions`, rules between tabs, active tab
   underlined. The old filled tab chip read as a floating badge, not as chrome.
+- Fixed the launcher's centring: the plate and the menu are separate centred
+  units, because padding the 44-cell wordmark into the menu's wider box left it
+  visibly left of centre. The tagline is the backronym ("Oh My SSH").
 
 **Acceptance:** `make run` shows the UI from `UX.md` §2 at 140 and 100 cols
 without layout breakage; theme switch changes everything; `F1` shows the

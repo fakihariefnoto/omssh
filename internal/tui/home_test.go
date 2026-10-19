@@ -35,7 +35,7 @@ func TestHomeIsTheDefaultScreen(t *testing.T) {
 		t.Fatal("a first run should start on the launcher")
 	}
 	out := ansi.Strip(render(m))
-	for _, want := range []string{strings.TrimSpace(logo[0]), "SSH / SFTP for the terminal", "Browse local files", "Settings and theme", "Quit"} {
+	for _, want := range []string{strings.TrimSpace(logo[0]), "Oh My SSH", "Browse local files", "Settings and theme", "Quit"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the launcher is missing %q:\n%s", want, out)
 		}
@@ -63,6 +63,74 @@ func TestLogoLinesAreEqualWidth(t *testing.T) {
 	for i, line := range narrowLogo {
 		if got := visibleWidth(line); got != visibleWidth(narrowLogo[0]) {
 			t.Errorf("narrow logo row %d is %d cells and its row 0 is %d", i, got, visibleWidth(narrowLogo[0]))
+		}
+	}
+}
+
+// Both units on the launcher are centred on the terminal's centre line. The
+// plate used to be padded into the menu's wider box, which left the wordmark
+// visibly left of centre; they are separate units now.
+func TestPlateAndMenuAreCentred(t *testing.T) {
+	for _, width := range []int{140, 100, 76} {
+		m := newLauncher(t)
+		resize(t, m, width, 34)
+		lines := strings.Split(ansi.Strip(render(m)), "\n")
+
+		// Widths are measured in terminal cells, not bytes: a block glyph is three
+		// bytes and one cell.
+		centreOf := func(line string) int {
+			left := visibleWidth(line) - visibleWidth(strings.TrimLeft(line, " "))
+			right := visibleWidth(strings.TrimRight(line, " "))
+			return (left + right) / 2
+		}
+
+		plateRow := ""
+		for _, line := range lines {
+			if strings.Contains(line, "█") {
+				plateRow = line
+				break
+			}
+		}
+		if plateRow == "" {
+			t.Fatalf("width %d: no wordmark found", width)
+		}
+		if diff := centreOf(plateRow) - width/2; diff < -1 || diff > 1 {
+			t.Errorf("width %d: the wordmark centre is at %d, off by %d", width, centreOf(plateRow), diff)
+		}
+
+		// Every entry's icon sits in the same column. The cursor row is marked
+		// with a pointer, so the leading spaces differ on purpose; the icon column
+		// must not.
+		iconColumn := func(line string) int {
+			for _, icon := range []string{"[~]", "[/]", "[?]", "[+]", "[x]"} {
+				if i := strings.Index(line, icon); i >= 0 {
+					return visibleWidth(line[:i])
+				}
+			}
+			return -1
+		}
+		columns := map[int]bool{}
+		for _, line := range lines {
+			if col := iconColumn(line); col >= 0 {
+				columns[col] = true
+			}
+		}
+		if len(columns) != 1 {
+			t.Errorf("width %d: the menu icons do not form one column: %v", width, columns)
+		}
+
+		footerRow := ""
+		for _, line := range lines {
+			if strings.Contains(line, "↑↓") {
+				footerRow = line
+				break
+			}
+		}
+		if footerRow == "" {
+			t.Fatalf("width %d: no footer found", width)
+		}
+		if diff := centreOf(footerRow) - width/2; diff < -1 || diff > 1 {
+			t.Errorf("width %d: the menu centre is at %d, off by %d", width, centreOf(footerRow), diff)
 		}
 	}
 }

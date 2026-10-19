@@ -1,6 +1,6 @@
 # omssh
 
-A modern SSH/SFTP client for the terminal. Built in Go with
+**Oh My SSH** — a modern SSH/SFTP client for the terminal. Built in Go with
 [Bubble Tea v2](https://github.com/charmbracelet/bubbletea) and
 [Lip Gloss v2](https://github.com/charmbracelet/lipgloss).
 

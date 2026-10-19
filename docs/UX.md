@@ -116,7 +116,7 @@ ASCII icon, so it reads the same on any terminal before a theme is applied.
        ██    ██ ██  ██  ██      ██      ██ ██    ██
         ██████  ██      ██ ██████  ██████  ██    ██
 
-              SSH / SFTP for the terminal
+         Oh My SSH — SSH/SFTP with terminal UI
 
         ▸ [~] Browse local files        Enter
           [/] Go to a folder            Ctrl+L
@@ -132,9 +132,11 @@ ASCII icon, so it reads the same on any terminal before a theme is applied.
 - **Only things that work appear.** A menu of dead ends teaches nothing, so
   `Connect` joins this list when the SSH layer lands (M1), and `Deploy` when
   profiles do (M6).
-- The plate and the menu are laid out as one block and centred as a unit, so the
-  icons form a column; centring each row separately leaves every line with a
-  different left edge.
+- The plate and the menu are **two centred units**. They are different widths,
+  and padding the narrow one into the wide one's box leaves the wordmark visibly
+  left of centre; inside the menu, rows are padded to a common width so the
+  icons form a column. Centring each row separately is the other failure: every
+  line then has a different left edge.
 - `ui.start: files` skips the launcher for people who do not want a front door.
 - The whole menu is clickable.
 

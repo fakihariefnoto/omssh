@@ -88,29 +88,34 @@ func (m *Model) renderHome(l layout) string {
 	width := l.Width
 	plate, top, _ := m.homeGeometry(l)
 
-	// The whole plate and menu is laid out as one block and then centred, so the
-	// icons form a column. Centring each row on its own would leave every line
-	// with a different left edge, which reads as a broken layout.
-	type row struct {
+	// The plate and the menu are two centred units, not one. They are different
+	// widths (the plate is 44, the menu is as wide as its longest hint), and
+	// padding the narrow one into the wide one's box would leave the wordmark
+	// sitting visibly left of centre.
+	tagline := "Oh My SSH — SSH/SFTP with terminal UI"
+	if width < lipgloss.Width(tagline)+2 {
+		tagline = "Oh My SSH"
+	}
+
+	rows := make([]string, 0, l.Height)
+	for _, line := range plate {
+		rows = append(rows, lipgloss.PlaceHorizontal(width, lipgloss.Center, m.st.Accent.Render(line)))
+	}
+	rows = append(rows, "",
+		lipgloss.PlaceHorizontal(width, lipgloss.Center, m.st.Muted.Render(tagline)),
+		"")
+
+	// The menu is one block: its rows are padded to a common width so the icons
+	// form a column, and only then is the block centred.
+	type menuRow struct {
 		text   string
 		centre bool
 	}
-	block := make([]row, 0, 24)
-	for _, line := range plate {
-		block = append(block, row{text: m.st.Accent.Render(line)})
-	}
-	block = append(block,
-		row{},
-		row{text: m.st.Muted.Render("SSH / SFTP for the terminal"), centre: true},
-		row{},
-	)
-
-	// The hints are the first thing to go when the terminal is narrow: the menu
-	// itself must survive at any width.
 	const hintColumn = 26
-	showHints := width >= 42
+	showHints := width >= 46
 	items := m.homeItems()
 	cursor := clamp(m.home.cursor, 0, max(0, len(items)-1))
+	menu := make([]menuRow, 0, len(items)+2)
 	for i, item := range items {
 		icon := m.st.StatusKey.Render("[" + item.Icon + "]")
 		gap, hint := "", ""
@@ -119,43 +124,48 @@ func (m *Model) renderHome(l layout) string {
 			hint = m.st.StatusMuted.Render(item.Hint)
 		}
 		if i == cursor {
-			block = append(block, row{text: m.st.Accent.Bold(true).Render(" ▸ ") + icon + " " +
+			menu = append(menu, menuRow{text: m.st.Accent.Bold(true).Render(" ▸ ") + icon + " " +
 				m.st.Accent.Bold(true).Render(item.Label) + gap + hint})
 			continue
 		}
-		block = append(block, row{text: "   " + icon + " " + m.st.CardText.Render(item.Label) + gap + hint})
+		menu = append(menu, menuRow{text: "   " + icon + " " + m.st.CardText.Render(item.Label) + gap + hint})
 	}
 
 	footer := "↑↓ choose · Enter open · Esc go to the files · Ctrl+K actions"
 	if width < lipgloss.Width(footer)+2 {
 		footer = "↑↓ · Enter · Esc files"
 	}
-	block = append(block, row{}, row{text: m.st.CardMuted.Render(footer), centre: true})
+	menu = append(menu, menuRow{}, menuRow{text: m.st.CardMuted.Render(footer), centre: true})
 
-	blockWidth := 0
-	for _, r := range block {
-		blockWidth = max(blockWidth, lipgloss.Width(r.text))
+	menuWidth := 0
+	for _, r := range menu {
+		menuWidth = max(menuWidth, lipgloss.Width(r.text))
 	}
-	blockWidth = min(blockWidth, width)
+	menuWidth = min(menuWidth, width)
 
-	rows := make([]string, 0, len(block))
-	for _, r := range block {
+	rows = append(rows, "")
+	for _, r := range menu {
+		text := ansi.Truncate(r.text, menuWidth, "…")
 		if r.centre {
-			rows = append(rows, lipgloss.PlaceHorizontal(blockWidth, lipgloss.Center, ansi.Truncate(r.text, blockWidth, "…")))
-			continue
+			text = lipgloss.PlaceHorizontal(menuWidth, lipgloss.Center, text)
+		} else {
+			text = padVisible(text, menuWidth)
 		}
-		rows = append(rows, padVisible(ansi.Truncate(r.text, blockWidth, "…"), blockWidth))
+		rows = append(rows, lipgloss.PlaceHorizontal(width, lipgloss.Center, text))
 	}
+	rows = rows[:len(rows):len(rows)]
 
-	// Centre the block vertically, then every line horizontally.
+	// Centre the whole block vertically; each line is already centred.
 	out := make([]string, 0, l.Height)
 	for i := 0; i < top; i++ {
 		out = append(out, spaces(width))
 	}
 	for _, row := range rows {
-		// Every row is clamped before it is centred, so nothing can wrap and push
-		// the frame down: a plate wider than the terminal must be cut, not scrolled.
-		out = append(out, lipgloss.PlaceHorizontal(width, lipgloss.Center, ansi.Truncate(row, width, "…")))
+		// Every line is exactly the terminal width: a short line is fine to draw
+		// but it makes the frame's shape depend on the renderer's clearing
+		// behaviour, and the tests could no longer tell a full screen from a
+		// half-drawn one.
+		out = append(out, padVisible(ansi.Truncate(row, width, "…"), width))
 	}
 	for len(out) < l.Height {
 		out = append(out, spaces(width))
