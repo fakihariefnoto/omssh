@@ -189,7 +189,7 @@ func (m *Model) renderConnections(l layout) string {
 		rows = append(rows, m.st.PathInput.Width(width).Render("filter: "+m.conn.filter.Rendered()))
 	} else {
 		rows = append(rows, m.st.StatusMuted.Render(
-			"Enter connect · e edit · a add · d delete · r reload · o edit file · / filter · Esc back"))
+			"Enter browse · t terminal · e edit · a add · d delete · r reload · o edit file · / filter · Esc back"))
 	}
 
 	// The row slice holds multi-line boxes, so it is joined before it is trimmed:

@@ -374,6 +374,38 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyListing(msg)
 		return m, nil
 
+	case terminalDoneMsg:
+		m.mode = "NORMAL"
+		if msg.err != nil {
+			m.toastError("Terminal: " + msg.err.Error())
+		} else {
+			m.toastInfo("Left " + msg.host)
+		}
+		cmd := m.refreshAll()
+		return m, cmd
+
+	case extractDoneMsg:
+		m.mode = "NORMAL"
+		if msg.err != nil {
+			m.toastError("Extract failed: " + msg.err.Error())
+			return m, nil
+		}
+		m.toastSuccess(fmt.Sprintf("Extracted %d %s into %s",
+			msg.count, plural(msg.count, "file", "files"), msg.dst))
+		cmd := m.refreshAll()
+		return m, cmd
+
+	case compressDoneMsg:
+		m.mode = "NORMAL"
+		if msg.err != nil {
+			m.toastError("Compress failed: " + msg.err.Error())
+			return m, nil
+		}
+		m.toastSuccess(fmt.Sprintf("Wrote %s with %d %s", msg.dst,
+			msg.count, plural(msg.count, "entry", "entries")))
+		cmd := m.refreshAll()
+		return m, cmd
+
 	case editReadyMsg:
 		cmd := m.openRemoteEditor(msg)
 		return m, cmd
@@ -937,6 +969,26 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openPrompt("prompt.chmod")
 	case "file.symlink":
 		m.openPrompt("prompt.symlink")
+	case "terminal.new":
+		return m.openTerminalForPane()
+	case "session.terminal":
+		entry, ok := m.currentConnection()
+		if !ok {
+			m.quitHint = "Put the cursor on a host first"
+			break
+		}
+		return m.openTerminal(entry.Alias)
+
+	case "archive.extract", "archive.extract-here":
+		if id == "archive.extract-here" {
+			return m.extractCursor(sidePrefix(m.Pane()) + m.Pane().Path)
+		}
+		m.openExtractPrompt()
+	case "archive.compress":
+		m.openCompressPrompt()
+	case "archive.contents":
+		m.preview = true
+		m.mode = "PREVIEW"
 	case "file.delete":
 		m.openDeleteConfirm()
 
@@ -1068,6 +1120,12 @@ func (m *Model) openPrompt(action actions.ID) {
 	case "prompt.path":
 		m.prompt = promptState{Title: "Go to path", Hint: "Directory to open", Action: action, open: true}
 		m.prompt.input.Set(m.Pane().Path)
+	case "prompt.extract":
+		m.openExtractPrompt()
+		return
+	case "prompt.compress":
+		m.openCompressPrompt()
+		return
 	case "prompt.chmod":
 		m.prompt = promptState{Title: "Permissions", Hint: "Octal mode, like 644 or 755", Action: action, open: true}
 		m.prompt.input.Set("644")

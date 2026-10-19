@@ -404,7 +404,8 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `r` / `F2` | Rename (batch rename when multi-selected) | |
 | `n` / `N` | New file / new folder | |
 | `d` / `Ctrl+D` / `Del` | Delete → always asks | no trash, so the dialog is the safety net |
-| `Ctrl+E` | Extract… | destination side is chosen in the dialog |
+| `Ctrl+E` | Extract… | `local:/path` or `remote:/path`; the other pane is the default |
+| `Ctrl+G` | Compress… | format follows the name (`.tar.gz`, `.tar`, `.zip`) |
 | `P` | Change permissions (octal) | |
 | `L` | Create a link to the cursor entry | |
 | `Ctrl+G` | Compress selection… | format + destination side |
@@ -415,6 +416,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `F9` / right-click | Context menu — every operation for the selection | discovery net |
 | `Ctrl+K` | Command palette — every action, searchable, with its shortcut | discovery net |
 | `?` / `F1` | Help — searchable keymap grouped by task | discovery net |
+| `T` | Full SSH terminal (or a local shell) — the terminal is handed to `ssh` | |
 | `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | |
 | `Esc` | Back / dismiss / clear | never destructive, **never quits** |
 

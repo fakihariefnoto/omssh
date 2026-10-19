@@ -175,9 +175,12 @@ func standardPreset() []Action {
 			Desc: "Move to the previous session tab", Enabled: func(Context) bool { return true }},
 		{ID: "session.tab-next", Label: "Next tab", Category: CatSession, Default: "]", Keys: []string{"ctrl+pgdown"},
 			Desc: "Move to the next session tab", Enabled: func(Context) bool { return true }},
-		{ID: "terminal.new", Label: "New terminal", Category: CatSession, Default: "ctrl+space n",
-			Desc:    "Open another terminal tab in this session",
+		{ID: "terminal.new", Label: "Terminal", Category: CatSession, Default: "T",
+			Desc:    "Open a full SSH shell on this host, and come back when you exit it",
 			Enabled: f(func(ctx Context) bool { return ctx.Connected || ctx.Local })},
+		{ID: "session.terminal", Label: "Open a terminal", Category: CatSession, Default: "t", Screen: connections,
+			Desc:    "Open a full SSH shell on the highlighted host",
+			Enabled: onScreenWithCursor(connections)},
 		{ID: "terminal.close", Label: "Close terminal", Category: CatSession, Default: "ctrl+space w",
 			Desc: "Close the focused terminal tab", Enabled: func(ctx Context) bool { return ctx.Terminal }},
 		{ID: "terminal.copy-mode", Label: "Terminal copy mode", Category: CatSession, Default: "ctrl+space [",
@@ -251,7 +254,7 @@ func onScreen(name string) func(Context) bool {
 }
 
 // onScreenWithCursor is onScreen plus "the list has a highlighted row".
-func onScreenWithCursor(name string) func(Context) bool {
+func onScreenWithCursor(name string) func(Context) bool { //nolint:unparam // named for symmetry with onScreen
 	return func(ctx Context) bool { return ctx.Screen == name && ctx.Cursor }
 }
 

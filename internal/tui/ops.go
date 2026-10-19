@@ -262,6 +262,21 @@ func (m *Model) goLastDir() tea.Cmd {
 	return nil
 }
 
+// refreshAll reloads both panes: an extraction or an archive write touches one
+// side and is usually aimed at the other.
+func (m *Model) refreshAll() tea.Cmd {
+	cmds := make([]tea.Cmd, 0, len(m.Panes))
+	for i := range m.Panes {
+		if cmd := m.loadPaneAsync(i); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
 // refresh reloads the listing, keeping the cursor on the same entry where it
 // still exists, so a refresh does not move you.
 func (m *Model) refresh() tea.Cmd {

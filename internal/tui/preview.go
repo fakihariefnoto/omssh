@@ -11,6 +11,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/fakihariefnoto/omssh/internal/archive"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
@@ -40,13 +41,7 @@ func (m *Model) renderPreview(width, rows int) string {
 	case pane.FS == nil:
 		return m.previewLines([]string{m.st.PaneEmpty.Render("This pane is not connected")}, width, rows)
 	case IsArchive(name):
-		return m.previewLines([]string{
-			m.st.Accent.Render(m.icons.Archive + " " + truncate(name, width-2)),
-			m.st.CardText.Render(humanSize(entry.Size)),
-			"",
-			m.st.PaneEmpty.Render("Archive contents arrive with"),
-			m.st.PaneEmpty.Render("the archive engine (M4)."),
-		}, width, rows)
+		return m.previewLines(m.archivePreview(pane, entry, width), width, rows)
 	}
 
 	target := pane.FS.Join(pane.Path, name)
@@ -70,6 +65,41 @@ func (m *Model) renderPreview(width, rows int) string {
 		body = append([]string{m.st.PaneSymlink.Render(truncate(target, width)), ""}, body...)
 	}
 	return m.previewLines(append([]string{header, ""}, body...), width, rows)
+}
+
+// archivePreview lists what an archive holds. Listings happen on the update
+// path, so a remote archive is not opened here: one SFTP round trip per redraw
+// would make the cursor stutter. It says how to unpack it instead.
+func (m *Model) archivePreview(pane *Pane, entry Entry, width int) []string {
+	header := m.st.Accent.Render(m.icons.Archive + " " + truncate(entry.Name, width-2))
+	if pane.Side != SideLocal {
+		return []string{
+			header,
+			m.st.CardText.Render(humanSize(entry.Size)),
+			"",
+			m.st.PaneEmpty.Render("Ctrl+E unpacks it where you choose"),
+		}
+	}
+	entries, err := archive.List(pane.FS, pane.FS.Join(pane.Path, entry.Name))
+	if err != nil {
+		return []string{header, "", m.st.Danger.Render(truncate(err.Error(), width))}
+	}
+	lines := []string{header, m.st.CardMuted.Render(fmt.Sprintf("%d %s · %s",
+		len(entries), plural(len(entries), "entry", "entries"), humanSize(entry.Size))), ""}
+	limit := 40
+	for i, member := range entries {
+		if i >= limit {
+			lines = append(lines, m.st.PaneEmpty.Render(fmt.Sprintf("… %d more", len(entries)-limit)))
+			break
+		}
+		mark := "·"
+		if member.Dir {
+			mark = "▸"
+		}
+		lines = append(lines, m.st.CardText.Render(truncate(mark+" "+member.Name, width)))
+	}
+	lines = append(lines, "", m.st.PaneEmpty.Render("Ctrl+E to unpack"))
+	return lines
 }
 
 // dirSummary describes a directory without opening it.
