@@ -964,6 +964,13 @@ func (m *Model) goBack() {
 	case m.screen == screenConnections:
 		m.screen = m.connReturn
 		m.mode = "NORMAL"
+	case m.screen == screenFiles:
+		// Escape twice from anywhere lands on the launcher: the first leaves the
+		// file manager, the second explains how to quit rather than bouncing
+		// back into the files.
+		m.screen = screenHome
+		m.home.cursor = 0
+		m.mode = "NORMAL"
 	case m.resolver.Pending() != "":
 		m.resolver.Reset()
 	case m.dismissToast():

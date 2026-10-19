@@ -103,8 +103,14 @@ func (m *Model) renderTabs(l layout) string {
 		}
 		// The local machine is always available, so it gets no state dot; a
 		// remote tab wears its connection state.
+		//
+		// The dot is written *beside* the styled label, never inside it: a style
+		// that receives text already containing escape sequences re-emits it per
+		// grapheme, which splits the inner sequence and prints its tail as text.
+		// That is what put a literal "[38;2;..." in this row.
 		if tab.Host != "" {
-			label = m.stateDot(tab.State) + " " + label
+			b.WriteString(m.stateDot(tab.State))
+			b.WriteString(" ")
 		}
 		if i == m.activeTab {
 			b.WriteString(m.st.TabActive.Render(label))
@@ -496,7 +502,10 @@ func (m *Model) renderStatusBar(l layout) string {
 	}
 	summary := strings.Join(parts, " · ")
 
-	right := m.st.StatusMuted.Render("? help · Ctrl+Q quit")
+	right := m.st.StatusMuted.Render("Esc menu · Ctrl+Q quit")
+	if m.screen == screenHome {
+		right = m.st.StatusMuted.Render("? help · Ctrl+Q quit")
+	}
 	if m.quitHint != "" {
 		right = m.st.Warning.Render(m.quitHint)
 	}

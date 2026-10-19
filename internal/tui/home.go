@@ -210,7 +210,9 @@ func (m *Model) handleHomeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "end":
 		m.home.cursor = len(items) - 1
 	case "esc":
-		m.openFiles()
+		// The launcher is the bottom of the stack, so Escape stops here and says
+		// how to leave for good.
+		m.quitHint = "Ctrl+Q to quit"
 	case "enter", "space":
 		if m.home.cursor < len(items) {
 			return m.activateHome(items[m.home.cursor]), true

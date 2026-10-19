@@ -60,6 +60,12 @@ all being solid.
   is typed, folders only, dot-folders hidden until a dot is typed.
 - `amber` is the default theme, with an accent of its own; `auto` remains
   available for people who want the terminal to decide.
+- Fixed three things a first real run found: a server that omits file attributes
+  printed ten question marks per row and hid which entries were directories (one
+  marker now, and a direct question when the attributes are missing); the tab
+  strip printed a literal `[38;2;...` because a pre-styled string was handed to
+  another style, which re-emits per grapheme and split the inner sequence; and
+  `Esc` twice now lands on the launcher instead of bouncing between screens.
 - `internal/vfs`: the one filesystem interface (ADR 0001) with a `Local`
   implementation and a conformance suite (`vfstest`) that Local passes in full.
   Includes confined paths — `..` resolves inside the root and can never climb out

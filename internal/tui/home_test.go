@@ -153,16 +153,6 @@ func TestHomeFillsTheTerminal(t *testing.T) {
 	}
 }
 
-// Esc is the documented way straight into the files. The launcher must never
-// trap someone who just wants to work.
-func TestEscLeavesTheLauncher(t *testing.T) {
-	m := newLauncher(t)
-	press(t, m, keyNamed(tea.KeyEsc))
-	if m.screen != screenFiles {
-		t.Fatal("Esc should go to the file manager")
-	}
-}
-
 // The launcher is a menu: arrows wrap, and Enter takes the focused entry.
 func TestHomeMenuNavigatesAndActingLeaves(t *testing.T) {
 	m := newLauncher(t)

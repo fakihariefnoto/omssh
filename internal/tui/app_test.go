@@ -285,8 +285,17 @@ func TestEscNeverQuits(t *testing.T) {
 	if m.quit {
 		t.Fatal("Esc quit the application")
 	}
+	// The first Escape leaves the file manager for the launcher; the second
+	// explains how to quit. Neither quits.
+	if m.screen != screenHome {
+		t.Errorf("the first Escape should reach the launcher, screen is %v", m.screen)
+	}
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.quit {
+		t.Fatal("Esc quit the application")
+	}
 	if !strings.Contains(m.quitHint, "Ctrl+Q") {
-		t.Errorf("with nothing to dismiss, Esc should explain how to quit, got %q", m.quitHint)
+		t.Errorf("on the launcher, Esc should explain how to quit, got %q", m.quitHint)
 	}
 
 	// With a selection, Esc clears it instead.
@@ -856,5 +865,77 @@ func TestToastsExpire(t *testing.T) {
 	m.expireToasts()
 	if len(m.toasts) != 0 {
 		t.Error("an expired toast should be dropped")
+	}
+}
+
+// A styled cell that is cut mid-sequence prints its own escape codes as text,
+// which is what a person sees as a stray "[38;2;..." across the tab strip. Every
+// width is checked, because truncation is exactly when it happens.
+func TestStyledLinesNeverLeakEscapeText(t *testing.T) {
+	build := func() *Model {
+		m := newTestModel(t)
+		m.tabs = append(m.tabs,
+			Tab{Title: "contabo", Host: "contabo", State: StateReady},
+			Tab{Title: "a-very-long-host-name.example.com", Host: "long", State: StateBusy},
+		)
+		m.activeTab = 1
+		m.selectByName("README.md")
+		press(t, m, keyNamed(tea.KeySpace))
+		return m
+	}
+	for _, width := range []int{160, 140, 120, 100, 90, 80, 70, 60, 50, 40, 32} {
+		m := build()
+		resize(t, m, width, 30)
+		for i, line := range strings.Split(render(m), "\n") {
+			plain := ansi.Strip(line)
+			for _, leaked := range []string{"[38;", "[48;", "[m", "[0m", "[1m", "[4m"} {
+				if strings.Contains(plain, leaked) {
+					t.Errorf("width %d, line %d leaks %q as text: %q", width, i, leaked, plain)
+				}
+			}
+		}
+	}
+}
+
+// Every overlay, at every width: no line may print escape text. This is the
+// broader version of the tab-strip check, because the same mistake — handing an
+// already-styled string to another Render — can appear anywhere.
+func TestOverlaysNeverLeakEscapeText(t *testing.T) {
+	openers := map[string]func(t *testing.T, m *Model){
+		"palette": func(t *testing.T, m *Model) { press(t, m, run('k', tea.ModCtrl, "")) },
+		"menu": func(t *testing.T, m *Model) {
+			m.selectByName("README.md")
+			press(t, m, keyNamed(tea.KeySpace))
+			press(t, m, keyNamed(tea.KeyF9))
+		},
+		"help":     func(t *testing.T, m *Model) { press(t, m, keyNamed(tea.KeyF1)) },
+		"settings": func(t *testing.T, m *Model) { press(t, m, run(',', tea.ModCtrl, "")) },
+		"prompt":   func(t *testing.T, m *Model) { press(t, m, keyNamed(tea.KeyF7)) },
+		"confirm": func(t *testing.T, m *Model) {
+			m.selectByName("README.md")
+			press(t, m, keyNamed(tea.KeyF8))
+		},
+		"launcher": func(t *testing.T, m *Model) { m.screen = screenHome },
+		"connections": func(t *testing.T, m *Model) {
+			m.sshPath = filepath.Join(t.TempDir(), "config")
+			mustWrite(t, m.sshPath, connFixture)
+			m.runAction("session.open")
+		},
+	}
+	for name, open := range openers {
+		for _, width := range []int{160, 120, 100, 80, 60, 40, 32} {
+			m := newTestModel(t)
+			resize(t, m, width, 32)
+			open(t, m)
+			for i, line := range strings.Split(render(m), "\n") {
+				plain := ansi.Strip(line)
+				for _, leaked := range []string{"[38;", "[48;", "[m", "[0m", "[1m", "[4m", "[3", "[4"} {
+					if strings.Contains(plain, leaked) {
+						t.Errorf("%s at width %d, line %d leaks %q: %q", name, width, i, leaked, plain)
+						break
+					}
+				}
+			}
+		}
 	}
 }

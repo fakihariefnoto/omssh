@@ -124,11 +124,12 @@ ASCII icon, so it reads the same on any terminal before a theme is applied.
           [+] Settings and theme        Ctrl+,
           [x] Quit                      Ctrl+Q
 
-   ↑↓ choose · Enter open · Esc go to the files · Ctrl+K actions
+        ↑↓ choose · Enter open · Ctrl+K actions
 ```
 
-- `↑↓`/`Tab` move, `Enter` opens, **`Esc` skips straight to the files** — the
-  launcher never traps someone who just wants to work.
+- `↑↓`/`Tab` move and `Enter` opens. The launcher is the bottom of the stack:
+  `Esc` twice from anywhere lands here, and `Esc` here names `Ctrl+Q` rather than
+  bouncing back into the files.
 - **Only things that work appear.** A menu of dead ends teaches nothing, so
   `Connect` joins this list when the SSH layer lands (M1), and `Deploy` when
   profiles do (M6).
@@ -228,8 +229,10 @@ Learn this once and the rest of the app is guessable:
 | **F-keys** | Classic file-manager operations | `F2` rename, `F3` view, `F4` edit, `F5` copy, `F6` move, `F7` new folder, `F8` delete, `F9` menu, `F10` quit |
 
 `Enter` opens or confirms. `Esc` goes back one level of context, never destroys
-anything and never quits: at the top level it tells you how to quit rather than
-quitting. `Tab` switches pane.
+anything and never quits. Pressed twice from anywhere it lands on the launcher —
+the first leaves the file manager, the second does nothing but name the quit key,
+so the stack has a bottom rather than bouncing between two screens. `Tab`
+switches pane.
 
 ---
 
@@ -266,6 +269,10 @@ otherwise.
 archives, a size tree for directories, and image preview where the terminal
 supports graphics. Preview cost is bounded: files over 1 MB stream the head and
 say so.
+
+**Unknown metadata reads as unknown.** A server that omits file attributes leaves
+the mode at zero; the listing shows one `?` in the permission column rather than
+ten, and the entry is asked about directly so a directory is still a directory.
 
 **The rules that make it feel right**
 
@@ -388,7 +395,8 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `F1` / `?` | Help — searchable keymap grouped by task | discovery net |
 | `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | rebindable via `keys.quit` |
 | `Esc` | Back / dismiss / clear | never destructive, **never quits** |
-| `Esc` at the top level | Nothing to dismiss → shows `Ctrl+Q to quit` | so quitting is never guessed |
+| `Esc` in the file manager | Returns to the launcher | `Esc`, `Esc` from anywhere lands on the main menu |
+| `Esc` on the launcher | Nothing above it → shows `Ctrl+Q to quit` | so quitting is never guessed |
 
 ### 7.3 Vim preset (optional)
 

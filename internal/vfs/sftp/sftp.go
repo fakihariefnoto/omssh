@@ -169,8 +169,18 @@ func (s *SFTP) ReadDir(name string) ([]fs.DirEntry, error) {
 		return nil, s.wrap("readdir", name, err)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	dir := s.resolve(name)
 	out := make([]fs.DirEntry, 0, len(entries))
 	for _, entry := range entries {
+		// Some servers send a directory listing without permissions or type
+		// bits. Without them a directory cannot be told from a file, so the
+		// entry is asked about directly — one request, only when the attributes
+		// are missing, and only for that entry.
+		if entry.Mode() == 0 {
+			if info, err := s.client.Stat(path.Join(dir, entry.Name())); err == nil {
+				entry = info
+			}
+		}
 		out = append(out, dirEntry{entry})
 	}
 	return out, nil

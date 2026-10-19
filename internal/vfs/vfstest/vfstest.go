@@ -122,6 +122,32 @@ func Run(t *testing.T, fsys vfs.FS) {
 		if !info.IsDir() {
 			t.Error("a directory should report IsDir")
 		}
+		// And so must the *entry* in a listing. A directory that arrives as a
+		// file is one a person cannot open, which is exactly the kind of thing a
+		// protocol can get wrong.
+		if err := fsys.Mkdir("/dir/sub", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		entries, err = fsys.ReadDir("/dir")
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, entry := range entries {
+			if entry.Name() != "sub" {
+				continue
+			}
+			found = true
+			if !entry.IsDir() {
+				t.Error("a directory in a listing should report IsDir")
+			}
+			if entry.Type()&fs.ModeDir == 0 {
+				t.Errorf("a directory in a listing should have the directory type bit, got %v", entry.Type())
+			}
+		}
+		if !found {
+			t.Error("the subdirectory is missing from the listing")
+		}
 	})
 
 	t.Run("MkdirAllCreatesParents", func(t *testing.T) {

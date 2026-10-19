@@ -52,9 +52,13 @@ func humanSize(n int64) string {
 
 // permString renders the ten-character permission column, marking directories
 // and symlinks in the leading position the way ls does.
+//
+// A server that omits attributes leaves the mode at zero. Ten question marks per
+// row is noise; one is an honest "not reported", and the icon still comes from
+// the directory flag.
 func permString(e Entry) string {
 	if e.Mode == 0 {
-		return "??????????"
+		return padLeft("?", 10)
 	}
 	if e.Dir {
 		return "d" + e.Mode.Perm().String()[1:]
