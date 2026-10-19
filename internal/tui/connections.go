@@ -211,7 +211,7 @@ func (m *Model) renderConnections(l layout) string {
 func (m *Model) connHeaderRow(inner int) string {
 	name, host, user, port := m.connColumns(inner)
 	header := padRight("NAME", name) + padRight("HOST", host) + padRight("USER", user) +
-		padLeft("PORT", port) + " " + padRight("STATE", connStateWidth)
+		padLeft("PORT", port) + " " + padRight("STATE", connStateWidth-1)
 	return m.st.PaneHeader.Render(padVisible(header, inner))
 }
 
@@ -236,7 +236,7 @@ func (m *Model) connColumns(inner int) (name, host, user, port int) {
 }
 
 // connStateWidth is the width of the state column: enough for "not connected".
-const connStateWidth = 13
+const connStateWidth = 14
 
 // renderConnRow draws one host in the table, highlighted when chosen.
 func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
@@ -261,7 +261,7 @@ func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
 	if portWidth > 0 {
 		cols += padLeft(port, portWidth)
 	}
-	cols += " " + padRight(state.label, connStateWidth-1)
+	cols += padRight(" "+state.label, connStateWidth)
 	if !e.Editable {
 		// It lives in an Include, so the main file cannot change it: say so here
 		// rather than failing when the edit is attempted.
