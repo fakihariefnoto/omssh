@@ -1,13 +1,13 @@
 package tui
 
 import (
-	"os"
-	"path/filepath"
+	"io/fs"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/fakihariefnoto/omssh/internal/actions"
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // Side says which machine a pane is looking at.
@@ -63,14 +63,26 @@ type Entry struct {
 	Symlink bool
 	Link    string
 	Size    int64
-	Mode    os.FileMode
+	Mode    fs.FileMode
 	ModTime time.Time
 }
 
-// Pane is one directory listing, local or remote.
+// Pane is one directory listing, over whatever filesystem it was given. The same
+// code shows a local directory and a remote one, because both are vfs.FS
+// (ADR 0001).
 type Pane struct {
-	Side    Side
-	Host    string
+	Side Side
+	Host string
+	// FS is what this pane is looking at. Nil means there is nothing to look at
+	// yet — an unconnected remote — which the interface says plainly rather than
+	// showing an empty directory.
+	FS vfs.FS
+	// Home is where Ctrl+Home and the "go home" action land: the user's home
+	// locally, the session's root remotely.
+	Home string
+	// Base names the remote directory "/" means, for the breadcrumb: a pane path
+	// is always inside its filesystem, and people think in server paths.
+	Base    string
 	Path    string
 	Entries []Entry
 	Cursor  int
@@ -93,10 +105,12 @@ type Pane struct {
 	Offset int
 }
 
-// NewPane returns a pane rooted at dir.
-func NewPane(side Side, dir string) Pane {
+// NewPane returns a local pane over fsys, showing dir.
+func NewPane(fsys vfs.FS, dir, home string) Pane {
 	return Pane{
-		Side:     side,
+		Side:     SideLocal,
+		FS:       fsys,
+		Home:     home,
 		Path:     dir,
 		Selected: map[string]bool{},
 		History:  []string{dir},
@@ -104,19 +118,33 @@ func NewPane(side Side, dir string) Pane {
 	}
 }
 
-// NewRemotePane returns an unconnected remote pane.
+// NewRemotePane returns a pane that is not connected to anything yet.
 func NewRemotePane() Pane {
 	return Pane{
 		Side:     SideRemote,
 		Selected: map[string]bool{},
-		History:  nil,
 	}
 }
 
-// Connected reports whether the pane has somewhere to look.
-func (p Pane) Connected() bool {
-	return p.Side == SideLocal || p.Host != ""
+// Bind points the pane at a filesystem: what connecting a host does.
+func (p *Pane) Bind(fsys vfs.FS, host, root string) {
+	p.FS = fsys
+	p.Host = host
+	p.Home = root
+	p.Path = root
+	if p.Path == "" {
+		p.Path = "/"
+	}
+	p.Entries = nil
+	p.Cursor, p.Offset, p.Filter, p.Err = 0, 0, "", nil
+	p.Selected = map[string]bool{}
+	p.History = []string{p.Path}
+	p.HIndex = 0
+	p.Load(true)
 }
+
+// Connected reports whether the pane has somewhere to look.
+func (p Pane) Connected() bool { return p.FS != nil }
 
 // CursorEntry returns the entry under the cursor.
 func (p Pane) CursorEntry() (Entry, bool) {
@@ -167,15 +195,18 @@ func (p Pane) Visible() []Entry {
 	return out
 }
 
-// Load reads the local directory. Remote panes are loaded over SFTP from M2.
+// Load lists the pane's directory over its filesystem.
 func (p *Pane) Load(hidden bool) {
-	if p.Side != SideLocal {
+	if p.FS == nil {
+		// Nothing to show, and nothing wrong: the interface draws the
+		// not-connected state from this.
+		p.Entries, p.Err = nil, nil
 		return
 	}
 	if p.Path == "" {
-		p.Path = "."
+		p.Path = "/"
 	}
-	entries, err := readDir(p.Path)
+	entries, err := readDir(p.FS, p.Path)
 	p.Err = err
 	if err != nil {
 		p.Entries = nil
@@ -195,8 +226,13 @@ func (p *Pane) Load(hidden bool) {
 	}
 }
 
-func readDir(dir string) ([]Entry, error) {
-	items, err := os.ReadDir(dir)
+// readDir turns a filesystem listing into entries.
+//
+// A symlink's target is deliberately not resolved here: over SFTP that is a round
+// trip per row, and a directory of a thousand entries must not cost a thousand
+// requests. The preview resolves it when the cursor lands on one.
+func readDir(fsys vfs.FS, dir string) ([]Entry, error) {
+	items, err := fsys.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -205,29 +241,18 @@ func readDir(dir string) ([]Entry, error) {
 		info, err := item.Info()
 		if err != nil {
 			// An entry we cannot stat is still worth showing: it explains itself
-			// on open instead of disappearing from the listing.
+			// when opened, instead of vanishing from the listing.
 			out = append(out, Entry{Name: item.Name(), Dir: item.IsDir()})
 			continue
 		}
-		e := Entry{
+		out = append(out, Entry{
 			Name:    item.Name(),
 			Dir:     item.IsDir(),
+			Symlink: info.Mode()&fs.ModeSymlink != 0,
 			Size:    info.Size(),
 			Mode:    info.Mode(),
 			ModTime: info.ModTime(),
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			e.Symlink = true
-			if target, err := os.Readlink(filepath.Join(dir, item.Name())); err == nil {
-				e.Link = target
-			}
-			if resolved, err := os.Stat(filepath.Join(dir, item.Name())); err == nil {
-				e.Dir = resolved.IsDir()
-				e.Size = resolved.Size()
-				e.ModTime = resolved.ModTime()
-			}
-		}
-		out = append(out, e)
+		})
 	}
 	return out, nil
 }
@@ -257,6 +282,8 @@ const (
 	OverlayConfirm
 	OverlayPrompt
 	OverlayForm
+	OverlayHostKey
+	OverlaySecret
 )
 
 // Name returns the identifier the action registry expects in Context.Overlay.
@@ -272,7 +299,7 @@ func (o Overlay) Name() string {
 		return "onboarding"
 	case OverlaySettings:
 		return "settings"
-	case OverlayConfirm, OverlayPrompt, OverlayForm:
+	case OverlayConfirm, OverlayPrompt, OverlayForm, OverlayHostKey, OverlaySecret:
 		return "dialog"
 	default:
 		return ""

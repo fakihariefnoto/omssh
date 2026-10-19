@@ -99,8 +99,11 @@ layer that owns connecting, so no key handler ever dials anything:
 credentials from storage, a prompt for what is missing, consent for an unknown
 host key (remember, once, or refuse), a stale stored password dropped and
 re-asked rather than left for the user to clear, and one connection shared
-between sessions. Still to come: the remote pane in the interface, and
-`omssh <host>`.
+between sessions. The remote pane is on it: the file pane is now filesystem-agnostic, so the same
+code shows a local directory and a remote one; Enter on a host connects, with
+the host-key and password dialogs answered over a channel so the update loop
+never blocks, and a connected session binds the right-hand pane. Still to come:
+`omssh <host>`, `omssh exec`, and per-tab pane state.
 
 - `~/.ssh/config` parser (with `Include` and wildcards) and written-back
   metadata as OpenSSH-safe comments.

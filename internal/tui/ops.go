@@ -3,9 +3,9 @@ package tui
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
+
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // --- cursor movement ---------------------------------------------------------
@@ -67,18 +67,21 @@ func (m *Model) open() {
 		return
 	}
 	if entry.Dir {
-		m.navigate(filepath.Join(pane.Path, entry.Name))
+		m.navigate(pane.FS.Join(pane.Path, entry.Name))
 		return
 	}
 	m.preview = true
 	m.mode = "PREVIEW"
 }
 
-// parent moves the pane to the directory above.
+// parent moves the pane to the directory above, stopping at the root.
 func (m *Model) parent() {
 	pane := m.Pane()
-	parent := filepath.Dir(filepath.Clean(pane.Path))
-	if parent == pane.Path {
+	if pane.FS == nil {
+		return
+	}
+	parent := pane.FS.Dir(pane.Path)
+	if parent == pane.Path || parent == "" {
 		return
 	}
 	m.navigate(parent)
@@ -128,14 +131,15 @@ func (m *Model) historyForward() {
 	pane.Load(m.showHidden)
 }
 
-// goHome jumps to the home directory of the focused pane.
+// goHome jumps to the home directory of the focused pane: the user's own locally,
+// the session's root remotely.
 func (m *Model) goHome() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		m.toastError("Cannot find your home directory")
+	pane := m.Pane()
+	if pane.Home != "" {
+		m.navigate(pane.Home)
 		return
 	}
-	m.navigate(home)
+	m.toastInfo("This pane has no home directory")
 }
 
 // goLastDir is the "-" behaviour: back to the previous directory.
@@ -268,17 +272,16 @@ func (m *Model) clearSelection() {
 	m.Pane().Selected = map[string]bool{}
 }
 
-// --- file operations (local) -------------------------------------------------
+// --- file operations ---------------------------------------------------------
 
 // targets returns what an operation should act on: the selection when there is
 // one, otherwise the cursor. No operation is cursor-only.
 func (m *Model) targets() []Entry {
 	pane := m.Pane()
-	selected := pane.Selected
-	if len(selected) > 0 {
-		out := make([]Entry, 0, len(selected))
+	if len(pane.Selected) > 0 {
+		out := make([]Entry, 0, len(pane.Selected))
 		for _, e := range pane.Entries {
-			if selected[e.Name] {
+			if pane.Selected[e.Name] {
 				out = append(out, e)
 			}
 		}
@@ -290,23 +293,32 @@ func (m *Model) targets() []Entry {
 	return nil
 }
 
-// localPath joins a name onto the focused pane, refusing to act on a remote pane
-// until that side exists.
-func (m *Model) localPath(name string) (string, error) {
+// paneFS is the filesystem the focused pane is showing, or an error the caller
+// can show: a remote pane with no connection has nothing to write to.
+func (m *Model) paneFS() (vfs.FS, error) {
 	pane := m.Pane()
-	if pane.Side != SideLocal {
-		return "", errors.New("remote panes arrive with connections")
+	if pane.FS == nil {
+		return nil, errors.New("this pane is not connected")
 	}
-	return filepath.Join(pane.Path, name), nil
+	return pane.FS, nil
+}
+
+// pathFor builds the full path of a name in the focused pane.
+func (m *Model) pathFor(name string) (vfs.FS, string, error) {
+	fsys, err := m.paneFS()
+	if err != nil {
+		return nil, "", err
+	}
+	return fsys, fsys.Join(m.Pane().Path, name), nil
 }
 
 func (m *Model) createDir(name string) {
-	path, err := m.localPath(name)
+	fsys, path, err := m.pathFor(name)
 	if err != nil {
 		m.toastError(err.Error())
 		return
 	}
-	if err := os.Mkdir(path, 0o750); err != nil {
+	if err := fsys.Mkdir(path, 0o750); err != nil {
 		m.toastError(fmt.Sprintf("Cannot create %s: %v", name, err))
 		return
 	}
@@ -316,17 +328,21 @@ func (m *Model) createDir(name string) {
 }
 
 func (m *Model) createFile(name string) {
-	path, err := m.localPath(name)
+	fsys, path, err := m.pathFor(name)
 	if err != nil {
 		m.toastError(err.Error())
 		return
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	// O_EXCL so "new file" never quietly truncates an existing one.
+	file, err := fsys.OpenFile(path, vfs.O_WRONLY|vfs.O_CREATE|vfs.O_EXCL, 0o600)
 	if err != nil {
 		m.toastError(fmt.Sprintf("Cannot create %s: %v", name, err))
 		return
 	}
-	_ = file.Close()
+	if err := file.Close(); err != nil {
+		m.toastError(fmt.Sprintf("Cannot create %s: %v", name, err))
+		return
+	}
 	m.refresh()
 	m.selectByName(name)
 	m.toastSuccess("Created " + name)
@@ -337,17 +353,14 @@ func (m *Model) renameCursor(newName string) {
 	if !ok {
 		return
 	}
-	from, err := m.localPath(entry.Name)
+	fsys, err := m.paneFS()
 	if err != nil {
 		m.toastError(err.Error())
 		return
 	}
-	to, err := m.localPath(newName)
-	if err != nil {
-		m.toastError(err.Error())
-		return
-	}
-	if err := os.Rename(from, to); err != nil {
+	from := fsys.Join(m.Pane().Path, entry.Name)
+	to := fsys.Join(m.Pane().Path, newName)
+	if err := fsys.Rename(from, to); err != nil {
 		m.toastError(fmt.Sprintf("Cannot rename: %v", err))
 		return
 	}
@@ -356,17 +369,18 @@ func (m *Model) renameCursor(newName string) {
 	m.toastSuccess("Renamed to " + newName)
 }
 
-// deleteTargets removes what the confirmation dialog approved. There is no
-// trash and no undo, which is exactly why the dialog states the facts first.
+// deleteTargets removes what the confirmation dialog approved. There is no trash
+// and no undo, which is exactly why the dialog states the facts first.
 func (m *Model) deleteTargets(entries []Entry) {
+	fsys, err := m.paneFS()
+	if err != nil {
+		m.toastError(err.Error())
+		return
+	}
 	failed := 0
 	for _, e := range entries {
-		path, err := m.localPath(e.Name)
-		if err != nil {
-			m.toastError(err.Error())
-			return
-		}
-		if err := os.RemoveAll(path); err != nil {
+		path := fsys.Join(m.Pane().Path, e.Name)
+		if err := fsys.RemoveAll(path); err != nil {
 			failed++
 		}
 	}
@@ -405,16 +419,25 @@ func (m *Model) revealInOtherPane() {
 	if len(m.Panes) < 2 {
 		return
 	}
-	entry, ok := m.Pane().CursorEntry()
+	pane := m.Pane()
+	other := 1 - m.Focused
+	if pane.FS == nil || m.Panes[other].FS == nil {
+		m.toastInfo("Both panes need a directory to reveal between")
+		return
+	}
+	entry, ok := pane.CursorEntry()
 	if !ok {
 		return
 	}
-	other := 1 - m.Focused
-	target := filepath.Join(m.Panes[other].Path, entry.Name)
-	if entry.Dir {
-		m.Panes[other].Path = target
-		m.Panes[other].Load(m.showHidden)
+	if !entry.Dir {
+		m.Focused = other
+		m.ensureVisible()
+		return
 	}
+	// The other pane may be a different filesystem, so the path is built with its
+	// own arithmetic.
+	m.Panes[other].Path = m.Panes[other].FS.Join(m.Panes[other].Path, entry.Name)
+	m.Panes[other].Load(m.showHidden)
 	m.Focused = other
 	m.ensureVisible()
 }

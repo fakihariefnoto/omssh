@@ -16,8 +16,10 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/clipboard"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keymap"
+	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/sshconfig"
 	"github.com/fakihariefnoto/omssh/internal/theme"
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // Options configures a new interface.
@@ -46,6 +48,9 @@ type Options struct {
 	// SSHConfigPath overrides ~/.ssh/config. Tests use it; the CLI leaves it
 	// empty so the real file is used.
 	SSHConfigPath string
+	// Sessions is the connection manager. When nil the interface builds its own,
+	// asking through dialogs; a test supplies one with its own prompter.
+	Sessions *session.Manager
 }
 
 // Model is the whole interface state. There is one of these, and only Update
@@ -91,16 +96,31 @@ type Model struct {
 	screen screen
 	home   homeState
 	// conn is the SSH host manager, and form is its add/edit card.
-	conn       *connectionsState
-	form       connForm
-	Overlay    Overlay
-	palette    paletteState
-	menu       menuState
-	help       helpState
-	settings   settingsState
-	confirm    confirmState
-	prompt     promptState
-	onboarding onboardingState
+	conn *connectionsState
+	form connForm
+	// sessions owns the connections. The interface never dials anything itself.
+	sessions *session.Manager
+	// prompts carries questions from a connection to the interface, and
+	// activePrompt is the one being asked.
+	prompts      chan *promptRequest
+	activePrompt *promptRequest
+	// connecting is the set of hosts with a connection in flight.
+	connecting map[string]bool
+	// secretInput and rememberSecret are the password dialog's state.
+	secretInput    input
+	rememberSecret bool
+	// connectCtx is cancelled when the program exits, so a dial does not outlive
+	// the interface.
+	connectCtx    context.Context
+	cancelConnect context.CancelFunc
+	Overlay       Overlay
+	palette       paletteState
+	menu          menuState
+	help          helpState
+	settings      settingsState
+	confirm       confirmState
+	prompt        promptState
+	onboarding    onboardingState
 	// overlayCmd carries a command produced while handling an overlay key.
 	overlayCmd tea.Cmd
 	// connReturn remembers where the host manager was opened from.
@@ -217,6 +237,16 @@ func New(opts Options) (*Model, error) {
 	if dir == "" {
 		dir = "."
 	}
+	// The local pane is a filesystem rooted at "/", the same as the remote one
+	// will be: absolute paths, and one code path for both.
+	localFS, err := vfs.NewLocal("/")
+	if err != nil {
+		return nil, fmt.Errorf("opening the local filesystem: %w", err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = dir
+	}
 
 	m := &Model{
 		cfg:        cfg,
@@ -232,12 +262,27 @@ func New(opts Options) (*Model, error) {
 		themeNames: theme.Names(),
 		dropped:    paneKeys.Dropped(),
 		tabs:       []Tab{{Title: "localhost", State: StateReady}},
-		Panes:      []Pane{NewPane(SideLocal, dir), NewRemotePane()},
+		Panes:      []Pane{NewPane(localFS, dir, home), NewRemotePane()},
 		Focused:    0,
 		preview:    cfg.UI.Preview,
 		sidebar:    cfg.UI.Sidebar,
 		showHidden: cfg.UI.ShowHidden,
 		mode:       "NORMAL",
+	}
+	m.prompts = make(chan *promptRequest, 8)
+	if opts.Sessions != nil {
+		// A test supplies a manager with its own prompter, so these dialogs are
+		// out of the way.
+		m.sessions = opts.Sessions
+	} else {
+		manager, err := newSessionManager(m.prompts)
+		if err != nil {
+			// A machine with no ~/.ssh is not a reason to refuse to start: the
+			// file manager still works, and connecting will say why.
+			m.sessions = nil
+		} else {
+			m.sessions = manager
+		}
 	}
 	m.Panes[0].Load(m.showHidden)
 	m.screen = screenHome
@@ -258,7 +303,12 @@ func (m *Model) Jobs() int { return 0 }
 // waits for a reply, so the first frame is painted immediately: a startup query
 // is a startup delay at best and a blank screen at worst.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(tea.RequestWindowSize, heartbeat())
+	commands := []tea.Cmd{tea.RequestWindowSize, heartbeat()}
+	if m.sessions != nil {
+		// The connection goroutines ask through this channel while they wait.
+		commands = append(commands, waitForPrompt(m.prompts))
+	}
+	return tea.Batch(commands...)
 }
 
 // Update handles one message. Nothing here blocks on I/O, so typing is never
@@ -301,6 +351,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handlePaste(msg.Content)
 		return m, nil
 
+	case promptMsg:
+		m.handlePromptMsg(msg)
+		return m, nil
+
+	case connectedMsg:
+		m.handleConnected(msg)
+		return m, nil
+
 	case clipboardMsg:
 		if msg.err != nil {
 			m.toastWarning("Clipboard unavailable: " + msg.err.Error())
@@ -337,6 +395,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			break // let the dialog handle it first
 		}
 		m.quit = true
+		m.answerPendingPrompt()
+		if m.cancelConnect != nil {
+			m.cancelConnect()
+		}
 		return m, tea.Quit
 	case "ctrl+k":
 		m.togglePalette()
@@ -498,6 +560,14 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlayForm:
 		m.overlayCmd = m.handleFormKey(msg)
+		return true
+
+	case OverlayHostKey:
+		m.overlayCmd = m.handleHostKeyKey(msg)
+		return true
+
+	case OverlaySecret:
+		m.overlayCmd = m.handleSecretKey(msg)
 		return true
 
 	case OverlayOnboarding:
@@ -715,6 +785,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.toastInfo("Reloaded ~/.ssh/config")
 	case "session.open-config":
 		return m.editConfigFile()
+	case "session.connect":
+		return m.connectToHighlighted()
 	case "app.home":
 		m.screen = screenHome
 		m.home.cursor = 0
@@ -938,7 +1010,11 @@ func (m *Model) focusedInput() *input {
 		return &m.palette.input
 	case OverlayHelp:
 		return &m.help.input
-	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm:
+	case OverlaySecret:
+		// The password dialog has a field of its own, kept separate so it can be
+		// masked and never rendered into a general-purpose input.
+		return &m.secretInput
+	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey:
 		// These have no text field of their own. The connections filter below is
 		// the only field outside an overlay.
 	}

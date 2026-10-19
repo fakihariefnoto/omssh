@@ -194,7 +194,7 @@ func (m *Model) renderConnections(l layout) string {
 	lines = append(lines, m.st.Muted.Render(strings.Repeat("─", max(1, width))))
 	lines = append(lines, m.renderConnDetail(width, detailRows)...)
 	lines = append(lines, m.st.StatusMuted.Render(
-		"Enter/e edit · a add · d delete · r reload · o edit file · Ctrl+F filter · Esc back"))
+		"c connect · Enter/e edit · a add · d delete · r reload · o edit file · Ctrl+F filter · Esc back"))
 
 	// Exactly fill the screen.
 	out := make([]string, 0, height)
@@ -317,7 +317,9 @@ func (m *Model) handleConnectionsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.conn.cursor = 0
 	case "end":
 		m.conn.cursor = max(0, len(m.visibleConnections())-1)
-	case "enter", "e":
+	case "enter", "c":
+		return m.runAction("session.connect"), true
+	case "e":
 		return m.runAction("session.edit"), true
 	case "a":
 		return m.runAction("session.add"), true

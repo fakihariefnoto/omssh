@@ -159,6 +159,8 @@ func standardPreset() []Action {
 		// ---- Sessions and terminals -----------------------------------------
 		{ID: "session.open", Label: "SSH connections", Category: CatSession, Default: "ctrl+o",
 			Desc: "Manage the hosts in ~/.ssh/config", Enabled: always},
+		{ID: "session.connect", Label: "Connect", Category: CatSession, Default: "c",
+			Desc: "Open a session to the highlighted host", Enabled: onScreenWithCursor("connections")},
 		{ID: "session.add", Label: "Add connection", Category: CatSession, Default: "a",
 			Desc: "Add a host block to ~/.ssh/config", Enabled: onScreen("connections")},
 		{ID: "session.edit", Label: "Edit connection", Category: CatSession, Default: "e",

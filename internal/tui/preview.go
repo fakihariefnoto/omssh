@@ -2,13 +2,16 @@ package tui
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // previewBytes bounds how much of a file the preview reads, so opening a huge
@@ -34,8 +37,8 @@ func (m *Model) renderPreview(width, rows int) string {
 	switch {
 	case entry.Dir:
 		return m.previewLines(m.dirSummary(pane, entry, width), width, rows)
-	case pane.Side != SideLocal:
-		return m.previewLines([]string{m.st.PaneEmpty.Render("Preview arrives with connections")}, width, rows)
+	case pane.FS == nil:
+		return m.previewLines([]string{m.st.PaneEmpty.Render("This pane is not connected")}, width, rows)
 	case IsArchive(name):
 		return m.previewLines([]string{
 			m.st.Accent.Render(m.icons.Archive + " " + truncate(name, width-2)),
@@ -46,8 +49,8 @@ func (m *Model) renderPreview(width, rows int) string {
 		}, width, rows)
 	}
 
-	path := filepath.Join(pane.Path, name)
-	data, err := readHead(path, previewBytes)
+	target := pane.FS.Join(pane.Path, name)
+	data, err := readHead(pane.FS, target, previewBytes)
 	if err != nil {
 		return m.previewLines([]string{
 			m.st.Danger.Render("Cannot read the file"),
@@ -61,13 +64,20 @@ func (m *Model) renderPreview(width, rows int) string {
 	} else {
 		body = textLines(data)
 	}
+	// A symlink says where it points, which is the one thing its contents cannot
+	// tell you.
+	if target := m.symlinkTarget(pane, entry); target != "" {
+		body = append([]string{m.st.PaneSymlink.Render(truncate(target, width)), ""}, body...)
+	}
 	return m.previewLines(append([]string{header, ""}, body...), width, rows)
 }
 
 // dirSummary describes a directory without opening it.
 func (m *Model) dirSummary(pane *Pane, entry Entry, width int) []string {
-	path := filepath.Join(pane.Path, entry.Name)
-	children, err := os.ReadDir(path)
+	if pane.FS == nil {
+		return []string{m.st.PaneEmpty.Render("This pane is not connected")}
+	}
+	children, err := pane.FS.ReadDir(pane.FS.Join(pane.Path, entry.Name))
 	if err != nil {
 		return []string{
 			m.st.Accent.Render(m.icons.Folder + " " + truncate(entry.Name, width-2)),
@@ -116,14 +126,34 @@ func (m *Model) previewLines(lines []string, width, rows int) string {
 	return strings.Join(out, "\n")
 }
 
-// readHead reads at most n bytes from a file.
-func readHead(path string, n int64) ([]byte, error) {
-	file, err := os.Open(path)
+// readHead reads at most n bytes from a file, over whichever filesystem it lives
+// on.
+func readHead(fsys vfs.FS, name string, n int64) ([]byte, error) {
+	file, err := fsys.Open(name)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()
 	return io.ReadAll(io.LimitReader(file, n))
+}
+
+// symlinkTarget resolves a symlink for the detail line. It is a round trip, so
+// it happens for the entry under the cursor rather than for every row.
+func (m *Model) symlinkTarget(pane *Pane, entry Entry) string {
+	if pane.FS == nil || !entry.Symlink {
+		return ""
+	}
+	target, err := pane.FS.Readlink(pane.FS.Join(pane.Path, entry.Name))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "(broken)"
+		}
+		return ""
+	}
+	if !path.IsAbs(target) {
+		return "→ " + target
+	}
+	return "→ " + target
 }
 
 // isBinary reports whether data looks like a binary file, by the usual test: a

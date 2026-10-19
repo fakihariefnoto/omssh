@@ -47,7 +47,9 @@ func NewStore(backend Backend, service string) *Store {
 	return &Store{backend: backend, service: service}
 }
 
-// Available reports whether there is anywhere to store secrets.
+// Available reports whether there is anywhere to store secrets. It is a fact
+// about the configuration, not a probe: whether the keyring is unlocked and
+// reachable is answered when a secret is used.
 func (s *Store) Available() bool { return s != nil && s.backend != nil }
 
 // Password returns the password for a host, if one is stored.
@@ -140,25 +142,15 @@ func (Keyring) Delete(service, account string) error {
 	return nil
 }
 
-// Default returns a store over the OS keyring, or one that reports ErrNoBackend
-// when the platform has none (or the keyring is locked and unreachable).
+// Default returns a store over the OS keyring: Keychain on macOS, Secret Service
+// on Linux, Credential Manager on Windows.
+//
+// Nothing is probed up front. Asking a keyring whether it exists costs a
+// keychain round trip or a D-Bus call, and it answers a question that only
+// matters when a secret is actually stored: a locked or absent keyring reports
+// itself on use, where the caller can say what happened.
 func Default(service string) *Store {
-	if !keyringAvailable() {
-		return NewStore(nil, service)
-	}
 	return NewStore(Keyring{}, service)
-}
-
-// keyringAvailable probes the keyring once. On Linux this is a D-Bus call that
-// can fail in a container or over a bare SSH session, which is exactly the case
-// the prompt fallback exists for.
-func keyringAvailable() bool {
-	const probe = "omssh-keyring-probe"
-	if err := keyring.Set(probe, probe, "probe"); err != nil {
-		return false
-	}
-	_ = keyring.Delete(probe, probe)
-	return true
 }
 
 // MemBackend is an in-memory store, for tests.

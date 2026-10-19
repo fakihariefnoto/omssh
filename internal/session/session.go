@@ -109,8 +109,14 @@ type Session struct {
 	State  State
 	Err    error
 	Opened time.Time
-	// Root is the remote directory "/" maps to, for the interface to show.
+	// Root is the path inside the filesystem that a pane should show after
+	// connecting. It is always "/", because a vfs.FS is rooted at the directory
+	// it was opened over: the server-side path lives in Base, for display.
 	Root string
+	// Base is the server-side directory the filesystem is rooted at — the user's
+	// home, in practice — for the interface to show and for the breadcrumb to
+	// name.
+	Base string
 }
 
 // Label names the session the way a tab does.
@@ -258,19 +264,19 @@ func (m *Manager) Connect(ctx context.Context, target ssh.Target) (*Session, err
 		}
 	}
 
-	system, root, err := m.openSFTP(client)
+	system, base, err := m.openSFTP(client)
 	if err != nil {
 		m.release(client)
 		return nil, err
 	}
-	fsys, err := sftpfs.New(system, root, client.Target().Alias)
+	fsys, err := sftpfs.New(system, base, client.Target().Alias)
 	if err != nil {
 		_ = system.Close()
 		m.release(client)
 		return nil, err
 	}
 
-	return m.addSession(target, client, fsys, root), nil
+	return m.addSession(target, client, fsys), nil
 }
 
 // acquire takes a connection from the pool, holding a reference for the session.
@@ -367,7 +373,7 @@ func (m *Manager) authFor(target ssh.Target) (ssh.Auth, bool) {
 }
 
 // addSession records a live session and gives it an id.
-func (m *Manager) addSession(target ssh.Target, client *ssh.Client, fsys vfs.FS, root string) *Session {
+func (m *Manager) addSession(target ssh.Target, client *ssh.Client, fsys vfs.FS) *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sequence++
@@ -378,7 +384,10 @@ func (m *Manager) addSession(target ssh.Target, client *ssh.Client, fsys vfs.FS,
 		FS:     fsys,
 		State:  StateReady,
 		Opened: time.Now(),
-		Root:   root,
+		// A pane starts at the filesystem's own root, which is the directory the
+		// session was opened over.
+		Root: "/",
+		Base: baseOf(fsys),
 	}
 	m.sessions[session.ID] = session
 	return session
@@ -416,6 +425,14 @@ func (m *Manager) CloseAll() error {
 		_ = m.Close(id)
 	}
 	return m.pool.Close()
+}
+
+// baseOf asks a filesystem for the directory it is rooted at, when it knows.
+func baseOf(fsys vfs.FS) string {
+	if rooted, ok := fsys.(interface{ Root() string }); ok {
+		return rooted.Root()
+	}
+	return ""
 }
 
 // isAuthFailure distinguishes "the server said no" from "the network broke",

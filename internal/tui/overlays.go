@@ -33,6 +33,10 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderPrompt(l)
 	case OverlayForm:
 		return m.renderConnectionForm(l)
+	case OverlayHostKey:
+		return m.renderHostKey(l)
+	case OverlaySecret:
+		return m.renderSecret(l)
 	default:
 		return ""
 	}
