@@ -54,6 +54,12 @@ func (m *Model) renderFiles(l layout) string {
 		rows = append(rows, m.renderTabs(l))
 	}
 	rows = append(rows, m.renderBody(l))
+	// What is marked, and what will happen to it: the answer to "what am I about
+	// to do" belongs on screen, not in a review screen you have to remember to
+	// open.
+	if bar := m.renderStagedBar(l); bar != "" {
+		rows = append(rows, bar)
+	}
 	if l.ActionBar {
 		rows = append(rows, m.renderActionBar(l))
 	}
@@ -517,7 +523,7 @@ func (m *Model) renderActionBar(l layout) string {
 	}
 
 	if l.Compact {
-		b.WriteString(m.st.ActionHint.Render("F9 all actions · Ctrl+K search"))
+		b.WriteString(m.st.ActionHint.Render("Ctrl+K everything"))
 		return ansi.Truncate(b.String(), l.Width, "…")
 	}
 
@@ -532,16 +538,53 @@ func (m *Model) renderActionBar(l layout) string {
 		}
 	}
 	b.WriteString("  ")
-	b.WriteString(m.st.ActionHint.Render("F9 more · Ctrl+K search"))
+	b.WriteString(m.st.ActionHint.Render("Ctrl+K everything"))
 
 	return ansi.Truncate(b.String(), l.Width, "…")
+}
+
+// renderStagedBar is the one-line summary of the marked set: how many, where they
+// go, and the three keys that matter. It only appears while something is marked,
+// so it costs nothing when there is nothing to do.
+func (m *Model) renderStagedBar(l layout) string {
+	if !l.StagedBar {
+		return ""
+	}
+	verb := "copy"
+	if m.staged.Cut {
+		verb = "move"
+	}
+	_, to := m.stagedRoute()
+	count := fmt.Sprintf("%d %s", m.stagedCount(), plural(m.stagedCount(), "item", "items"))
+	if size := humanSize(m.stagedBytes()); size != "" {
+		count += " · " + size
+	}
+	left := m.st.Accent.Bold(true).Render("▸ "+count) + " " +
+		m.st.CardText.Render(verb+" → "+to)
+	// The keys are the point of the bar, so the destination gives way first: a
+	// truncated path still says where, a missing "p paste" says nothing.
+	keys := m.st.ActionHint.Render("p paste · s review · Esc cancel")
+	inner := max(20, l.Width-2) // the style's own padding takes two cells
+	if room := inner - lipgloss.Width(keys) - 1; lipgloss.Width(left) > room {
+		left = ansi.Truncate(left, max(4, room), "…")
+	}
+	return m.st.StagedBar.Width(l.Width).Render(spread(left, keys, inner))
 }
 
 // actionBarOrder is the priority list for the action bar. It is deliberately
 // independent of registry order: what a person needs first goes first.
 func (m *Model) actionBarOrder() []actions.ID {
+	// With something marked, pasting it is the next thing a person wants; the
+	// order is about what comes next, not about a fixed hierarchy.
+	if m.stagedCount() > 0 {
+		return []actions.ID{
+			"sel.paste", "sel.mark", "sel.cut", "file.delete", "file.rename",
+			"file.view", "file.edit", "file.copy-to", "file.move-to",
+			"archive.extract", "archive.compress", "nav.open", "nav.parent", "file.mkdir",
+		}
+	}
 	return []actions.ID{
-		"file.copy", "file.cut", "file.delete", "file.rename",
+		"sel.mark", "sel.cut", "file.delete", "file.rename",
 		"file.view", "file.edit", "file.copy-to", "file.move-to",
 		"archive.extract", "archive.compress",
 		"nav.send", "nav.fetch", "nav.open", "nav.parent",
@@ -589,9 +632,13 @@ func (m *Model) renderStatusBar(l layout) string {
 	}
 	summary := strings.Join(parts, " · ")
 
-	right := m.st.StatusMuted.Render("Esc tabs · Ctrl+Q quit")
+	// The hint names what Escape does here, because it changes with the level.
+	right := m.st.StatusMuted.Render("Esc menu · Ctrl+Q quit")
+	if len(m.tabs) > 1 && m.screen == screenFiles {
+		right = m.st.StatusMuted.Render("Esc choose host · Ctrl+Q quit")
+	}
 	if m.focusTabs {
-		right = m.st.StatusMuted.Render("Enter open · Esc menu")
+		right = m.st.StatusMuted.Render("h/l choose · Enter open · Esc menu")
 	}
 	if m.screen == screenHome {
 		right = m.st.StatusMuted.Render("? help · Ctrl+Q quit")

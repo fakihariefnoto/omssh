@@ -989,6 +989,11 @@ func (m *Model) goBack() {
 		m.mode = "NORMAL"
 	case m.typeAheadBuf != "":
 		m.resetTypeAhead()
+	case m.stagedCount() > 0:
+		// Escape cancels the pending copy before it leaves the screen: the bar
+		// promises it, so it has to be true.
+		m.clearStaged()
+		m.toastInfo("Marked files cleared")
 	case m.Pane().SelectedCount() > 0:
 		m.clearSelection()
 		m.mode = "NORMAL"

@@ -63,18 +63,36 @@ type homeItem struct {
 	Icon  string
 	Label string
 	Hint  string
+	// Host is set on the rows that stand for a live session, so choosing one goes
+	// back to that host rather than starting over.
+	Host string
 }
 
 // homeItems is the menu. It lists what this build can actually do; options whose
 // feature has not landed are absent rather than disabled, because a menu of dead
 // ends teaches nothing. Connect joins this list in M1.
 func (m *Model) homeItems() []homeItem {
-	items := make([]homeItem, 0, 6)
+	items := make([]homeItem, 0, 6+len(m.tabs))
+	// The hosts that are still connected come first: coming back to the launcher
+	// from a pane should offer the way back, not only the way in.
+	for _, tab := range m.tabs {
+		if tab.Host == "" {
+			continue
+		}
+		hint := tab.State.Label()
+		if tab.State == StateReady {
+			hint = "connected"
+		}
+		items = append(items, homeItem{ID: "session.focus", Icon: "●", Label: tab.Host, Hint: hint, Host: tab.Host})
+	}
+	if len(items) > 0 {
+		items = append(items, homeItem{ID: "app.files", Icon: "~", Label: "Back to the files", Hint: "Enter"})
+	}
 	return append(items,
 		homeItem{ID: "session.open", Icon: ">", Label: "SSH connections", Hint: "Ctrl+O"},
 		homeItem{ID: "app.files", Icon: "~", Label: "Browse local files", Hint: "Enter"},
 		homeItem{ID: "nav.path", Icon: "/", Label: "Go to a folder", Hint: "Ctrl+L"},
-		homeItem{ID: "app.help", Icon: "?", Label: "Keyboard and help", Hint: "F1"},
+		homeItem{ID: "app.help", Icon: "?", Label: "Keyboard and help", Hint: "?"},
 		homeItem{ID: "app.settings", Icon: "+", Label: "Settings and theme", Hint: "Ctrl+,"},
 		homeItem{ID: "app.quit", Icon: "x", Label: "Quit", Hint: "Ctrl+Q"},
 	)
@@ -229,6 +247,17 @@ func (m *Model) handleHomeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // activateHome runs a launcher entry.
 func (m *Model) activateHome(item homeItem) tea.Cmd {
+	if item.Host != "" {
+		// A live session: go back to it, on its tab, with its pane focused.
+		for i, tab := range m.tabs {
+			if tab.Host == item.Host {
+				m.openFiles()
+				return m.selectTab(i, true)
+			}
+		}
+		m.toastInfo(item.Host + " is no longer connected")
+		return nil
+	}
 	switch item.ID {
 	case "app.help", "app.settings":
 		// Overlays open on top of the launcher, so the way back stays obvious.

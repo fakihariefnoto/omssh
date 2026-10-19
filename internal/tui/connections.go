@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -125,14 +126,15 @@ func (m *Model) currentConnection() (connEntry, bool) {
 	return visible[m.conn.cursor], true
 }
 
-// renderConnections draws the host manager: the list, the highlighted host's
-// details, and one line of keys.
+// renderConnections draws the host manager as two boxes: the hosts, and the
+// highlighted one's details. It is a table, so it looks like one — header row,
+// aligned columns, and a selected row you can see at a glance.
 func (m *Model) renderConnections(l layout) string {
 	width, height := l.Width, l.Height
-	lines := make([]string, 0, height)
+	rows := make([]string, 0, height)
 
-	// Header: what this screen is, and which file it edits.
-	title := m.st.PaneTitle.Render("SSH connections")
+	// Title row, matching the pane headers so the screen belongs to the same
+	// family.
 	path := "~/.ssh/config"
 	count := 0
 	if m.conn != nil {
@@ -141,64 +143,59 @@ func (m *Model) renderConnections(l layout) string {
 			path = strings.Replace(m.conn.path, home, "~", 1)
 		}
 	}
-	right := m.st.StatusMuted.Render(path + " · " + plural(count, "host", "hosts"))
-	lines = append(lines,
-		spread(title, right, width),
-		m.st.Muted.Render(strings.Repeat("─", max(1, width))))
+	title := m.st.PaneTitle.Render("SSH connections")
+	right := m.st.StatusMuted.Render(fmt.Sprintf("%s · %d %s", path, count, plural(count, "host", "hosts")))
+	rows = append(rows, spread(title, right, width), "")
 
-	// Filter line, always one row so the layout does not jump while typing.
-	if m.conn != nil && (m.conn.filtering || m.conn.filter.Value != "") {
-		lines = append(lines, m.st.PathInput.Width(width).Render("filter: "+m.conn.filter.Rendered()))
-	} else {
-		lines = append(lines, m.st.StatusMuted.Render("Ctrl+F to filter"))
-	}
+	// The details box is exactly as tall as its content, so it never looks like an
+	// empty panel; the list takes the rest of the screen, which is where a person
+	// is looking anyway.
+	const detailHeight = 5
+	listRows := max(4, height-detailHeight-6) // title, blank, footer, two borders
+	inner := width - 2
+
+	headers := m.connHeaderRow(inner)
+	list := make([]string, 0, listRows)
+	list = append(list, headers, m.st.Muted.Render(strings.Repeat("─", max(1, inner))))
 
 	visible := m.visibleConnections()
-	rules := len(lines)
-
-	// Detail panel height, reserved before the list so the list never pushes the
-	// keys off the screen.
-	detailRows := 8
-	footerRows := 1
-	listRows := max(1, height-rules-detailRows-footerRows-2)
-
 	switch {
 	case m.conn != nil && m.conn.err != "":
-		lines = append(lines,
-			m.st.Danger.Render("Cannot read the SSH config"),
-			m.st.PaneEmpty.Render(truncate(m.conn.err, width)))
-		for len(lines) < rules+listRows {
-			lines = append(lines, "")
-		}
+		list = append(list, m.st.Danger.Render(truncate("Cannot read the SSH config", inner)),
+			m.st.PaneEmpty.Render(truncate(m.conn.err, inner)))
+	case len(visible) == 0 && m.conn != nil && len(m.conn.entries) == 0:
+		list = append(list,
+			"", m.st.PaneEmpty.Render("No hosts yet"),
+			m.st.PaneEmpty.Render("a adds one · o opens the file in $EDITOR"))
 	case len(visible) == 0:
-		if m.conn != nil && len(m.conn.entries) == 0 {
-			lines = append(lines,
-				m.st.PaneEmpty.Render("No hosts yet"),
-				m.st.PaneEmpty.Render("a adds one · o edits the file"))
-		} else {
-			lines = append(lines, m.st.PaneEmpty.Render("Nothing matches "+m.conn.filter.Value))
-		}
-		for len(lines) < rules+listRows {
-			lines = append(lines, "")
-		}
+		list = append(list, "", m.st.PaneEmpty.Render(truncate("Nothing matches "+m.conn.filter.Value, inner)))
 	default:
-		start := clamp(m.conn.cursor-listRows/2, 0, max(0, len(visible)-listRows))
-		for i := start; i < len(visible) && len(lines) < rules+listRows; i++ {
-			lines = append(lines, m.renderConnRow(visible[i], i == m.conn.cursor, width))
-		}
-		for len(lines) < rules+listRows {
-			lines = append(lines, "")
+		start := clamp(m.conn.cursor-max(1, listRows-3)/2, 0, max(0, len(visible)-(listRows-2)))
+		for i := start; i < len(visible) && len(list) < listRows; i++ {
+			list = append(list, m.renderConnRow(visible[i], i == m.conn.cursor, inner))
 		}
 	}
+	for len(list) < listRows {
+		list = append(list, "")
+	}
+	// The list, then the selected host's details.
+	rows = append(rows,
+		m.st.PaneBorderBlur.Width(width).Height(listRows+2).Render(strings.Join(list, "\n")),
+		m.st.PaneBorder.Width(width).Height(detailHeight+2).
+			Render(strings.Join(m.connDetailRows(inner, detailHeight), "\n")))
 
-	lines = append(lines, m.st.Muted.Render(strings.Repeat("─", max(1, width))))
-	lines = append(lines, m.renderConnDetail(width, detailRows)...)
-	lines = append(lines, m.st.StatusMuted.Render(
-		"Enter/c connect · e edit · a add · d delete · r reload · o edit file · Ctrl+F filter · Esc back"))
+	// Filter line and keys.
+	if m.conn != nil && (m.conn.filtering || m.conn.filter.Value != "") {
+		rows = append(rows, m.st.PathInput.Width(width).Render("filter: "+m.conn.filter.Rendered()))
+	} else {
+		rows = append(rows, m.st.StatusMuted.Render(
+			"Enter connect · e edit · a add · d delete · r reload · o edit file · / filter · Esc back"))
+	}
 
-	// Exactly fill the screen.
+	// The row slice holds multi-line boxes, so it is joined before it is trimmed:
+	// truncating an element would cut everything after its first line.
 	out := make([]string, 0, height)
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.Join(rows, "\n"), "\n") {
 		if len(out) >= height {
 			break
 		}
@@ -210,42 +207,96 @@ func (m *Model) renderConnections(l layout) string {
 	return strings.Join(out, "\n")
 }
 
-// renderConnRow draws one host: alias, hostname, user, port.
-func (m *Model) renderConnRow(e connEntry, selected bool, width int) string {
-	marker := "  "
-	if selected {
-		marker = m.st.Accent.Render("▸ ")
-	}
-	aliasWidth := clamp(width/3, 10, 24)
-	hostWidth := clamp(width/3, 10, 30)
-
-	alias := padRight(e.Alias, aliasWidth)
-	host := padRight(e.HostName, hostWidth)
-	user := e.User
-	port := ""
-	if e.Port != 0 {
-		port = ":" + itoa(e.Port)
-	}
-	note := ""
-	if !e.Editable {
-		note = m.st.Muted.Render("  (from include)")
-	}
-
-	line := marker + alias + host + padRight(user+port, 16) + note
-	if selected {
-		return m.st.Accent.Bold(true).Render(line)
-	}
-	if e.HostName == "" {
-		return m.st.PaneSymlink.Render(line) // incomplete: worth noticing
-	}
-	return line
+// connHeaderRow labels the columns once, so the table explains itself.
+func (m *Model) connHeaderRow(inner int) string {
+	name, host, user, port := m.connColumns(inner)
+	header := padRight("NAME", name) + padRight("HOST", host) + padRight("USER", user) +
+		padLeft("PORT", port) + " " + padRight("STATE", connStateWidth)
+	return m.st.PaneHeader.Render(padVisible(header, inner))
 }
 
-// renderConnDetail shows the highlighted host's resolved-looking settings.
-func (m *Model) renderConnDetail(width, rows int) []string {
+// connColumns decides the column widths for the current interface width: the
+// name is short, the address is what varies, and a narrow screen drops the
+// right-hand columns rather than squeezing every one of them.
+func (m *Model) connColumns(inner int) (name, host, user, port int) {
+	const gaps = 4 // one space between the five columns
+	if inner < 56 {
+		// Name and address only: they are what a person chooses between.
+		avail := inner - connStateWidth - 2
+		return max(8, avail/3), max(8, avail-avail/3), 0, 0
+	}
+	port = 6
+	user = clamp(inner/8, 6, 14)
+	name = clamp(inner/6, 12, 24)
+	host = inner - connStateWidth - port - user - name - gaps
+	if host < 16 {
+		host = 16
+	}
+	return name, host, user, port
+}
+
+// connStateWidth is the width of the state column: enough for "not connected".
+const connStateWidth = 13
+
+// renderConnRow draws one host in the table, highlighted when chosen.
+func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
+	name, hostWidth, userWidth, portWidth := m.connColumns(inner)
+	marker := "  "
+	if selected {
+		marker = "▸ "
+	}
+	host := e.HostName
+	if host == "" {
+		host = e.Alias
+	}
+	state := m.connState(e)
+	port := "—"
+	if e.Port != 0 {
+		port = itoa(e.Port)
+	}
+	cols := marker + padRight(e.Alias, name) + padRight(host, hostWidth)
+	if userWidth > 0 {
+		cols += padRight(e.User, userWidth)
+	}
+	if portWidth > 0 {
+		cols += padLeft(port, portWidth)
+	}
+	cols += " " + padRight(state.label, connStateWidth-1)
+	if !e.Editable {
+		// It lives in an Include, so the main file cannot change it: say so here
+		// rather than failing when the edit is attempted.
+		cols += " from include"
+	}
+
+	if selected {
+		// A filled row, so the choice is unmistakable rather than a tint.
+		return m.st.PaletteItemActive.Width(inner).Render(padVisible(cols, inner))
+	}
+	if !e.Editable {
+		return m.st.CardMuted.Render(padVisible(cols, inner))
+	}
+	return padVisible(cols, inner)
+}
+
+// connState reports whether a host is connected, connecting, or idle, using the
+// same dots as the tab strip.
+func (m *Model) connState(e connEntry) struct{ label string } {
+	for _, s := range m.liveSessions() {
+		if s.alias != e.Alias {
+			continue
+		}
+		return struct{ label string }{label: s.state.Label()}
+	}
+	return struct{ label string }{label: "not connected"}
+}
+
+// connDetailRows is the detail box: the highlighted host, in full.
+func (m *Model) connDetailRows(inner, rows int) []string {
 	entry, ok := m.currentConnection()
 	if !ok {
 		out := make([]string, rows)
+		out[0] = m.st.PaneEmpty.Render("No host chosen")
+		out[1] = m.st.PaneEmpty.Render("Enter connects, e edits, a adds")
 		return out
 	}
 	dash := m.st.Muted.Render("—")
@@ -256,20 +307,31 @@ func (m *Model) renderConnDetail(width, rows int) []string {
 		return m.st.CardText.Render(v)
 	}
 	label := func(s string) string { return m.st.StatusMuted.Render(padRight(s, 9)) }
+	source := entry.Source
+	if home, err := userHome(); err == nil {
+		source = strings.Replace(source, home, "~", 1)
+	}
 
-	// Values are clamped to the panel: a long identity path must not run into the
-	// next column or wrap the row.
+	// Two label/value pairs per line, each column padded so the second one starts
+	// in the same place on every row.
+	column := max(22, (inner-2)/2)
+	pair := func(k1, v1, k2, v2 string) string {
+		first := label(k1) + pick(truncate(v1, column-11))
+		if k2 == "" {
+			return padVisible(first, inner)
+		}
+		return padVisible(first, column) + label(k2) + pick(truncate(v2, inner-column-11))
+	}
+
 	lines := []string{
-		m.st.PaneTitle.Render(truncate(entry.Alias, width-9)),
-		label("host") + pick(truncate(entry.HostName, width-9)),
-		label("user") + pick(truncate(entry.User, width-9)),
-		label("port") + pick(itoaZero(entry.Port)),
-		label("key") + pick(truncate(entry.Identity, width-9)),
-		label("jump") + pick(truncate(entry.ProxyJump, width-9)),
-		label("source") + m.st.CardMuted.Render(truncate(entry.Source, width-9)),
+		spread(m.st.PaneTitle.Render(entry.Alias), m.st.StatusMuted.Render(m.connState(entry).label), inner),
+		pair("host", entry.HostName, "user", entry.User),
+		pair("port", itoaZero(entry.Port), "key", entry.Identity),
+		pair("jump", entry.ProxyJump, "", ""),
+		pair("source", source, "", ""),
 	}
 	if len(entry.Extra) > 0 {
-		lines = append(lines, label("also")+m.st.CardMuted.Render(truncate(strings.Join(entry.Extra, ", "), width-9)))
+		lines = append(lines, pair("also", strings.Join(entry.Extra, ", "), "", ""))
 	}
 	for len(lines) < rows {
 		lines = append(lines, "")

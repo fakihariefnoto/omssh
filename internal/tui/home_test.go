@@ -9,6 +9,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
+	"github.com/fakihariefnoto/omssh/internal/session"
+	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // newLauncher builds an interface that starts on the front door.
@@ -298,4 +301,37 @@ func indexOfHome(m *Model, id string) int {
 		}
 	}
 	return -1
+}
+
+// Coming back to the launcher from a pane should offer the way back to every
+// host that is still connected: the menu is the map of where you are, not only
+// of where you can go.
+func TestLauncherListsConnectedHosts(t *testing.T) {
+	m, _ := newConnectModel(t, session.PrompterFunc{})
+	dir := t.TempDir()
+	fsys, err := vfs.NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.addSessionTab(&session.Session{ID: "s1", Target: omssh.Target{Alias: "contabo"}, FS: fsys, Root: "/", Base: dir})
+	m.screen = screenHome
+
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "contabo") {
+		t.Errorf("the launcher should list the connected host:\n%s", out)
+	}
+	if !strings.Contains(out, "connected") {
+		t.Errorf("the host row should say it is connected:\n%s", out)
+	}
+
+	// Choosing it returns to that host, not to the first tab.
+	m.home.cursor = 0
+	cmd := m.activateHome(m.homeItems()[0])
+	_ = cmd
+	if m.screen != screenFiles {
+		t.Errorf("choosing a host should open the files, screen is %v", m.screen)
+	}
+	if m.activeTab != 1 || m.Focused != 1 {
+		t.Errorf("choosing contabo should focus its pane, tab %d focused %d", m.activeTab, m.Focused)
+	}
 }

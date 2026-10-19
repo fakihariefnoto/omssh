@@ -23,6 +23,9 @@ type layout struct {
 	Tabs      bool
 	Sidebar   bool
 	ActionBar bool
+	// StagedBar is the marked-files line: it exists only while something is
+	// marked, and the panes give up the row rather than overflowing the screen.
+	StagedBar bool
 	Compact   bool
 
 	// SidebarWidth is zero when the sidebar is hidden.
@@ -56,6 +59,10 @@ func (m *Model) measure() layout {
 	if m.sidebar && width >= wideWidth && availableRows > 6 {
 		l.Sidebar = true
 		l.SidebarWidth = clamp(width/5, 18, 30)
+	}
+	if m.screen == screenFiles && m.stagedCount() > 0 && availableRows > 8 {
+		l.StagedBar = true
+		availableRows--
 	}
 	l.ActionBarRows = 1
 	l.ActionBar = availableRows > 6

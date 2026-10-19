@@ -251,6 +251,16 @@ Used a thousand times a day, so it gets the most attention.
 visit history (same as a browser). `Ctrl+L` edits the path with completion.
 `Ctrl+R` refreshes.
 
+**Marking** — `y` or `x` marks the selection, and a bar appears under the panes:
+
+```
+▸ 3 items · 12.4 MB copy → contabo  /var/www      p paste · s review · Esc cancel
+```
+
+It says what is marked, where it is going, and the three keys that decide it, so
+the answer to "what am I about to do" never needs a screen of its own. The review
+screen (`s`) is there when the list is long or the conflict rule matters.
+
 **Finding** — two levels:
 
 1. **Filter** — `/` (or `Ctrl+F`) narrows the current listing incrementally as
@@ -362,7 +372,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `g g` / `G` | First / last entry |
 | `~` / `-` | Home / last directory |
 | `Alt+←` `Alt+→` | History back / forward |
-| `Ctrl+L` | Edit the path (with folder suggestions) |
+| `Ctrl+L` | Go to a path (`~` is this pane's home, plain names are relative) |
 | `Ctrl+R` | Refresh |
 | `Ctrl+P` | Fuzzy jump to a path |
 | `Alt+F` | Recursive find in the subtree |
@@ -382,9 +392,11 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `Space` | Toggle select and advance | selection is not a mode |
 | `Shift+↑` `Shift+↓` | Extend selection | like every GUI list |
 | `Ctrl+A` / `Alt+A` | Select all / invert | |
-| `y` / `Ctrl+C` | Mark for copy | `Alt+S` reviews what is marked |
-| `x` / `Ctrl+X` | Mark for move | |
+| `y` / `Ctrl+C` | Mark for copy | a bar under the panes shows where they go |
+| `x` / `Ctrl+X` | Mark for move | the same bar says `move →` |
 | `p` / `Ctrl+V` | Paste into this pane | copies or moves, to the other pane |
+| `C` | Copy to… | choose the destination instead of using the other pane |
+| `M` | Move to… | same, for a move |
 | `v` / `F3` | View (preview pane) | archives list their contents |
 | `e` / `F4` | Edit (local `$EDITOR`; remote download-edit-upload) | |
 | `r` / `F2` | Rename (batch rename when multi-selected) | |
@@ -392,7 +404,8 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `d` / `Ctrl+D` / `Del` | Delete → always asks | no trash, so the dialog is the safety net |
 | `Ctrl+E` | Extract… | destination side is chosen in the dialog |
 | `Ctrl+G` | Compress selection… | format + destination side |
-| `Alt+S` | Review marked files | what, where, and the conflict rule |
+| `s` / `Alt+S` | Review marked files | what, where, and the conflict rule |
+| `Esc` | Cancel the marked set | the bar says so, and Escape keeps that promise |
 | `Alt+C` | Compare the two panes (read-only diff) | |
 | `Alt+B` `Alt+J` `Alt+D` | Sidebar / jobs queue / deploy | view toggles |
 | `F9` / right-click | Context menu — every operation for the selection | discovery net |

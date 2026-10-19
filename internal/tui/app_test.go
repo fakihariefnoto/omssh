@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/actions"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
@@ -139,7 +140,7 @@ func TestActionBarNamesTheVerbsAndTheirKeys(t *testing.T) {
 
 	// The action bar is the main teaching surface: the verb, the key, and an
 	// escape hatch to everything else.
-	for _, want := range []string{"View", "Rename", "Delete", "F9 more", "Ctrl+K search"} {
+	for _, want := range []string{"View", "Rename", "Delete", "Ctrl+K everything"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the action bar does not offer %q:\n%s", want, out)
 		}
@@ -450,7 +451,7 @@ func TestCutMovesBetweenPanes(t *testing.T) {
 	}
 }
 
-// --- discoverability// --- discoverability ---------------------------------------------------------
+// --- discoverability ---------------------------------------------------------
 
 // The palette finds an action by name and shows the shortcut beside it, which is
 // how a person learns the keys without reading anything.
@@ -463,11 +464,13 @@ func TestPaletteFindsActionsAndShowsShortcuts(t *testing.T) {
 	for _, ch := range "copy" {
 		press(t, m, run(ch, 0, string(ch)))
 	}
-	out := render(m)
-	if !strings.Contains(out, "Copy to…") {
-		t.Errorf("typing \"copy\" should find the copy actions:\n%s", out)
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "Copy") {
+		t.Errorf("typing \"copy\" should find the copy action:\n%s", out)
 	}
-	if !strings.Contains(out, "F5") {
+	// The shortcut is printed beside it, so the letters are learned by using the
+	// palette rather than by reading a table.
+	if !strings.Contains(out, "Copy") || !strings.Contains(out, " y ") {
 		t.Errorf("the palette should print the shortcut beside the action:\n%s", out)
 	}
 	// The filter is a real search, not a prefix match.
@@ -500,9 +503,9 @@ func TestContextMenuMarksDangerousActions(t *testing.T) {
 	m := newTestModel(t)
 	m.selectByName("README.md")
 	press(t, m, keyNamed(tea.KeySpace))
-	press(t, m, keyNamed(tea.KeyF9))
+	press(t, m, run('m', 0, "m"))
 	if m.Overlay != OverlayMenu {
-		t.Fatal("F9 should open the context menu")
+		t.Fatal("m should open the context menu")
 	}
 	items := m.menuItems()
 	if len(items) == 0 {
@@ -944,6 +947,82 @@ func TestOverlaysNeverLeakEscapeText(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+// Typing "~/x" in "go to path" must mean the pane's home, not a folder called "~"
+// at the root: the shell's shorthand is the one people type.
+func TestGoToPathExpandsHomeAndKeepsBadPaths(t *testing.T) {
+	m := newTestModel(t)
+	root := m.Pane().Path
+
+	// ~ is the home of this pane.
+	m.goToPath("~")
+	if m.Pane().Path != m.Pane().Home {
+		t.Errorf("~ should go to the pane home %q, went to %q", m.Pane().Home, m.Pane().Path)
+	}
+
+	// ~/assets is relative to the home, wherever that is.
+	m.Pane().Home = root
+	m.goToPath("~/assets")
+	want := m.Pane().FS.Join(m.Pane().Home, "assets")
+	if m.Pane().Path != want {
+		t.Errorf("~/assets should be %q, got %q", want, m.Pane().Path)
+	}
+
+	// A folder that does not exist leaves the pane alone and says so.
+	before := m.Pane().Path
+	m.goToPath("~/does-not-exist")
+	if m.Pane().Path != before {
+		t.Errorf("a missing folder should not move the pane, it went to %q", m.Pane().Path)
+	}
+	if len(m.toasts) == 0 {
+		t.Error("a missing folder should say what went wrong")
+	}
+
+	// A plain name is relative to where the pane is now.
+	m.navigate(root)
+	m.goToPath("assets")
+	if m.Pane().Path != m.Pane().FS.Join(root, "assets") {
+		t.Errorf("a relative name should join the current path, got %q", m.Pane().Path)
+	}
+}
+
+// Marking files shows where they are going, on screen, with the keys that decide
+// it. The review screen is a detail; this bar is the answer.
+func TestMarkedFilesShowTheirDestination(t *testing.T) {
+	m := newTestModel(t)
+	m.selectByName("README.md")
+	press(t, m, run('y', 0, "y"))
+
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"1 item", "copy →", "p paste", "s review", "Esc cancel"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the marked bar should say %q:\n%s", want, out)
+		}
+	}
+
+	// Cut says move, not copy.
+	press(t, m, run('x', 0, "x"))
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "move →") {
+		t.Errorf("x should mark for a move:\n%s", out)
+	}
+
+	// Clearing the marks removes the bar.
+	press(t, m, keyNamed(tea.KeyEsc))
+	if out := ansi.Strip(render(m)); strings.Contains(out, "p paste") {
+		t.Error("the bar should go when nothing is marked")
+	}
+}
+
+// Copy-to and move-to are not shortcuts a person guesses, so they have letters
+// like everything else rather than appearing keyless in the palette.
+func TestCopyToAndMoveToHaveKeys(t *testing.T) {
+	m := newTestModel(t)
+	for id, want := range map[actions.ID]string{"file.copy-to": "C", "file.move-to": "M"} {
+		if got := m.keys.Primary(id); got != want {
+			t.Errorf("%s should be bound to %q, got %q", id, want, got)
 		}
 	}
 }

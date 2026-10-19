@@ -34,7 +34,7 @@ func (m *Model) stage(cut bool) {
 	}
 	// The review screen is offered rather than opened: marking is a step, not a
 	// decision, and taking over the screen mid-selection would interrupt it.
-	m.toastInfo(fmt.Sprintf("%d %s marked to be %s · Alt+S to review",
+	m.toastInfo(fmt.Sprintf("%d %s marked to be %s · s reviews it",
 		len(names), plural(len(names), "item", "items"), verb))
 }
 

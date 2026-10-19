@@ -52,6 +52,10 @@ type Styles struct {
 	ActionHint     lipgloss.Style
 	ActionSelected lipgloss.Style
 
+	// The bar that says what is marked and where it is going. It sits between
+	// the panes and the action bar, and only exists while something is marked.
+	StagedBar lipgloss.Style
+
 	// Sidebar
 	Sidebar           lipgloss.Style
 	SidebarTitle      lipgloss.Style
@@ -141,6 +145,7 @@ func NewStyles(t Theme) Styles {
 		ActionKey:      lipgloss.NewStyle().Foreground(c.FG).Background(c.Selection).Padding(0, 1),
 		ActionHint:     muted,
 		ActionSelected: lipgloss.NewStyle().Foreground(c.AccentEmphasis).Bold(true),
+		StagedBar:      lipgloss.NewStyle().Foreground(c.FG).Background(c.Selection).Padding(0, 1),
 
 		Sidebar:           lipgloss.NewStyle().Padding(0, 1),
 		SidebarTitle:      muted.Bold(true),

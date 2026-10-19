@@ -89,6 +89,60 @@ func (m *Model) parent() tea.Cmd {
 	return m.navigate(parent)
 }
 
+// goToPath resolves what a person typed into "go to path". "~" is the pane's own
+// home — the user's locally, the session's remotely — and a bare name is relative
+// to where the pane already is. A path that is not a directory leaves the pane
+// where it was, because a file manager that navigates into its own error message
+// is worse than one that says what went wrong.
+func (m *Model) goToPath(value string) {
+	pane := m.Pane()
+	if pane.FS == nil {
+		return
+	}
+	path := resolveTypedPath(pane, value)
+	if path == "" || path == pane.Path {
+		return
+	}
+	info, err := pane.FS.Stat(path)
+	if err != nil {
+		m.toastError("Cannot open " + path + ": no such folder")
+		return
+	}
+	if !info.IsDir() {
+		m.toastError(path + " is a file, not a folder")
+		return
+	}
+	m.overlayCmd = m.navigate(path)
+}
+
+// resolveTypedPath turns typed text into a path on the pane's filesystem.
+func resolveTypedPath(pane *Pane, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if value == "~" {
+		if pane.Home != "" {
+			return pane.Home
+		}
+		return pane.Path
+	}
+	if rest, ok := strings.CutPrefix(value, "~/"); ok {
+		home := pane.Home
+		if home == "" {
+			home = "/"
+		}
+		return pane.FS.Join(home, rest)
+	}
+	if !strings.HasPrefix(value, "/") {
+		return pane.FS.Join(pane.Path, value)
+	}
+	// An absolute path still goes through the filesystem's own Join so the
+	// trailing slashes and ".." segments are cleaned by the code that knows which
+	// filesystem this is.
+	return pane.FS.Join(value)
+}
+
 // navigate changes the pane's directory and records it in the history, keeping
 // the cursor on the directory that was just entered so the way back is obvious.
 func (m *Model) navigate(path string) tea.Cmd {
