@@ -60,6 +60,11 @@ all being solid.
   is typed, folders only, dot-folders hidden until a dot is typed.
 - `amber` is the default theme, with an accent of its own; `auto` remains
   available for people who want the terminal to decide.
+- `internal/vfs`: the one filesystem interface (ADR 0001) with a `Local`
+  implementation and a conformance suite (`vfstest`) that Local passes in full.
+  Includes confined paths — `..` resolves inside the root and can never climb out
+  — which is the rule every later feature inherits: transfers, extraction and
+  deploys all write through this interface.
 - Release tooling mirroring the account's other projects: `.goreleaser.yaml`,
   `scripts/release.sh` (tag, push, publish, update the tap), a tag-triggered
   workflow, and `RELEASING.md`. Verified with `make snapshot` before any tag.
