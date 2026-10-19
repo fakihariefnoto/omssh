@@ -77,6 +77,10 @@ The tagline we design against:
   remote by default, with the direction spelled out in the UI as **`Send →`**
   and **`Fetch ←`** rather than "copy". Either pane can be remote: a
   `remote ↔ remote` layout is a normal configuration, not a special mode.
+- **Marking and reviewing**: `Ctrl+C`/`Ctrl+X` mark the selection, `Alt+S` reviews
+  what is marked and where it is going, `Ctrl+V` copies it to the other pane.
+  Remote listings are fetched off the interface loop, so a slow link shows
+  `loading…` instead of freezing.
 - A **contextual action bar** under the active pane lists the verbs that apply
   to the current selection, with their keys, and every one is clickable; plus a
   `F9` context menu and a `Ctrl+K` command palette as discovery nets. Nothing is

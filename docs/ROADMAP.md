@@ -60,6 +60,15 @@ all being solid.
   is typed, folders only, dot-folders hidden until a dot is typed.
 - `amber` is the default theme, with an accent of its own; `auto` remains
   available for people who want the terminal to decide.
+- Fixed more things the first real runs found: the connections footer claimed
+  Enter edits when it connects; there was no way to switch between live session
+  tabs; and a remote directory listing ran on the update loop, so an unstable
+  link froze the interface. Listings are now fetched in the background with a
+  visible `loading…` state, and a stale listing is discarded. `Ctrl+D` deletes,
+  so drop and delete no longer need a function row.
+- The transfer engine exists: `Ctrl+C` marks, `Alt+S` reviews, `Ctrl+V` copies
+  to the other pane, with update-if-newer conflicts, per-item errors, and a
+  cancellation that leaves no partial file.
 - Fixed three things a first real run found: a server that omits file attributes
   printed ten question marks per row and hid which entries were directories (one
   marker now, and a direct question when the attributes are missing); the tab

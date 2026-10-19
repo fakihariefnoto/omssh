@@ -383,7 +383,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `F4` | Edit (local `$EDITOR`; remote download-edit-upload) | |
 | `F2` | Rename (batch rename when multi-selected) | |
 | `F7` / `Ctrl+N` | New folder / new file | |
-| `F8` / `Del` | Delete | always confirms: items, size, path |
+| `Ctrl+D` / `F8` / `Del` | Delete | always confirms: items, size, path |
 | `Ctrl+E` | Extract… | destination side is chosen in the dialog |
 | `Ctrl+G` | Compress selection… | format + destination side |
 | `Alt+S` | Toggle sync browse | panes mirror the relative path |

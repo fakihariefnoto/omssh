@@ -177,8 +177,20 @@ func TestASCIIConsHaveNoNerdGlyphs(t *testing.T) {
 			}
 		}
 	}
-	if IconsFor("nonsense").Folder != ASCII().Folder {
-		t.Error("an unknown icon set should fall back to ASCII")
+	if IconsFor("nonsense").Folder != Unicode().Folder {
+		t.Error("an unknown icon set should fall back to the safe one")
+	}
+	// The default set must not need a patched font either.
+	for _, glyph := range []string{Unicode().Folder, Unicode().File, Unicode().Symlink, Unicode().Archive,
+		Unicode().DotReady, Unicode().DotBusy, Unicode().DotIdle, Unicode().DotError} {
+		for _, r := range glyph {
+			if r >= 0xE000 && r <= 0xF8FF {
+				t.Errorf("the unicode set contains the private-use glyph %q", glyph)
+			}
+			if r > 0xFFFF {
+				t.Errorf("the unicode set contains a glyph outside the BMP: %q", glyph)
+			}
+		}
 	}
 	if IconsFor("nerd").Folder != Nerd().Folder {
 		t.Error("the nerd set should be selectable")

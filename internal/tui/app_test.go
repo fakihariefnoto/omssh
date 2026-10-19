@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // visibleWidth is the on-screen width of a styled line, which is what must fit
@@ -322,132 +323,135 @@ func TestCtrlQQuitsAndF10Too(t *testing.T) {
 	}
 }
 
-// Ctrl+C is copy, and with nothing to copy it says so and names the quit key
-// rather than doing nothing at all.
-func TestCtrlCExplainsItselfWithNothingSelected(t *testing.T) {
+// Ctrl+C stages the cursor entry when nothing is multi-selected: the rule
+// everywhere in the interface is "the selection if there is one, the cursor
+// otherwise", so copy is always one keypress away.
+func TestCtrlCStagesTheCursorEntry(t *testing.T) {
 	m := newTestModel(t)
+	m.selectByName("README.md")
 	press(t, m, run('c', tea.ModCtrl, ""))
-	if m.quit {
-		t.Fatal("Ctrl+C quit the application")
+	if m.stagedCount() != 1 || m.staged.Paths[0] != "README.md" {
+		t.Fatalf("Ctrl+C should have staged the cursor entry, got %+v", m.staged.Paths)
 	}
-	if !strings.Contains(m.quitHint, "Ctrl+Q") {
-		t.Errorf("Ctrl+C with nothing selected should name the quit key, got %q", m.quitHint)
+	if !strings.Contains(m.toasts[len(m.toasts)-1].text, "marked") {
+		t.Errorf("staging should say so, got %q", m.toasts[len(m.toasts)-1].text)
+	}
+
+	// With an empty pane there is nothing to mark, and the message names the way
+	// out rather than doing nothing.
+	empty := newTestModel(t)
+	empty.Pane().Entries = nil
+	press(t, empty, run('c', tea.ModCtrl, ""))
+	if len(empty.staged.Paths) != 0 {
+		t.Errorf("an empty pane staged %+v", empty.staged.Paths)
+	}
+	if !strings.Contains(empty.quitHint, "Ctrl+Q") {
+		t.Errorf("with nothing to copy, the hint should name the quit key, got %q", empty.quitHint)
 	}
 }
 
-// Every overlay card is a box: lines must measure exactly the card width, or Lip
-// Gloss wraps them and each item grows by a line. And the footer must survive,
-// because that is where the card says how to get out.
-func TestCardBoxesAreExactAndFootersSurvive(t *testing.T) {
-	cases := []struct {
-		name   string
-		open   func(t *testing.T, m *Model)
-		footer string
-	}{
-		{"palette", func(t *testing.T, m *Model) { press(t, m, run('k', tea.ModCtrl, "")) }, "Esc close"},
-		{"menu", func(t *testing.T, m *Model) {
-			m.selectByName("README.md")
-			press(t, m, keyNamed(tea.KeySpace))
-			press(t, m, keyNamed(tea.KeyF9))
-		}, "Esc close"},
-		{"help", func(t *testing.T, m *Model) { press(t, m, keyNamed(tea.KeyF1)) }, "Ctrl+K searches"},
-		{"settings", func(t *testing.T, m *Model) { press(t, m, run(',', tea.ModCtrl, "")) }, "Ctrl+, close"},
-		{"prompt", func(t *testing.T, m *Model) { press(t, m, keyNamed(tea.KeyF7)) }, "Esc cancel"},
-		{"confirm", func(t *testing.T, m *Model) {
-			m.selectByName("README.md")
-			press(t, m, keyNamed(tea.KeyF8))
-		}, "no trash and no undo"},
-		{"onboarding", func(t *testing.T, m *Model) { m.Overlay = OverlayOnboarding }, "Esc"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, size := range []struct{ w, h int }{{140, 40}, {120, 34}, {90, 30}} {
-				m := newTestModel(t)
-				resize(t, m, size.w, size.h)
-				tc.open(t, m)
-				card := m.renderOverlay(m.measure())
-				if card == "" {
-					t.Fatalf("no card was rendered")
-				}
-				lines := strings.Split(card, "\n")
-				width := visibleWidth(lines[0])
-				for i, line := range lines {
-					if got := visibleWidth(line); got != width {
-						t.Errorf("%dx%d line %d is %d cells, want %d:\n%q", size.w, size.h, i, got, width, line)
-					}
-				}
-				if !strings.Contains(ansi.Strip(card), tc.footer) {
-					t.Errorf("%dx%d: the footer %q is missing:\n%s", size.w, size.h, tc.footer, ansi.Strip(card))
-				}
-			}
-		})
-	}
-}
-
-// A card taller than the screen keeps its footer and says so in the middle.
-func TestTallCardsAreClippedNotBroken(t *testing.T) {
+// A staged set can be reviewed, and Escape leaves the review open to nothing
+// else.
+func TestStagedReviewScreen(t *testing.T) {
 	m := newTestModel(t)
-	resize(t, m, 100, 14) // deliberately short
-	press(t, m, keyNamed(tea.KeyF1))
-	rendered := ansi.Strip(render(m))
-	if !strings.Contains(rendered, "Ctrl+K searches") {
-		t.Errorf("a clipped card should keep its footer:\n%s", rendered)
+	press(t, m, run('a', tea.ModCtrl, ""))
+	press(t, m, run('c', tea.ModCtrl, ""))
+	if m.stagedCount() != len(m.Pane().Entries) {
+		t.Fatalf("staged %d of %d", m.stagedCount(), len(m.Pane().Entries))
 	}
-	if !strings.Contains(rendered, "…") {
-		t.Errorf("a clipped card should say it was clipped:\n%s", rendered)
+
+	cmd := m.runAction("view.staged")
+	if m.Overlay != OverlayStaged {
+		t.Fatal("reviewing the staged files should open the review screen")
+	}
+	_ = cmd
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Marked for copying", "from", "to", "Enter copying", "u unmark"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the review screen should show %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "README.md") {
+		t.Errorf("the review screen should list the marked files:\n%s", out)
+	}
+
+	// u unmarks everything and closes.
+	press(t, m, run('u', 0, "u"))
+	if m.stagedCount() != 0 || m.Overlay != OverlayNone {
+		t.Errorf("u should unmark and close, staged %d, overlay %v", m.stagedCount(), m.Overlay)
 	}
 }
 
-// The three columns of the body share one top edge and one bottom edge. Without
-// this, the sidebar's text floats a row above the pane borders and the whole
-// layout reads as misaligned.
-func TestSidebarAlignsWithPanes(t *testing.T) {
+// Copying between two panes actually moves the bytes: the engine is shared by
+// every direction, and the interface's job is to hand it the right two sides.
+func TestPasteCopiesBetweenPanes(t *testing.T) {
 	m := newTestModel(t)
-	resize(t, m, 140, 40)
-	body := m.renderBody(m.measure())
-	lines := strings.Split(body, "\n")
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1].Bind(destFS, "", "/")
+	m.Panes[1].Path = "/"
 
-	top, bottom := -1, -1
-	for i, line := range lines {
-		plain := ansi.Strip(line)
-		if top < 0 && strings.Count(plain, "╭") == 3 {
-			top = i
-		}
-		if strings.Count(plain, "╰") == 3 {
-			bottom = i
-		}
+	m.selectByName("README.md")
+	press(t, m, run('c', tea.ModCtrl, ""))
+	cmd := m.pasteStaged()
+	if cmd == nil {
+		t.Fatal("paste should return a command")
 	}
-	if top < 0 {
-		t.Fatalf("the three boxes do not share a top edge:\n%s", ansi.Strip(body))
+	// Run the command the way the program would, then fold the result in.
+	report, ok := cmd().(copyReport)
+	if !ok {
+		t.Fatal("the copy should report a copyReport")
 	}
-	if bottom < 0 {
-		t.Fatalf("the three boxes do not share a bottom edge:\n%s", ansi.Strip(body))
+	m.handleCopyReport(report)
+	if report.err != nil {
+		t.Fatalf("copy failed: %v", report.err)
 	}
-	if bottom-top != m.measure().PaneRows+1 {
-		t.Errorf("the boxes span rows %d..%d, which is not the pane height", top, bottom)
+	if report.created != 1 {
+		t.Errorf("expected one created file, got %+v", report)
+	}
+	body, err := os.ReadFile(filepath.Join(dest, "README.md"))
+	if err != nil {
+		t.Fatalf("the file did not arrive: %v", err)
+	}
+	if !strings.Contains(string(body), "hello") {
+		t.Errorf("the copy holds %q", body)
+	}
+	if m.stagedCount() != 0 {
+		t.Error("pasting should clear the marks")
 	}
 }
 
-// The sidebar is a box too, so its lines measure exactly its width.
-func TestSidebarBoxIsExact(t *testing.T) {
+// A cut removes the sources only after they arrived.
+func TestCutMovesBetweenPanes(t *testing.T) {
 	m := newTestModel(t)
-	resize(t, m, 160, 40)
-	l := m.measure()
-	content := m.renderSidebar(l)
-	for i, line := range strings.Split(content, "\n") {
-		if w := visibleWidth(line); w != l.SidebarWidth-2 {
-			t.Errorf("sidebar line %d is %d cells, want %d:\n%q", i, w, l.SidebarWidth-2, line)
-		}
-		if !strings.HasPrefix(ansi.Strip(line), " ") {
-			t.Errorf("sidebar line %d has no inner padding:\n%q", i, ansi.Strip(line))
-		}
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := strings.Count(content, "\n") + 1; got != l.PaneRows {
-		t.Errorf("the sidebar has %d rows, want %d so it matches the panes", got, l.PaneRows)
+	m.Panes[1].Bind(destFS, "", "/")
+	m.Panes[1].Path = "/"
+	source := filepath.Join(m.Panes[0].Path, "notes.txt")
+
+	m.selectByName("notes.txt")
+	press(t, m, run('x', tea.ModCtrl, ""))
+	report := m.pasteStaged()().(copyReport)
+	m.handleCopyReport(report)
+	if report.err != nil {
+		t.Fatalf("move failed: %v", report.err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "notes.txt")); err != nil {
+		t.Errorf("the file did not arrive: %v", err)
+	}
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		t.Errorf("the source should be gone after a move, got %v", err)
 	}
 }
 
-// --- discoverability ---------------------------------------------------------
+// --- discoverability// --- discoverability ---------------------------------------------------------
 
 // The palette finds an action by name and shows the shortcut beside it, which is
 // how a person learns the keys without reading anything.

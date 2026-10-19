@@ -21,7 +21,7 @@ type Config struct {
 type UI struct {
 	// Theme is one of midnight, dawn, mist, ember, mono, contrast or auto.
 	Theme string `yaml:"theme"`
-	// Icons is "nerd" or "ascii".
+	// Icons is "unicode" (the default), "ascii", or "nerd".
 	Icons string `yaml:"icons"`
 	// Motion is "full" or "reduced".
 	Motion string `yaml:"motion"`
@@ -95,7 +95,7 @@ type Hooks struct {
 // Known values, kept in one place so validation and help text cannot drift.
 var (
 	Themes       = []string{"auto", "amber", "midnight", "dawn", "mist", "mono", "contrast"}
-	IconSets     = []string{"nerd", "ascii"}
+	IconSets     = []string{"unicode", "ascii", "nerd"}
 	Motions      = []string{"full", "reduced"}
 	KeyPresets   = []string{"standard", "vim"}
 	StartScreens = []string{"home", "files"}
@@ -109,7 +109,7 @@ func Default() Config {
 		Version: 1,
 		UI: UI{
 			Theme:      "amber",
-			Icons:      "nerd",
+			Icons:      "unicode",
 			Motion:     "full",
 			Sidebar:    true,
 			Preview:    true,

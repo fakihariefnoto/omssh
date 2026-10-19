@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
@@ -60,45 +62,44 @@ func (m *Model) ensureVisible() {
 
 // open enters the cursor entry: a directory becomes the pane's path, a file
 // moves focus to the preview.
-func (m *Model) open() {
+func (m *Model) open() tea.Cmd {
 	pane := m.Pane()
 	entry, ok := pane.CursorEntry()
 	if !ok {
-		return
+		return nil
 	}
 	if entry.Dir {
-		m.navigate(pane.FS.Join(pane.Path, entry.Name))
-		return
+		return m.navigate(pane.FS.Join(pane.Path, entry.Name))
 	}
 	m.preview = true
 	m.mode = "PREVIEW"
+	return nil
 }
 
 // parent moves the pane to the directory above, stopping at the root.
-func (m *Model) parent() {
+func (m *Model) parent() tea.Cmd {
 	pane := m.Pane()
 	if pane.FS == nil {
-		return
+		return nil
 	}
 	parent := pane.FS.Dir(pane.Path)
 	if parent == pane.Path || parent == "" {
-		return
+		return nil
 	}
-	m.navigate(parent)
+	return m.navigate(parent)
 }
 
 // navigate changes the pane's directory and records it in the history, keeping
 // the cursor on the directory that was just entered so the way back is obvious.
-func (m *Model) navigate(path string) {
+func (m *Model) navigate(path string) tea.Cmd {
 	pane := m.Pane()
 	if path == "" || path == pane.Path {
-		return
+		return nil
 	}
 	previous := pane.Path
 	pane.Path = path
 	pane.LastDir = previous
 	pane.Cursor, pane.Offset, pane.Filter = 0, 0, ""
-	pane.Load(m.showHidden)
 
 	// Trim any forward history and append, the way a browser does.
 	if pane.HIndex < len(pane.History)-1 {
@@ -106,66 +107,65 @@ func (m *Model) navigate(path string) {
 	}
 	pane.History = append(pane.History, path)
 	pane.HIndex = len(pane.History) - 1
+	return m.loadPaneAsync(m.Focused)
 }
 
 // historyBack and historyForward walk the visited-directory stack.
-func (m *Model) historyBack() {
+func (m *Model) historyBack() tea.Cmd {
 	pane := m.Pane()
 	if pane.HIndex <= 0 {
-		return
+		return nil
 	}
 	pane.HIndex--
 	pane.Path = pane.History[pane.HIndex]
 	pane.Cursor, pane.Offset = 0, 0
-	pane.Load(m.showHidden)
+	return m.loadPaneAsync(m.Focused)
 }
 
-func (m *Model) historyForward() {
+func (m *Model) historyForward() tea.Cmd {
 	pane := m.Pane()
 	if pane.HIndex >= len(pane.History)-1 {
-		return
+		return nil
 	}
 	pane.HIndex++
 	pane.Path = pane.History[pane.HIndex]
 	pane.Cursor, pane.Offset = 0, 0
-	pane.Load(m.showHidden)
+	return m.loadPaneAsync(m.Focused)
 }
 
 // goHome jumps to the home directory of the focused pane: the user's own locally,
 // the session's root remotely.
-func (m *Model) goHome() {
+func (m *Model) goHome() tea.Cmd {
 	pane := m.Pane()
 	if pane.Home != "" {
-		m.navigate(pane.Home)
-		return
+		return m.navigate(pane.Home)
 	}
 	m.toastInfo("This pane has no home directory")
+	return nil
 }
 
 // goLastDir is the "-" behaviour: back to the previous directory.
-func (m *Model) goLastDir() {
+func (m *Model) goLastDir() tea.Cmd {
 	pane := m.Pane()
 	if pane.LastDir != "" {
-		m.navigate(pane.LastDir)
+		return m.navigate(pane.LastDir)
 	}
+	return nil
 }
 
 // refresh reloads the listing, keeping the cursor on the same entry where it
 // still exists, so a refresh does not move you.
-func (m *Model) refresh() {
+func (m *Model) refresh() tea.Cmd {
 	pane := m.Pane()
 	previous, had := pane.CursorEntry()
-	pane.Load(m.showHidden)
+	cmd := m.loadPaneAsync(m.Focused)
 	if !had {
-		return
+		return cmd
 	}
-	for i, e := range pane.Visible() {
-		if e.Name == previous.Name {
-			pane.Cursor = i
-			break
-		}
-	}
-	m.ensureVisible()
+	// The cursor follows the entry it was on. For a local pane that has already
+	// happened; for a remote one the listing arrives later, so remember the name.
+	pane.pendingCursor = previous.Name
+	return cmd
 }
 
 // typeAhead jumps the cursor to the next entry starting with the typed prefix.
@@ -312,70 +312,70 @@ func (m *Model) pathFor(name string) (vfs.FS, string, error) {
 	return fsys, fsys.Join(m.Pane().Path, name), nil
 }
 
-func (m *Model) createDir(name string) {
+func (m *Model) createDir(name string) tea.Cmd {
 	fsys, path, err := m.pathFor(name)
 	if err != nil {
 		m.toastError(err.Error())
-		return
+		return nil
 	}
 	if err := fsys.Mkdir(path, 0o750); err != nil {
 		m.toastError(fmt.Sprintf("Cannot create %s: %v", name, err))
-		return
+		return nil
 	}
-	m.refresh()
 	m.selectByName(name)
 	m.toastSuccess("Created " + name)
+	return m.refresh()
 }
 
-func (m *Model) createFile(name string) {
+func (m *Model) createFile(name string) tea.Cmd {
 	fsys, path, err := m.pathFor(name)
 	if err != nil {
 		m.toastError(err.Error())
-		return
+		return nil
 	}
 	// O_EXCL so "new file" never quietly truncates an existing one.
 	file, err := fsys.OpenFile(path, vfs.O_WRONLY|vfs.O_CREATE|vfs.O_EXCL, 0o600)
 	if err != nil {
 		m.toastError(fmt.Sprintf("Cannot create %s: %v", name, err))
-		return
+		return nil
 	}
 	if err := file.Close(); err != nil {
 		m.toastError(fmt.Sprintf("Cannot create %s: %v", name, err))
-		return
+		return nil
 	}
-	m.refresh()
 	m.selectByName(name)
 	m.toastSuccess("Created " + name)
+	return m.refresh()
 }
 
-func (m *Model) renameCursor(newName string) {
+func (m *Model) renameCursor(newName string) tea.Cmd {
 	entry, ok := m.Pane().CursorEntry()
 	if !ok {
-		return
+		return nil
 	}
 	fsys, err := m.paneFS()
 	if err != nil {
 		m.toastError(err.Error())
-		return
+		return nil
 	}
 	from := fsys.Join(m.Pane().Path, entry.Name)
 	to := fsys.Join(m.Pane().Path, newName)
 	if err := fsys.Rename(from, to); err != nil {
 		m.toastError(fmt.Sprintf("Cannot rename: %v", err))
-		return
+		return nil
 	}
-	m.refresh()
 	m.selectByName(newName)
 	m.toastSuccess("Renamed to " + newName)
+	return m.refresh()
 }
 
 // deleteTargets removes what the confirmation dialog approved. There is no trash
 // and no undo, which is exactly why the dialog states the facts first.
-func (m *Model) deleteTargets(entries []Entry) {
+func (m *Model) deleteTargets(entries []Entry) tea.Cmd {
 	fsys, err := m.paneFS()
 	if err != nil {
 		m.toastError(err.Error())
-		return
+		return nil
 	}
 	failed := 0
 	for _, e := range entries {
@@ -385,13 +385,14 @@ func (m *Model) deleteTargets(entries []Entry) {
 		}
 	}
 	m.clearSelection()
-	m.refresh()
+	cmd := m.refresh()
 	switch failed {
 	case 0:
 		m.toastSuccess(fmt.Sprintf("Deleted %d %s", len(entries), plural(len(entries), "item", "items")))
 	default:
 		m.toastError(fmt.Sprintf("Deleted %d of %d; %d failed", len(entries)-failed, len(entries), failed))
 	}
+	return cmd
 }
 
 // selectByName puts the cursor on a named entry after a listing change.
@@ -415,29 +416,122 @@ func (m *Model) switchPane(delta int) {
 }
 
 // revealInOtherPane opens the cursor entry in the other pane.
-func (m *Model) revealInOtherPane() {
+func (m *Model) revealInOtherPane() tea.Cmd {
 	if len(m.Panes) < 2 {
-		return
+		return nil
 	}
 	pane := m.Pane()
 	other := 1 - m.Focused
 	if pane.FS == nil || m.Panes[other].FS == nil {
 		m.toastInfo("Both panes need a directory to reveal between")
-		return
+		return nil
 	}
 	entry, ok := pane.CursorEntry()
 	if !ok {
-		return
+		return nil
 	}
 	if !entry.Dir {
 		m.Focused = other
 		m.ensureVisible()
-		return
+		return nil
 	}
 	// The other pane may be a different filesystem, so the path is built with its
 	// own arithmetic.
 	m.Panes[other].Path = m.Panes[other].FS.Join(m.Panes[other].Path, entry.Name)
-	m.Panes[other].Load(m.showHidden)
 	m.Focused = other
-	m.ensureVisible()
+	return m.loadPaneAsync(other)
+}
+
+// --- asynchronous listings ---------------------------------------------------
+
+// dirLoadedMsg carries a finished listing back to the update loop.
+type dirLoadedMsg struct {
+	pane    int
+	path    string
+	entries []Entry
+	err     error
+}
+
+// loadPaneAsync lists a pane without blocking the interface, which matters over
+// a slow link: a directory of a thousand entries is a thousand round trips, and
+// the update loop cannot wait for them.
+//
+// A local pane is listed inline. It takes microseconds, and keeping it
+// synchronous means navigation stays instant and the tests stay deterministic.
+func (m *Model) loadPaneAsync(index int) tea.Cmd {
+	if index < 0 || index >= len(m.Panes) {
+		return nil
+	}
+	pane := &m.Panes[index]
+	if pane.FS == nil {
+		pane.Entries, pane.Err, pane.Loading = nil, nil, false
+		return nil
+	}
+	if _, local := pane.FS.(*vfs.Local); local {
+		pane.Loading = false
+		pane.Load(m.showHidden)
+		return nil
+	}
+
+	// The previous entries stay on screen while the new ones are fetched, so a
+	// slow link shows the old listing with a marker rather than an empty pane.
+	pane.Loading = true
+	fsys, path, hidden := pane.FS, pane.Path, m.showHidden
+	return func() tea.Msg {
+		entries, err := listEntries(fsys, path, hidden)
+		return dirLoadedMsg{pane: index, path: path, entries: entries, err: err}
+	}
+}
+
+// listEntries reads a directory and filters it, off the update loop.
+func listEntries(fsys vfs.FS, path string, hidden bool) ([]Entry, error) {
+	entries, err := readDir(fsys, path)
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		if !hidden && strings.HasPrefix(entry.Name, ".") {
+			continue
+		}
+		visible = append(visible, entry)
+	}
+	sortEntries(visible)
+	return visible, nil
+}
+
+// applyListing folds a finished listing into its pane, unless the pane has moved
+// on since the request was made.
+func (m *Model) applyListing(msg dirLoadedMsg) {
+	if msg.pane < 0 || msg.pane >= len(m.Panes) {
+		return
+	}
+	pane := &m.Panes[msg.pane]
+	if pane.Path != msg.path {
+		// The user navigated again while this was in flight; the newer request
+		// owns the pane.
+		return
+	}
+	pane.Loading = false
+	pane.Err = msg.err
+	if msg.err != nil {
+		pane.Entries = nil
+		return
+	}
+	pane.Entries = msg.entries
+	if pane.pendingCursor != "" {
+		for i, entry := range pane.Entries {
+			if entry.Name == pane.pendingCursor {
+				pane.Cursor = i
+				break
+			}
+		}
+		pane.pendingCursor = ""
+	}
+	if pane.Cursor >= len(pane.Entries) {
+		pane.Cursor = max(0, len(pane.Entries)-1)
+	}
+	if msg.pane == m.Focused {
+		m.ensureVisible()
+	}
 }

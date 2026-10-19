@@ -19,8 +19,9 @@ ui:
   # auto | amber | midnight | dawn | mist | mono | contrast
   # amber is the default; auto follows the terminal (midnight or dawn)
   theme: amber
-  # nerd | ascii
-  icons: nerd
+  # unicode | ascii | nerd
+  # unicode works in any font; nerd needs a patched font (else you see "?")
+  icons: unicode
   # full | reduced (swaps animation for static text)
   motion: full
   sidebar: true

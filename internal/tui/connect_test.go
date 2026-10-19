@@ -283,3 +283,106 @@ func targetOf(t *testing.T, m *Model) omssh.Target {
 	}
 	return target
 }
+
+// remoteish wraps a local filesystem so the pane treats it as a remote one: the
+// asynchronous path is chosen by type, not by latency, because a local listing is
+// instant and a network one is not.
+type remoteish struct{ vfs.FS }
+
+// Switching tabs rebinds the remote pane to that session, and the local tab
+// focuses the local pane without losing it.
+func TestSwitchingBetweenConnectedTabs(t *testing.T) {
+	m, _ := newConnectModel(t, session.PrompterFunc{})
+	first := t.TempDir()
+	second := t.TempDir()
+	mustWrite(t, first+"/one.txt", "1")
+	mustWrite(t, second+"/two.txt", "2")
+
+	fsOne, err := vfs.NewLocal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsTwo, err := vfs.NewLocal(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both sessions are live and have their own tab.
+	m.addSessionTab(&session.Session{ID: "s1", Target: omssh.Target{Alias: "one"}, FS: fsOne, Root: "/", Base: first})
+	m.addSessionTab(&session.Session{ID: "s2", Target: omssh.Target{Alias: "two"}, FS: fsTwo, Root: "/", Base: second})
+	if len(m.tabs) != 3 {
+		t.Fatalf("expected the local tab and two sessions, got %d", len(m.tabs))
+	}
+
+	// Alt+1 focuses the local pane and leaves the remote where it is.
+	m.activeTab = 2
+	_ = m.switchTab(0)
+	if m.Focused != 0 {
+		t.Errorf("the local tab should focus the local pane, focused %d", m.Focused)
+	}
+
+	// Alt+2 binds the first session; Alt+3 the second.
+	m.switchTab(1)
+	if m.Panes[1].Host != "one" {
+		t.Errorf("tab 2 should show the first session, got %q", m.Panes[1].Host)
+	}
+	m.switchTab(2)
+	if m.Panes[1].Host != "two" {
+		t.Errorf("tab 3 should show the second session, got %q", m.Panes[1].Host)
+	}
+	if m.Focused != 1 {
+		t.Error("a session tab should focus the remote pane")
+	}
+}
+
+// A remote directory listing runs off the update loop and shows a loading state
+// meanwhile, so an unstable link cannot freeze the interface.
+func TestRemoteListingIsAsynchronous(t *testing.T) {
+	m := newTestModel(t)
+	dir := t.TempDir()
+	mustWrite(t, dir+"/visible.txt", "x")
+	mustWrite(t, dir+"/.hidden", "x")
+	local, err := vfs.NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1].Bind(remoteish{FS: local}, "remote", "/")
+	m.Panes[1].Path = "/"
+	m.Panes[1].Entries = nil
+
+	cmd := m.loadPaneAsync(1)
+	if cmd == nil {
+		t.Fatal("a remote listing should return a command")
+	}
+	if !m.Panes[1].Loading {
+		t.Error("the pane should be marked as loading")
+	}
+	if !strings.Contains(ansi.Strip(render(m)), "Loading…") {
+		t.Error("the interface should show that it is loading")
+	}
+
+	// Running the command must not touch the model; the message is what changes
+	// it, which is what keeps Update single-threaded.
+	msg, ok := cmd().(dirLoadedMsg)
+	if !ok {
+		t.Fatal("the command should produce a dirLoadedMsg")
+	}
+	if len(m.Panes[1].Entries) != 0 {
+		t.Error("the command mutated the model")
+	}
+	m.applyListing(msg)
+	if m.Panes[1].Loading {
+		t.Error("applying the listing should clear the loading state")
+	}
+	if len(m.Panes[1].Entries) != 1 || m.Panes[1].Entries[0].Name != "visible.txt" {
+		t.Errorf("entries = %+v", m.Panes[1].Entries)
+	}
+
+	// A listing for a directory the pane has already left is discarded, not
+	// applied to the new one.
+	m.Panes[1].Path = "/elsewhere"
+	m.Panes[1].Entries = nil
+	m.applyListing(msg)
+	if len(m.Panes[1].Entries) != 0 {
+		t.Errorf("a stale listing was applied: %+v", m.Panes[1].Entries)
+	}
+}

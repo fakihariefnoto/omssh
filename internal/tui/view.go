@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/actions"
+	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/version"
 )
 
@@ -216,6 +217,9 @@ func (m *Model) renderBreadcrumb(pane *Pane, width int, focused bool) string {
 
 	line := title + "  " + crumb
 	right := m.st.StatusMuted.Render(fmt.Sprintf("%d items", len(pane.Visible())))
+	if pane.Loading {
+		right = m.st.StatusMuted.Render("loading…")
+	}
 	gap := width - lipgloss.Width(line) - lipgloss.Width(right)
 	if gap < 1 {
 		// The breadcrumb shares its row with the pane beside it, so it is
@@ -250,10 +254,15 @@ func (m *Model) renderRows(pane *Pane, width, rows int, focused bool) string {
 			m.st.PaneEmpty.Render("No connection yet"),
 			m.st.PaneEmpty.Render("Ctrl+O to open one"),
 		)
+	case pane.Loading:
+		lines = append(lines,
+			m.st.PaneEmpty.Render("Loading…"),
+			m.st.PaneEmpty.Render("This can take a moment on a slow link"),
+		)
 	case len(pane.Entries) == 0:
 		lines = append(lines,
 			m.st.PaneEmpty.Render("Empty directory"),
-			m.st.PaneEmpty.Render("F7 to create a folder"),
+			m.st.PaneEmpty.Render("Ctrl+N for a file, Ctrl+Shift+N for a folder"),
 		)
 	case len(pane.Visible()) == 0:
 		lines = append(lines,
@@ -355,15 +364,36 @@ func (m *Model) renderSidebar(l layout) string {
 	// One cell of inner padding, so the text does not touch the border.
 	content := l.SidebarWidth - chrome
 	width := content - 1
-	rows := []string{
-		m.st.SidebarTitle.Render("HOSTS"),
-		m.st.PaneEmpty.Render(truncate("No connections yet", width)),
-		m.st.PaneEmpty.Render(truncate("Ctrl+O to open one", width)),
+
+	// Hosts is the live session list, not a static caption: a connection that is
+	// established has to show up here, or the sidebar lies about the machine the
+	// panes are showing.
+	rows := []string{m.st.SidebarTitle.Render("HOSTS")}
+	live := m.liveSessions()
+	if len(live) == 0 {
+		rows = append(rows,
+			m.st.PaneEmpty.Render(truncate("No connections yet", width)),
+			m.st.PaneEmpty.Render(truncate("Ctrl+O to open one", width)))
+	} else {
+		for _, host := range live {
+			// The dot is styled on its own and the name is styled on its own:
+			// nesting one rendered string inside another splits its escapes (see
+			// the tab strip).
+			dot := m.stateDot(host.state)
+			name := truncate(host.alias, width-3)
+			style := m.st.SidebarItem
+			if host.active {
+				style = m.st.SidebarItemActive
+			}
+			rows = append(rows, dot+" "+style.Render(name))
+		}
+	}
+	rows = append(rows,
 		"",
 		m.st.SidebarTitle.Render("BOOKMARKS"),
 		m.st.PaneEmpty.Render(truncate("Alt+B adds this folder", width)),
 		"",
-	}
+	)
 
 	jobs := m.st.SidebarTitle.Render("TRANSFERS")
 	if m.Jobs() == 0 {
@@ -392,6 +422,54 @@ func (m *Model) renderSidebar(l layout) string {
 		out = append(out, strings.Repeat(" ", content))
 	}
 	return strings.Join(out, "\n")
+}
+
+// liveHost is one entry in the sidebar's host list.
+type liveHost struct {
+	alias  string
+	state  ConnState
+	active bool
+}
+
+// liveSessions is the sidebar's host list: the sessions this interface is
+// holding, newest first, with the one the focused pane is showing marked.
+func (m *Model) liveSessions() []liveHost {
+	if m.sessions == nil {
+		return nil
+	}
+	live := make([]liveHost, 0, m.sessions.Len())
+	focusedHost := ""
+	if m.Focused < len(m.Panes) {
+		focusedHost = m.Panes[m.Focused].Host
+	}
+	for _, s := range m.sessions.Sessions() {
+		live = append(live, liveHost{
+			alias:  s.Target.Alias,
+			state:  connStateFor(s.State),
+			active: s.Target.Alias == focusedHost,
+		})
+	}
+	// Newest first reads better in a short list.
+	for i, j := 0, len(live)-1; i < j; i, j = i+1, j-1 {
+		live[i], live[j] = live[j], live[i]
+	}
+	return live
+}
+
+// connStateFor maps a session's state onto the tab dot's vocabulary.
+func connStateFor(state session.State) ConnState {
+	switch state {
+	case session.StateConnecting:
+		return StateConnecting
+	case session.StateReady:
+		return StateReady
+	case session.StateBusy:
+		return StateBusy
+	case session.StateError:
+		return StateError
+	default:
+		return StateIdle
+	}
 }
 
 // renderActionBar is the interface's main teaching surface: the verbs that apply
@@ -454,8 +532,8 @@ func (m *Model) renderActionBar(l layout) string {
 // independent of registry order: what a person needs first goes first.
 func (m *Model) actionBarOrder() []actions.ID {
 	return []actions.ID{
-		"file.view", "file.edit", "file.rename",
-		"file.copy-to", "file.move-to", "file.delete",
+		"file.copy", "file.cut", "file.delete", "file.rename",
+		"file.view", "file.edit", "file.copy-to", "file.move-to",
 		"archive.extract", "archive.compress",
 		"nav.send", "nav.fetch", "nav.open", "nav.parent",
 		"file.mkdir", "sel.toggle",

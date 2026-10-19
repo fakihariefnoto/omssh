@@ -37,6 +37,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderHostKey(l)
 	case OverlaySecret:
 		return m.renderSecret(l)
+	case OverlayStaged:
+		return m.renderStaged(l)
 	default:
 		return ""
 	}
@@ -345,6 +347,46 @@ func (m *Model) card(width int, lines []string) string {
 		padded = append(padded, padVisible(ansi.Truncate(line, content, "…"), content))
 	}
 	return m.st.Card.Width(width).Render(strings.Join(padded, "\n"))
+}
+
+// renderStaged is the review screen for the files marked for copying: what is
+// marked, where it is going, and the rule for a file that is already there.
+func (m *Model) renderStaged(l layout) string {
+	width := cardWidth(l, 54, 82)
+	content := cardContent(width)
+
+	verb := "copying"
+	if m.staged.Cut {
+		verb = "moving"
+	}
+	lines := []string{m.st.CardTitle.Render("Marked for " + verb), ""}
+
+	entries := m.stagedEntries()
+	limit := min(10, len(entries))
+	for _, entry := range entries[:limit] {
+		lines = append(lines, m.row(entry.Name, humanSize(entry.Size), content))
+	}
+	if len(entries) > limit {
+		lines = append(lines, m.st.CardMuted.Render(fmt.Sprintf("  … %d more", len(entries)-limit)))
+	}
+
+	from, to := m.stagedRoute()
+	lines = append(lines, "",
+		m.st.StatusMuted.Render(padRight("from", 6))+m.st.CardText.Render(truncate(from, content-6)),
+		m.st.StatusMuted.Render(padRight("to", 6))+m.st.CardText.Render(truncate(to, content-6)),
+		m.st.StatusMuted.Render(padRight("size", 6))+m.st.CardText.Render(humanSize(m.stagedBytes())),
+		"",
+		m.st.CardMuted.Render(truncate("A file already there is replaced only if the source is newer.", content)),
+		"",
+		m.st.CardMuted.Render("Enter "+verb+" · u unmark · Esc close"),
+	)
+	return m.card(width, lines)
+}
+
+// row lays a name and a value out at the two ends of one line.
+func (m *Model) row(name, value string, content int) string {
+	width := max(1, content-lipgloss.Width(value)-1)
+	return padRight(name, width) + " " + m.st.StatusMuted.Render(value)
 }
 
 // paletteItems is the palette list, filtered and sorted by match quality.

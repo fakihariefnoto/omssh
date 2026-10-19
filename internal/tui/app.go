@@ -106,6 +106,9 @@ type Model struct {
 	activePrompt *promptRequest
 	// connecting is the set of hosts with a connection in flight.
 	connecting map[string]bool
+	// live is the sessions this interface is showing, by alias, so switching tabs
+	// does not have to ask the manager.
+	live map[string]*session.Session
 	// secretInput and rememberSecret are the password dialog's state.
 	secretInput    input
 	rememberSecret bool
@@ -356,7 +359,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case connectedMsg:
-		m.handleConnected(msg)
+		cmd := m.handleConnected(msg)
+		return m, cmd
+
+	case copyReport:
+		m.handleCopyReport(msg)
+		return m, nil
+
+	case dirLoadedMsg:
+		m.applyListing(msg)
 		return m, nil
 
 	case clipboardMsg:
@@ -515,7 +526,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 			m.confirmAlias = m.confirm.Alias
 			m.confirm = confirmState{}
 			m.Overlay = OverlayNone
-			m.applyConfirmed(action, entries)
+			m.overlayCmd = m.applyConfirmed(action, entries)
 		}
 		return true
 
@@ -550,7 +561,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 			action := m.prompt.Action
 			m.prompt = promptState{}
 			m.Overlay = OverlayNone
-			m.applyPrompt(action, value)
+			m.overlayCmd = m.applyPrompt(action, value)
 		default:
 			if m.prompt.input.Handle(msg) {
 				m.rebuildPathSuggestions()
@@ -560,6 +571,20 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlayForm:
 		m.overlayCmd = m.handleFormKey(msg)
+		return true
+
+	case OverlayStaged:
+		switch msg.String() {
+		case "esc":
+			m.Overlay = OverlayNone
+		case "u":
+			m.clearStaged()
+			m.Overlay = OverlayNone
+			m.toastInfo("Nothing is marked now")
+		case "enter":
+			m.Overlay = OverlayNone
+			m.overlayCmd = m.pasteStaged()
+		}
 		return true
 
 	case OverlayHostKey:
@@ -622,6 +647,12 @@ func (m *Model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	out := m.resolver.Feed(msg.String())
 	switch {
 	case out.Matched:
+		// Alt+1…9 all resolve to "switch tab"; the number is in the key itself.
+		if out.ID == "session.tab" {
+			m.resetTypeAhead()
+			cmd := m.switchTab(tabIndexFromKey(msg.String()))
+			return m, cmd
+		}
 		// A bound key that does not apply here must not swallow printable input:
 		// typing "d" in the file manager is type-ahead, even though "d" deletes a
 		// connection on the connections screen. Type-ahead state survives the
@@ -785,6 +816,10 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.toastInfo("Reloaded ~/.ssh/config")
 	case "session.open-config":
 		return m.editConfigFile()
+	case "session.tab-next":
+		return m.switchTab(m.activeTab + 1)
+	case "session.tab-prev":
+		return m.switchTab(m.activeTab - 1)
 	case "session.connect":
 		return m.connectToHighlighted()
 	case "app.home":
@@ -797,9 +832,9 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "nav.down":
 		m.moveCursor(1)
 	case "nav.parent":
-		m.parent()
+		return m.parent()
 	case "nav.open":
-		m.open()
+		return m.open()
 	case "nav.page-up":
 		m.page(-1)
 	case "nav.page-down":
@@ -809,13 +844,13 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "nav.last":
 		m.toLast()
 	case "nav.back":
-		m.historyBack()
+		return m.historyBack()
 	case "nav.forward":
-		m.historyForward()
+		return m.historyForward()
 	case "nav.home":
-		m.goHome()
+		return m.goHome()
 	case "nav.last-dir":
-		m.goLastDir()
+		return m.goLastDir()
 	case "nav.path":
 		m.openPrompt("prompt.path")
 	case "nav.refresh":
@@ -824,8 +859,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 			m.toastInfo("Reloaded ~/.ssh/config")
 			break
 		}
-		m.refresh()
 		m.toastInfo("Refreshed")
+		return m.refresh()
 	case "nav.filter":
 		if m.screen == screenConnections {
 			if m.conn == nil {
@@ -850,7 +885,7 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		}
 		m.switchPane(delta)
 	case "nav.reveal":
-		m.revealInOtherPane()
+		return m.revealInOtherPane()
 	case "nav.refresh-dir":
 		m.refresh()
 
@@ -905,7 +940,13 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		return tea.RequestBackgroundColor
 
 	case "file.copy":
-		m.quitHint = "Nothing to copy · Ctrl+Q quits"
+		m.stage(false)
+	case "file.cut":
+		m.stage(true)
+	case "file.paste":
+		return m.pasteStaged()
+	case "view.staged":
+		m.Overlay = OverlayStaged
 	default:
 		m.toastWarning(a.Label + " arrives with " + m.stageOf(id))
 	}
@@ -1021,7 +1062,7 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey:
+	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged:
 		// These have no text field of their own. The connections filter below is
 		// the only field outside an overlay.
 	}
@@ -1062,21 +1103,22 @@ func (m *Model) rebuildPathSuggestions() {
 }
 
 // applyPrompt runs whatever the prompt was for.
-func (m *Model) applyPrompt(action actions.ID, value string) {
+func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return
+		return nil
 	}
 	switch action {
 	case "prompt.mkdir":
-		m.createDir(value)
+		return m.createDir(value)
 	case "prompt.new":
-		m.createFile(value)
+		return m.createFile(value)
 	case "prompt.rename":
-		m.renameCursor(value)
+		return m.renameCursor(value)
 	case "prompt.path":
-		m.navigate(value)
+		return m.navigate(value)
 	}
+	return nil
 }
 
 // openDeleteConfirm states the facts before deleting, because there is no undo.
@@ -1114,13 +1156,14 @@ func (m *Model) openDeleteConfirm() {
 
 // applyConfirmed runs the action a confirmation dialog approved. Deletion is the
 // only destructive action in this build; the others arrive with their features.
-func (m *Model) applyConfirmed(action actions.ID, entries []Entry) {
+func (m *Model) applyConfirmed(action actions.ID, entries []Entry) tea.Cmd {
 	switch action {
 	case "file.delete":
-		m.deleteTargets(entries)
+		return m.deleteTargets(entries)
 	case "session.delete":
 		m.applyDeleteConnection(m.confirmAlias)
 	}
+	return nil
 }
 
 // comparePanes shows a read-only diff of the two listings.

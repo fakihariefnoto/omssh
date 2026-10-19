@@ -194,7 +194,7 @@ func (m *Model) renderConnections(l layout) string {
 	lines = append(lines, m.st.Muted.Render(strings.Repeat("─", max(1, width))))
 	lines = append(lines, m.renderConnDetail(width, detailRows)...)
 	lines = append(lines, m.st.StatusMuted.Render(
-		"c connect · Enter/e edit · a add · d delete · r reload · o edit file · Ctrl+F filter · Esc back"))
+		"Enter/c connect · e edit · a add · d delete · r reload · o edit file · Ctrl+F filter · Esc back"))
 
 	// Exactly fill the screen.
 	out := make([]string, 0, height)

@@ -130,12 +130,12 @@ func (m *Model) connectContext() context.Context {
 }
 
 // handleConnected folds a finished connection into the interface.
-func (m *Model) handleConnected(msg connectedMsg) {
+func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 	delete(m.connecting, msg.target.Alias)
 	if msg.err != nil {
 		m.tabState(msg.target.Alias, StateError)
 		m.toastError(connectionMessage(msg.target, msg.err))
-		return
+		return nil
 	}
 
 	// A session gets a tab and the remote pane.
@@ -148,6 +148,9 @@ func (m *Model) handleConnected(msg connectedMsg) {
 	m.tabState(msg.target.Alias, StateReady)
 	m.mode = "NORMAL"
 	m.toastSuccess("Connected to " + msg.target.Alias)
+	// The listing goes off the update loop: a home directory on a slow link is
+	// many round trips, and the interface has just become usable.
+	return m.loadPaneAsync(1)
 }
 
 // addSessionTab adds or focuses the tab for a session.
@@ -161,6 +164,15 @@ func (m *Model) addSessionTab(s *session.Session) {
 	}
 	m.tabs = append(m.tabs, Tab{Title: s.Target.Alias, Host: s.Target.Alias, State: StateReady})
 	m.activeTab = len(m.tabs) - 1
+	m.rememberSession(s)
+}
+
+// rememberSession records a session so its tab can be switched back to.
+func (m *Model) rememberSession(s *session.Session) {
+	if m.live == nil {
+		m.live = map[string]*session.Session{}
+	}
+	m.live[s.Target.Alias] = s
 }
 
 // tabState updates a tab's connection state, adding it if it is not there yet so
@@ -361,4 +373,41 @@ func (m *Model) keyringAvailable() bool {
 // newSessionManager builds the manager the interface talks to.
 func newSessionManager(requests chan *promptRequest) (*session.Manager, error) {
 	return session.New(session.Options{Prompter: uiPrompter{requests: requests}})
+}
+
+// switchTab moves to another session tab, binding the remote pane to that
+// session. The local tab keeps the remote pane where it is, so a copy between
+// the two sides survives a look at the local machine.
+func (m *Model) switchTab(index int) tea.Cmd {
+	if len(m.tabs) == 0 {
+		return nil
+	}
+	// Wrap, so ctrl+pgup from the first tab lands on the last.
+	index = ((index % len(m.tabs)) + len(m.tabs)) % len(m.tabs)
+	m.activeTab = index
+	tab := m.tabs[index]
+	if tab.Host == "" {
+		// The local tab: focus the local pane, leave the remote as it was.
+		m.Focused = 0
+		return nil
+	}
+	sess, ok := m.live[tab.Host]
+	if !ok || len(m.Panes) < 2 {
+		m.toastInfo(tab.Host + " is no longer connected")
+		return nil
+	}
+	m.Panes[1].Bind(sess.FS, sess.Target.Alias, sess.Root)
+	m.Panes[1].Base = sess.Base
+	m.Focused = 1
+	return m.loadPaneAsync(1)
+}
+
+// tabIndexFromKey reads the digit out of "alt+3".
+func tabIndexFromKey(key string) int {
+	for _, r := range key {
+		if r >= '1' && r <= '9' {
+			return int(r - '1')
+		}
+	}
+	return 0
 }

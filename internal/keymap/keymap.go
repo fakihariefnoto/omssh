@@ -102,8 +102,10 @@ func (m *Map) presetAliases() map[actions.ID][]string {
 		"nav.filter":      {"/"},
 		"nav.filter-next": {"n"},
 		"nav.filter-prev": {"N"},
-		"sel.extend-up":   {"ctrl+u"},
-		"sel.extend-down": {"ctrl+d", "v"},
+		// Ctrl+D is delete now, so the vim preset keeps only "v" for a range.
+		// Half-page scrolling is one page key away and does not deserve a
+		// collision with a destructive action.
+		"sel.extend-down": {"v"},
 	}
 }
 

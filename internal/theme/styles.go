@@ -197,6 +197,21 @@ func Nerd() Icons {
 	}
 }
 
+// Unicode returns a set every ordinary terminal font can draw: BMP symbols, one
+// cell wide, no private-use area and no emoji (which are double-width and would
+// shift every column). It is the default, because a folder icon that renders as
+// a question mark is worse than a triangle that renders everywhere.
+func Unicode() Icons {
+	return Icons{
+		Folder: "▸", File: "·", Symlink: "@", Archive: "≡",
+		Local: "L", Remote: "R",
+		DotReady: "●", DotBusy: "◐", DotIdle: "○", DotError: "✕",
+		Check: "✓", Cross: "✕", Warning: "⚠", Info: "i",
+		ArrowUp: "↑", ArrowDown: "↓",
+		Selected: "[x]", Unselected: "[ ]",
+	}
+}
+
 // ASCII returns the fallback set: no private-use glyphs, nothing wider than one
 // cell, and no dependence on a patched font.
 func ASCII() Icons {
@@ -210,11 +225,15 @@ func ASCII() Icons {
 	}
 }
 
-// IconsFor returns the icon set named in the config, defaulting to the ASCII set
-// when the name is not recognised.
+// IconsFor returns the icon set named in the config. An unknown name falls back
+// to the set that is safe everywhere rather than to the one that needs a font.
 func IconsFor(name string) Icons {
-	if name == "nerd" {
+	switch name {
+	case "nerd":
 		return Nerd()
+	case "ascii":
+		return ASCII()
+	default:
+		return Unicode()
 	}
-	return ASCII()
 }

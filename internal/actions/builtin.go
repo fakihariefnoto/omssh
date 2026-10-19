@@ -132,7 +132,7 @@ func standardPreset() []Action {
 			Desc: "Create a directory in this pane", Enabled: f(always)},
 		{ID: "file.new", Label: "New file", Category: CatFile, Default: "ctrl+n",
 			Desc: "Create an empty file in this pane", Enabled: f(always)},
-		{ID: "file.delete", Label: "Delete", Category: CatFile, Default: "f8", Keys: []string{"del"}, Danger: true,
+		{ID: "file.delete", Label: "Delete", Category: CatFile, Default: "ctrl+d", Keys: []string{"f8", "del"}, Danger: true,
 			Desc: "Delete the selection; always asks first", Enabled: f(fileSelected)},
 		{ID: "file.chmod", Label: "Change permissions", Category: CatFile, Default: "",
 			Desc: "Change mode bits on the selection", Enabled: f(fileSelected)},
@@ -220,7 +220,10 @@ func standardPreset() []Action {
 			Enabled: func(Context) bool { return true }},
 		{ID: "view.compare", Label: "Compare panes", Category: CatView, Default: "alt+c",
 			Desc: "Show a read-only diff of the two panes", Enabled: f(func(ctx Context) bool { return ctx.Panes > 1 })},
-		{ID: "view.sync", Label: "Toggle sync browse", Category: CatView, Default: "alt+s",
+		{ID: "view.staged", Label: "Marked files", Category: CatView, Default: "alt+s",
+			Desc:    "Review what is marked for copying or moving",
+			Enabled: func(ctx Context) bool { return ctx.Staged > 0 }},
+		{ID: "view.sync", Label: "Toggle sync browse", Category: CatView,
 			Desc: "Keep both panes on the same relative path", Enabled: f(func(ctx Context) bool { return ctx.Panes > 1 })},
 
 		// ---- Application -----------------------------------------------------

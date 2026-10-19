@@ -101,6 +101,10 @@ type Pane struct {
 	Loading bool
 	// Filter is the incremental filter applied to the listing.
 	Filter string
+	// pendingCursor is the entry to put the cursor back on when an
+	// asynchronous listing arrives, so refreshing a remote directory does not
+	// lose the row you were looking at.
+	pendingCursor string
 	// Offset is the first visible row, for scrolling.
 	Offset int
 }
@@ -140,7 +144,6 @@ func (p *Pane) Bind(fsys vfs.FS, host, root string) {
 	p.Selected = map[string]bool{}
 	p.History = []string{p.Path}
 	p.HIndex = 0
-	p.Load(true)
 }
 
 // Connected reports whether the pane has somewhere to look.
@@ -284,6 +287,7 @@ const (
 	OverlayForm
 	OverlayHostKey
 	OverlaySecret
+	OverlayStaged
 )
 
 // Name returns the identifier the action registry expects in Context.Overlay.
@@ -299,7 +303,7 @@ func (o Overlay) Name() string {
 		return "onboarding"
 	case OverlaySettings:
 		return "settings"
-	case OverlayConfirm, OverlayPrompt, OverlayForm, OverlayHostKey, OverlaySecret:
+	case OverlayConfirm, OverlayPrompt, OverlayForm, OverlayHostKey, OverlaySecret, OverlayStaged:
 		return "dialog"
 	default:
 		return ""
