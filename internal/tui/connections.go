@@ -317,29 +317,16 @@ func (m *Model) handleConnectionsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.conn.cursor = 0
 	case "end":
 		m.conn.cursor = max(0, len(m.visibleConnections())-1)
-	case "enter", "c":
+	case "enter":
 		return m.runAction("session.connect"), true
-	case "e":
-		return m.runAction("session.edit"), true
-	case "a":
-		return m.runAction("session.add"), true
-	case "d":
-		return m.runAction("session.delete"), true
-	case "r":
-		return m.runAction("session.reload"), true
-	case "o":
-		return m.runAction("session.open-config"), true
 	case "esc":
 		// Leave the manager: filtering is handled above, so this is "back".
 		m.screen = m.connReturn
 		m.mode = "NORMAL"
 		return nil, true
 	}
-	// Swallow other printable input: the file panes are behind this screen, and
-	// their type-ahead must not fire from here.
-	if msg.Key().Text != "" {
-		return nil, true
-	}
+	// Everything else goes to the keymap, which is screen-aware: "a" here adds a
+	// host, and a letter with no binding on this screen does nothing at all.
 	return nil, false
 }
 

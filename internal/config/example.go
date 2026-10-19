@@ -36,10 +36,6 @@ ui:
   onboarding_done: false
 
 keys:
-  # standard | vim (vim changes navigation only; operations stay standard)
-  preset: standard
-  # Ctrl+C is copy. Set to "ctrl+insert" if you want Ctrl+C to mean quit.
-  copy: ctrl+c
   # Ctrl+Q quits. "esc" is rejected: Esc only ever dismisses or goes back.
   quit: ctrl+q
   # Rebind individual actions by id, e.g.:

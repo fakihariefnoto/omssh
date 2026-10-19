@@ -46,10 +46,6 @@ type ConfirmThreshold struct {
 
 // Keys configures the keymap.
 type Keys struct {
-	// Preset is "standard" (default) or "vim".
-	Preset string `yaml:"preset"`
-	// Copy overrides what Ctrl+C does, e.g. "ctrl+insert".
-	Copy string `yaml:"copy"`
 	// Quit overrides what quits the app. "esc" is rejected.
 	Quit string `yaml:"quit"`
 	// Overrides rebinds individual actions by id, e.g. {file.delete: "ctrl+d"}.
@@ -97,7 +93,6 @@ var (
 	Themes       = []string{"auto", "amber", "midnight", "dawn", "mist", "mono", "contrast"}
 	IconSets     = []string{"unicode", "ascii", "nerd"}
 	Motions      = []string{"full", "reduced"}
-	KeyPresets   = []string{"standard", "vim"}
 	StartScreens = []string{"home", "files"}
 	DeployMode   = []string{"sync", "update"}
 )
@@ -121,8 +116,6 @@ func Default() Config {
 			},
 		},
 		Keys: Keys{
-			Preset:    "standard",
-			Copy:      "ctrl+c",
 			Quit:      "ctrl+q",
 			Overrides: map[string]string{},
 		},
@@ -156,14 +149,8 @@ func (c Config) Validate() error {
 	if err := oneOf("ui.start", c.UI.Start, StartScreens); err != nil {
 		return err
 	}
-	if err := oneOf("keys.preset", c.Keys.Preset, KeyPresets); err != nil {
-		return err
-	}
 	if c.Keys.Quit == "esc" || c.Keys.Quit == "escape" {
 		return fmt.Errorf("keys.quit: Esc cannot quit; it dismisses, cancels and goes back")
-	}
-	if c.Keys.Copy == "" {
-		return fmt.Errorf("keys.copy: must not be empty")
 	}
 	if c.Transfers.Workers < 1 {
 		return fmt.Errorf("transfers.workers: got %d, want at least 1", c.Transfers.Workers)

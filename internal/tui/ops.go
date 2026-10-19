@@ -168,47 +168,6 @@ func (m *Model) refresh() tea.Cmd {
 	return cmd
 }
 
-// typeAhead jumps the cursor to the next entry starting with the typed prefix.
-// Repeating the same character cycles through the matches, which is what file
-// managers have done for forty years and therefore needs no explanation.
-func (m *Model) typeAhead(char string) {
-	pane := m.Pane()
-	visible := pane.Visible()
-	if len(visible) == 0 {
-		return
-	}
-	if char == m.typeAheadLast && m.typeAheadBuf == char {
-		// Same single character pressed again: cycle from the cursor.
-		for i := 1; i <= len(visible); i++ {
-			idx := (pane.Cursor + i) % len(visible)
-			if strings.HasPrefix(strings.ToLower(visible[idx].Name), char) {
-				pane.Cursor = idx
-				m.ensureVisible()
-				return
-			}
-		}
-		return
-	}
-	if m.typeAheadLast != char {
-		m.typeAheadBuf += char
-	} else {
-		m.typeAheadBuf = char
-	}
-	m.typeAheadLast = char
-	needle := strings.ToLower(m.typeAheadBuf)
-
-	// Prefer a match at or after the cursor, then wrap around.
-	for i := 0; i < len(visible); i++ {
-		idx := (pane.Cursor + i) % len(visible)
-		if strings.HasPrefix(strings.ToLower(visible[idx].Name), needle) {
-			pane.Cursor = idx
-			m.ensureVisible()
-			m.statusHint = "/" + m.typeAheadBuf
-			return
-		}
-	}
-}
-
 // resetTypeAhead forgets the typed prefix.
 func (m *Model) resetTypeAhead() {
 	m.typeAheadBuf, m.typeAheadLast, m.statusHint = "", "", ""

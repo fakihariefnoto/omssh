@@ -114,14 +114,23 @@ func (m *Model) renderTabs(l layout) string {
 			b.WriteString(" ")
 		}
 		if i == m.activeTab {
-			b.WriteString(m.st.TabActive.Render(label))
+			if m.focusTabs {
+				// The strip has the focus: the chosen tab is marked outright, not
+				// just tinted, so it is obvious where Enter will land.
+				b.WriteString(m.st.Accent.Bold(true).Render("▸" + label))
+			} else {
+				b.WriteString(m.st.TabActive.Render(label))
+			}
 		} else {
 			b.WriteString(m.st.TabInactive.Render(label))
 		}
 	}
 	left := b.String()
 
-	right := m.st.StatusMuted.Render("Ctrl+K actions") + "  " + m.st.StatusMuted.Render("F1 help")
+	right := m.st.StatusMuted.Render("Ctrl+K actions") + "  " + m.st.StatusMuted.Render("? help")
+	if m.focusTabs {
+		right = m.st.StatusMuted.Render("h/l choose · Enter open · d close · Esc menu")
+	}
 	gap := l.Width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		return ansi.Truncate(left, l.Width, "")
@@ -580,7 +589,10 @@ func (m *Model) renderStatusBar(l layout) string {
 	}
 	summary := strings.Join(parts, " · ")
 
-	right := m.st.StatusMuted.Render("Esc menu · Ctrl+Q quit")
+	right := m.st.StatusMuted.Render("Esc tabs · Ctrl+Q quit")
+	if m.focusTabs {
+		right = m.st.StatusMuted.Render("Enter open · Esc menu")
+	}
 	if m.screen == screenHome {
 		right = m.st.StatusMuted.Render("? help · Ctrl+Q quit")
 	}

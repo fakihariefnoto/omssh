@@ -31,8 +31,8 @@ func TestCtrlVPastesIntoTheFocusedField(t *testing.T) {
 	}
 }
 
-// The file manager has no text field, so Ctrl+V is still "paste the staged
-// selection" and must not go looking for a clipboard.
+// The file manager has no text field, so "p" pastes the marked files and must
+// not go looking for a clipboard.
 func TestCtrlVInTheFileManagerIsNotAClipboardRead(t *testing.T) {
 	m := newTestModel(t)
 	if m.focusedInput() != nil {
@@ -40,10 +40,10 @@ func TestCtrlVInTheFileManagerIsNotAClipboardRead(t *testing.T) {
 	}
 	m.selectByName("README.md")
 	press(t, m, keyNamed(tea.KeySpace))
-	press(t, m, run('c', tea.ModCtrl, "")) // stage
-	press(t, m, run('v', tea.ModCtrl, "")) // paste: stages nothing yet, so it explains
+	press(t, m, run('y', 0, "y")) // mark
+	press(t, m, run('p', 0, "p")) // paste
 	if m.focusedInput() != nil {
-		t.Error("Ctrl+V must not conjure a text field")
+		t.Error("pasting must not conjure a text field")
 	}
 	// And a clipboard result arriving with nothing focused is a no-op, not a
 	// crash or a stray insertion.

@@ -1,10 +1,10 @@
-// Package keymap turns the action registry into a resolved key map: default
-// bindings, a navigation preset, the user's overrides, and the check that no
-// two actions claim the same key.
+// Package keymap turns the action registry into a resolved key map: the built-in
+// bindings, the user's overrides, and the check that no two actions claim the same
+// key on the same screen.
 //
-// Bindings are strings in Bubble Tea v2's notation ("ctrl+q", "alt+h", "f5",
-// "shift+up", "space", "esc"). A binding may be a sequence, written with a
-// space: "ctrl+space n" means the prefix key followed by n.
+// Bindings are strings in Bubble Tea v2's notation ("ctrl+q", "alt+h", "space",
+// "esc"). A binding may be a sequence, written with a space: "g g" means the
+// prefix key followed by g.
 package keymap
 
 import (
@@ -15,20 +15,10 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/actions"
 )
 
-// Preset selects the navigation flavour.
-type Preset string
-
-// Presets. The vim preset changes navigation and selection only: operations keep
-// the standard bindings, so a shortcut always means exactly one thing.
-const (
-	Standard Preset = "standard"
-	Vim      Preset = "vim"
-)
-
 // Options is everything that shapes the resulting map.
 type Options struct {
-	Preset    Preset
-	Overrides map[string]string // action id -> binding
+	// Overrides rebind actions by id.
+	Overrides map[string]string
 }
 
 // Dropped records a binding that was requested but cannot be delivered.
@@ -40,20 +30,15 @@ type Dropped struct {
 
 // Map is the resolved, immutable binding table.
 type Map struct {
-	preset    Preset
-	reg       *actions.Registry
-	byID      map[actions.ID][]string
-	index     actions.KeyIndex
-	prefixes  map[string]bool
-	dropped   []Dropped
-	deliverer Deliverer
+	reg      *actions.Registry
+	byID     map[actions.ID][]string
+	index    actions.KeyIndex
+	prefixes map[string]bool
+	dropped  []Dropped
+	deliver  Deliverer
 }
 
 // Build resolves the bindings for the given registry.
-//
-// Order of precedence, lowest first: built-in defaults, the preset's aliases,
-// then the user's overrides. A later layer replaces an earlier binding for the
-// same action, and a key claimed by two different actions is an error.
 func Build(reg *actions.Registry, opts Options) (*Map, error) {
 	return BuildWithDeliverer(reg, opts, DeliverEverything{})
 }
@@ -72,41 +57,14 @@ type DeliverEverything struct{}
 // CanDeliver always reports success.
 func (DeliverEverything) CanDeliver(string) (string, bool) { return "", true }
 
-// Undeliverable lists keys that terminals reserve or mangle, from UX.md §13.
+// Undeliverable lists keys that terminals reserve or mangle (UX.md §13).
 var Undeliverable = map[string]string{
-	"ctrl+h": "sends Backspace on many terminals; use alt+h",
+	"ctrl+h": "sends Backspace on many terminals; use '.' for hidden files",
 	"ctrl+i": "is Tab (0x09); use tab",
-	"ctrl+j": "is Enter (0x0a) on many terminals; use alt+j",
+	"ctrl+j": "is Enter (0x0a) on many terminals; use enter",
 	"ctrl+m": "is Enter (0x0d); use enter",
 	"ctrl+s": "is XOFF flow control in some setups; use alt+s",
 	"ctrl+[": "is Esc (0x1b); use esc",
-}
-
-func (m *Map) presetAliases() map[actions.ID][]string {
-	if m.preset != Vim {
-		return nil
-	}
-	// Esc is one key with layered meaning (dismiss, clear, go back), so the
-	// registry binds it once, to app.back. Clearing a selection is what app.back
-	// does when there is a selection; sel.clear exists for the palette and the
-	// context menu.
-	return map[actions.ID][]string{
-		"nav.parent":      {"h"},
-		"nav.down":        {"j"},
-		"nav.up":          {"k"},
-		"nav.open":        {"l"},
-		"nav.first":       {"g g"},
-		"nav.last":        {"G"},
-		"nav.home":        {"~"},
-		"nav.last-dir":    {"-"},
-		"nav.filter":      {"/"},
-		"nav.filter-next": {"n"},
-		"nav.filter-prev": {"N"},
-		// Ctrl+D is delete now, so the vim preset keeps only "v" for a range.
-		// Half-page scrolling is one page key away and does not deserve a
-		// collision with a destructive action.
-		"sel.extend-down": {"v"},
-	}
 }
 
 // BuildWithDeliverer resolves bindings and drops keys the terminal cannot send.
@@ -114,39 +72,21 @@ func BuildWithDeliverer(reg *actions.Registry, opts Options, d Deliverer) (*Map,
 	if d == nil {
 		d = DeliverEverything{}
 	}
-	preset := opts.Preset
-	if preset == "" {
-		preset = Standard
-	}
-	if preset != Standard && preset != Vim {
-		return nil, fmt.Errorf("keymap: unknown preset %q, want %q or %q", preset, Standard, Vim)
-	}
-
 	m := &Map{
-		preset:    preset,
-		reg:       reg,
-		byID:      map[actions.ID][]string{},
-		index:     actions.KeyIndex{},
-		prefixes:  map[string]bool{},
-		deliverer: d,
+		reg:      reg,
+		byID:     map[actions.ID][]string{},
+		prefixes: map[string]bool{},
+		deliver:  d,
 	}
 
-	// Layer 1: defaults, in declaration order.
 	for _, a := range reg.All() {
 		for _, k := range a.Bindings() {
 			m.add(a.ID, normalizeBinding(k))
 		}
 	}
-	// Layer 2: preset aliases.
-	for id, keys := range m.presetAliases() {
-		if _, ok := reg.Get(id); !ok {
-			return nil, fmt.Errorf("keymap: preset %s binds unknown action %q", preset, id)
-		}
-		for _, k := range keys {
-			m.add(id, normalizeBinding(k))
-		}
-	}
-	// Layer 3: the user's overrides.
+
+	// Overrides replace an action's bindings rather than adding to them: someone
+	// who rebinds delete to "D" does not expect "d" to keep deleting things.
 	ids := make([]string, 0, len(opts.Overrides))
 	for id := range opts.Overrides {
 		ids = append(ids, id)
@@ -167,9 +107,6 @@ func BuildWithDeliverer(reg *actions.Registry, opts Options, d Deliverer) (*Map,
 		if reason, ok := Undeliverable[key]; ok {
 			return nil, fmt.Errorf("keymap: keys.overrides.%s uses %q, which %s", raw, key, reason)
 		}
-		// An override replaces the action's bindings rather than adding to
-		// them: someone who rebinds Delete to Ctrl+D does not expect F8 to keep
-		// deleting things behind their back.
 		m.byID[id] = nil
 		m.add(id, key)
 	}
@@ -192,36 +129,49 @@ func (m *Map) add(id actions.ID, key string) {
 	m.byID[id] = append(m.byID[id], key)
 }
 
-// reindex rebuilds the key lookup and reports conflicts between actions.
+// reindex rebuilds the key lookup and reports conflicts between actions on the
+// same screen.
 func (m *Map) reindex() error {
+	// key -> screen -> action, so the same letter can serve two screens.
+	scopes := map[string]map[string]actions.ID{}
 	idx := actions.KeyIndex{}
 	for _, a := range m.reg.All() {
-		keys := m.byID[a.ID]
-		for _, k := range keys {
+		for _, k := range m.byID[a.ID] {
 			if reason, undeliverable := Undeliverable[k]; undeliverable {
 				m.dropped = append(m.dropped, Dropped{Action: a.ID, Key: k, Reason: reason})
 				continue
 			}
-			if reason, ok := m.deliverer.CanDeliver(k); !ok {
+			if reason, ok := m.deliver.CanDeliver(k); !ok {
 				m.dropped = append(m.dropped, Dropped{Action: a.ID, Key: k, Reason: reason})
 				continue
 			}
-			if owner, taken := idx[k]; taken && owner != a.ID {
-				return fmt.Errorf("keymap: %s and %s are both bound to %q", owner, a.ID, k)
+			if scopes[k] == nil {
+				scopes[k] = map[string]actions.ID{}
 			}
-			idx[k] = a.ID
+			if owner, taken := scopes[k][a.Screen]; taken && owner != a.ID {
+				return fmt.Errorf("keymap: %s and %s are both bound to %q on the %q screen", owner, a.ID, k, a.Screen)
+			}
+			scopes[k][a.Screen] = a.ID
+			idx[k] = append(idx[k], a.ID)
 			if prefix, _, ok := splitSequence(k); ok {
 				m.prefixes[prefix] = true
 			}
 		}
 	}
+	// Scoped bindings are tried first, so "d" on the connections screen reaches
+	// the connection action before the file one.
+	for k, ids := range idx {
+		sort.SliceStable(ids, func(i, j int) bool {
+			ai, _ := m.reg.Get(ids[i])
+			aj, _ := m.reg.Get(ids[j])
+			return ai.Screen != "" && aj.Screen == ""
+		})
+		idx[k] = ids
+	}
 	m.index = idx
 	sort.Slice(m.dropped, func(i, j int) bool { return m.dropped[i].Key < m.dropped[j].Key })
 	return nil
 }
-
-// Preset returns the preset the map was built with.
-func (m *Map) Preset() Preset { return m.preset }
 
 // Registry returns the action registry behind the map.
 func (m *Map) Registry() *actions.Registry { return m.reg }
@@ -250,25 +200,37 @@ func (m *Map) Primary(id actions.ID) string {
 	return ""
 }
 
-// Lookup returns the action a single key is bound to, ignoring sequences.
-func (m *Map) Lookup(key string) (actions.ID, bool) {
-	id, ok := m.index[normalizeBinding(key)]
-	return id, ok
+// Lookup returns the first action a single key is bound to on a screen,
+// ignoring sequences. An empty screen means "the global bindings only".
+func (m *Map) Lookup(key, screen string) (actions.ID, bool) {
+	for _, id := range m.index[normalizeBinding(key)] {
+		a, ok := m.reg.Get(id)
+		if !ok {
+			continue
+		}
+		if a.Screen == "" || a.Screen == screen {
+			return id, true
+		}
+	}
+	return "", false
 }
 
-// ActionFor resolves a key to the first applicable action, preferring the
-// focused context. It is the convenience path for the UI; Resolver is the
-// sequence-aware one.
-func (m *Map) ActionFor(key string, ctx actions.Context) (actions.ID, bool) {
-	id, ok := m.Lookup(key)
-	if !ok {
-		return "", false
+// ActionFor resolves a key to the first applicable action on a screen.
+func (m *Map) ActionFor(key, screen string, ctx actions.Context) (actions.ID, bool) {
+	for _, id := range m.index[normalizeBinding(key)] {
+		a, ok := m.reg.Get(id)
+		if !ok {
+			continue
+		}
+		if a.Screen != "" && a.Screen != screen {
+			continue
+		}
+		if !a.Applicable(ctx) {
+			continue
+		}
+		return id, true
 	}
-	a, ok := m.reg.Get(id)
-	if !ok || !a.Applicable(ctx) {
-		return "", false
-	}
-	return id, true
+	return "", false
 }
 
 // Outcome is the result of feeding one key to a Resolver.
@@ -284,16 +246,28 @@ type Outcome struct {
 // Resolver matches keys, holding the half-typed state of a key sequence.
 type Resolver struct {
 	m       *Map
+	screen  string
 	pending string
 }
 
-// Resolver returns a stateful matcher for this map.
-func (m *Map) Resolver() *Resolver { return &Resolver{m: m} }
+// Resolver returns a stateful matcher for this map on a screen.
+func (m *Map) Resolver(screen string) *Resolver {
+	return &Resolver{m: m, screen: screen}
+}
+
+// SetScreen moves the resolver to another screen, dropping any half-typed
+// sequence: "g" on one screen is not a prefix on another.
+func (r *Resolver) SetScreen(screen string) {
+	if r.screen != screen {
+		r.screen = screen
+		r.pending = ""
+	}
+}
 
 // Pending reports the half-typed sequence, for the status bar.
 func (r *Resolver) Pending() string { return display(r.pending) }
 
-// Reset drops any half-typed sequence. It is called on Esc and when focus moves.
+// Reset drops any half-typed sequence.
 func (r *Resolver) Reset() { r.pending = "" }
 
 // Feed matches one key and returns what it meant.
@@ -306,9 +280,9 @@ func (r *Resolver) Feed(key string) Outcome {
 	if r.pending != "" {
 		seq = r.pending + " " + key
 	}
-	if id, ok := r.m.index[seq]; ok {
+	if ids := r.m.idsFor(seq, r.screen); len(ids) > 0 {
 		r.pending = ""
-		return Outcome{ID: id, Matched: true}
+		return Outcome{ID: ids[0], Matched: true}
 	}
 	if r.m.prefixes[seq] {
 		r.pending = seq
@@ -322,14 +296,28 @@ func (r *Resolver) Feed(key string) Outcome {
 	return Outcome{}
 }
 
-// Validate reports problems with a set of overrides without building a map,
-// for `omssh config check`.
+// idsFor returns the actions a binding names on a screen, scoped first.
+func (m *Map) idsFor(binding, screen string) []actions.ID {
+	out := make([]actions.ID, 0, 2)
+	for _, id := range m.index[binding] {
+		a, ok := m.reg.Get(id)
+		if !ok {
+			continue
+		}
+		if a.Screen == "" || a.Screen == screen {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// Validate reports problems with a set of overrides without building a map.
 func Validate(reg *actions.Registry, opts Options) error {
 	_, err := Build(reg, opts)
 	return err
 }
 
-// splitSequence splits "ctrl+space n" into its prefix and final key.
+// splitSequence splits "g g" into its prefix and final key.
 func splitSequence(binding string) (prefix, rest string, ok bool) {
 	if i := strings.Index(binding, " "); i >= 0 {
 		return binding[:i], binding[i+1:], true
@@ -392,7 +380,7 @@ func titleKey(key string) string {
 			parts[i] = strings.ToUpper(p[:1]) + p[1:]
 			continue
 		}
-		// A bare letter keeps the case it was written with ("n" and "G" are
+		// A bare letter keeps the case it was written with ("n" and "N" are
 		// different keys); a letter with a modifier is shown as a keycap.
 		if len([]rune(p)) == 1 && !hasMods {
 			continue

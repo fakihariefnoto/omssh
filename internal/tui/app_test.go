@@ -41,7 +41,6 @@ func newTestModel(t *testing.T, tune ...func(*config.Config)) *Model {
 	cfg := config.Default()
 	cfg.UI.Theme = "midnight"
 	cfg.UI.Icons = "ascii"
-	cfg.Keys.Preset = "standard"
 	for _, fn := range tune {
 		fn(&cfg)
 	}
@@ -323,15 +322,15 @@ func TestCtrlQQuitsAndF10Too(t *testing.T) {
 	}
 }
 
-// Ctrl+C stages the cursor entry when nothing is multi-selected: the rule
+// "y" marks the cursor entry when nothing is multi-selected: the rule
 // everywhere in the interface is "the selection if there is one, the cursor
 // otherwise", so copy is always one keypress away.
-func TestCtrlCStagesTheCursorEntry(t *testing.T) {
+func TestMarkStagesTheCursorEntry(t *testing.T) {
 	m := newTestModel(t)
 	m.selectByName("README.md")
-	press(t, m, run('c', tea.ModCtrl, ""))
+	press(t, m, run('y', 0, "y"))
 	if m.stagedCount() != 1 || m.staged.Paths[0] != "README.md" {
-		t.Fatalf("Ctrl+C should have staged the cursor entry, got %+v", m.staged.Paths)
+		t.Fatalf("y should have staged the cursor entry, got %+v", m.staged.Paths)
 	}
 	if !strings.Contains(m.toasts[len(m.toasts)-1].text, "marked") {
 		t.Errorf("staging should say so, got %q", m.toasts[len(m.toasts)-1].text)
@@ -341,7 +340,7 @@ func TestCtrlCStagesTheCursorEntry(t *testing.T) {
 	// out rather than doing nothing.
 	empty := newTestModel(t)
 	empty.Pane().Entries = nil
-	press(t, empty, run('c', tea.ModCtrl, ""))
+	press(t, empty, run('y', 0, "y"))
 	if len(empty.staged.Paths) != 0 {
 		t.Errorf("an empty pane staged %+v", empty.staged.Paths)
 	}
@@ -355,7 +354,7 @@ func TestCtrlCStagesTheCursorEntry(t *testing.T) {
 func TestStagedReviewScreen(t *testing.T) {
 	m := newTestModel(t)
 	press(t, m, run('a', tea.ModCtrl, ""))
-	press(t, m, run('c', tea.ModCtrl, ""))
+	press(t, m, run('y', 0, "y"))
 	if m.stagedCount() != len(m.Pane().Entries) {
 		t.Fatalf("staged %d of %d", m.stagedCount(), len(m.Pane().Entries))
 	}
@@ -395,7 +394,7 @@ func TestPasteCopiesBetweenPanes(t *testing.T) {
 	m.Panes[1].Path = "/"
 
 	m.selectByName("README.md")
-	press(t, m, run('c', tea.ModCtrl, ""))
+	press(t, m, run('y', 0, "y"))
 	cmd := m.pasteStaged()
 	if cmd == nil {
 		t.Fatal("paste should return a command")
@@ -437,7 +436,7 @@ func TestCutMovesBetweenPanes(t *testing.T) {
 	source := filepath.Join(m.Panes[0].Path, "notes.txt")
 
 	m.selectByName("notes.txt")
-	press(t, m, run('x', tea.ModCtrl, ""))
+	press(t, m, run('x', 0, "x"))
 	report := m.pasteStaged()().(copyReport)
 	m.handleCopyReport(report)
 	if report.err != nil {
@@ -537,33 +536,38 @@ func TestHelpListsGroupedActions(t *testing.T) {
 
 // --- navigation and selection ------------------------------------------------
 
-// Type-ahead is the file-manager behaviour that needs no key to learn.
-func TestTypeAheadJumpsToTheName(t *testing.T) {
+// Plain letters are commands now, so they must not move the cursor: a letter
+// that sometimes navigates and sometimes types is a letter you cannot learn.
+// Finding a name is "/" — one key to press, with no guessing.
+func TestLettersAreCommandsAndSlashSearches(t *testing.T) {
 	m := newTestModel(t)
-	if _, ok := m.Pane().CursorEntry(); !ok {
-		t.Fatal("the pane is empty")
-	}
+	before, _ := m.Pane().CursorEntry()
+
+	// "n" creates a file (or prompts for one), it does not jump to notes.txt.
 	press(t, m, run('n', 0, "n"))
-	entry, _ := m.Pane().CursorEntry()
-	if entry.Name != "notes.txt" {
-		t.Errorf("typing \"n\" should land on notes.txt, got %q", entry.Name)
+	if m.Overlay != OverlayPrompt {
+		t.Errorf("n should open the new-file prompt, overlay is %v", m.Overlay)
 	}
-	// The status bar shows what was typed, so the jump is explained.
-	if !strings.Contains(render(m), "notes.txt") {
-		t.Error("the cursor line should be visible after a type-ahead jump")
+	press(t, m, keyNamed(tea.KeyEsc))
+	if after, _ := m.Pane().CursorEntry(); after.Name != before.Name {
+		t.Errorf("a letter moved the cursor from %q to %q", before.Name, after.Name)
 	}
-	m.resetTypeAhead()
-	// Directories sort first, so "a" lands on assets; pressing it again cycles
-	// to the next match, which is the behaviour that makes type-ahead usable.
-	press(t, m, run('a', 0, "a"))
-	entry, _ = m.Pane().CursorEntry()
-	if entry.Name != "assets" {
-		t.Errorf("typing \"a\" should land on assets first, got %q", entry.Name)
+
+	// "/" filters the listing, and typing narrows it.
+	press(t, m, run('/', 0, "/"))
+	if !m.filtering {
+		t.Fatal("/ should start the filter")
 	}
-	press(t, m, run('a', 0, "a"))
-	entry, _ = m.Pane().CursorEntry()
-	if entry.Name != "archive.tar.gz" {
-		t.Errorf("pressing \"a\" again should cycle to the next match, got %q", entry.Name)
+	for _, ch := range "notes" {
+		press(t, m, run(ch, 0, string(ch)))
+	}
+	visible := m.Pane().Visible()
+	if len(visible) != 1 || visible[0].Name != "notes.txt" {
+		t.Errorf("the filter should leave notes.txt, got %+v", visible)
+	}
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.filtering || m.Pane().Filter != "" {
+		t.Error("Esc should clear the filter")
 	}
 }
 
@@ -590,7 +594,7 @@ func TestHiddenFilesAreHiddenUntilAskedFor(t *testing.T) {
 			t.Fatal("dotfiles should be hidden by default")
 		}
 	}
-	press(t, m, run('h', tea.ModAlt, ""))
+	press(t, m, run('.', 0, "."))
 	found := false
 	for _, e := range m.Pane().Entries {
 		if e.Name == ".hidden" {
@@ -598,7 +602,7 @@ func TestHiddenFilesAreHiddenUntilAskedFor(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("Alt+H should reveal dotfiles")
+		t.Fatal(". should reveal dotfiles")
 	}
 }
 

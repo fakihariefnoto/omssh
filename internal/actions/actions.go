@@ -86,6 +86,11 @@ type Action struct {
 	Default string
 	// Keys are further bindings for the same action (tabs, aliases).
 	Keys []string
+	// Screen scopes a binding to one screen ("files", "connections", "home").
+	// The same key can therefore mean different things in different places: "d"
+	// deletes a file on the file screen and a host on the connections screen.
+	// Empty means every screen, shadowed by a scoped action on its own screen.
+	Screen string
 	// Danger marks destructive actions, which the palette colours and the menu
 	// orders last.
 	Danger bool
@@ -181,26 +186,46 @@ func sortByCategory(list []Action) {
 	})
 }
 
-// KeyIndex maps every bound key to its action id. It is built once, from the
-// registry plus whatever preset and overrides the user chose, in package
-// keymap.
-type KeyIndex map[string]ID
+// KeyIndex maps a bound key to the actions that claim it, in the order to try
+// them: a screen-scoped action shadows a screen-independent one on its own
+// screen.
+type KeyIndex map[string][]ID
 
-// Index builds a KeyIndex from the registry's default bindings. Later keys win,
-// so a caller can layer presets and overrides on top.
+// Index builds a KeyIndex from the registry's default bindings.
+//
+// Two actions may share a key only when they are scoped to different screens.
+// Anything else is an ambiguity that would surface as "that key does the wrong
+// thing", so it is refused here.
 func (r *Registry) Index() (KeyIndex, error) {
 	idx := make(KeyIndex, len(r.order))
+	scopes := map[string]map[string]ID{} // key -> screen -> action
 	for _, a := range r.order {
 		for _, k := range a.Bindings() {
 			k = NormalizeKey(k)
 			if k == "" {
 				continue
 			}
-			if owner, taken := idx[k]; taken && owner != a.ID {
-				return nil, fmt.Errorf("%s and %s both bound to %q", owner, a.ID, k)
+			if scopes[k] == nil {
+				scopes[k] = map[string]ID{}
 			}
-			idx[k] = a.ID
+			if owner, taken := scopes[k][a.Screen]; taken && owner != a.ID {
+				if a.Screen == "" {
+					return nil, fmt.Errorf("%s and %s are both bound to %q", owner, a.ID, k)
+				}
+				return nil, fmt.Errorf("%s and %s are both bound to %q on the %s screen", owner, a.ID, k, a.Screen)
+			}
+			scopes[k][a.Screen] = a.ID
+			idx[k] = append(idx[k], a.ID)
 		}
+	}
+	// Scoped actions are tried before screen-independent ones.
+	for k, ids := range idx {
+		sort.SliceStable(ids, func(i, j int) bool {
+			ai, _ := r.Get(ids[i])
+			aj, _ := r.Get(ids[j])
+			return ai.Screen != "" && aj.Screen == ""
+		})
+		idx[k] = ids
 	}
 	return idx, nil
 }

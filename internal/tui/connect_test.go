@@ -386,3 +386,90 @@ func TestRemoteListingIsAsynchronous(t *testing.T) {
 		t.Errorf("a stale listing was applied: %+v", m.Panes[1].Entries)
 	}
 }
+
+// Escape from a pane moves the focus to the tab strip when there is more than one
+// tab: choosing a host is then one key, and Enter dives back into the files.
+func TestEscapeReachesTheTabStrip(t *testing.T) {
+	m, _ := newConnectModel(t, session.PrompterFunc{})
+	dir := t.TempDir()
+	fsys, err := vfs.NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.addSessionTab(&session.Session{ID: "s1", Target: omssh.Target{Alias: "contabo"}, FS: fsys, Root: "/", Base: dir})
+	m.screen = screenFiles
+
+	press(t, m, keyNamed(tea.KeyEsc))
+	if !m.focusTabs {
+		t.Fatal("Esc with several tabs should focus the strip")
+	}
+	if m.mode != "TABS" {
+		t.Errorf("the mode should say TABS, got %q", m.mode)
+	}
+	if !strings.Contains(ansi.Strip(render(m)), "h/l choose") {
+		t.Errorf("the strip should say what it accepts:\n%s", ansi.Strip(render(m)))
+	}
+
+	// h/l choose without leaving the strip.
+	startTab := m.activeTab
+	press(t, m, run('h', 0, "h"))
+	if m.activeTab == startTab {
+		t.Error("h should move to another tab")
+	}
+	if !m.focusTabs {
+		t.Error("choosing a tab should keep the focus on the strip")
+	}
+
+	// h from the session tab landed on the local one, so Enter dives into the
+	// local pane. Choosing the session tab and diving goes to the remote pane.
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.focusTabs {
+		t.Error("Enter should leave the strip")
+	}
+	if m.Focused != 0 {
+		t.Errorf("Enter on the local tab should focus the local pane, focused %d", m.Focused)
+	}
+
+	m.focusTabs = true
+	press(t, m, run('l', 0, "l"))
+	m.activeTab = 1
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.Focused != 1 {
+		t.Errorf("Enter on a session tab should focus the remote pane, focused %d", m.Focused)
+	}
+
+	// And Esc from the strip goes up to the launcher.
+	m.focusTabs = true
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.screen != screenHome {
+		t.Errorf("Esc from the strip should reach the launcher, screen is %v", m.screen)
+	}
+}
+
+// Closing a tab from the strip ends its session and removes the tab.
+func TestClosingATabFromTheStrip(t *testing.T) {
+	m, _ := newConnectModel(t, session.PrompterFunc{})
+	dir := t.TempDir()
+	fsys, err := vfs.NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.addSessionTab(&session.Session{ID: "s1", Target: omssh.Target{Alias: "contabo"}, FS: fsys, Root: "/", Base: dir})
+	before := len(m.tabs)
+	m.focusTabs = true
+	m.activeTab = 1
+
+	press(t, m, run('d', 0, "d"))
+	if len(m.tabs) != before-1 {
+		t.Errorf("d should close the chosen tab, %d tabs remain", len(m.tabs))
+	}
+	if _, ok := m.live["contabo"]; ok {
+		t.Error("the closed tab's session should be forgotten")
+	}
+	// The local tab cannot be closed: it is where the interface started.
+	m.activeTab = 0
+	press(t, m, run('d', 0, "d"))
+	if len(m.tabs) != before-1 {
+		t.Error("the local tab should not be closable")
+	}
+}

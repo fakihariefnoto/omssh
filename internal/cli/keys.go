@@ -26,7 +26,8 @@ func newKeysCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(stdout, "preset %s\n\n", keys.Preset())
+			fmt.Fprintln(stdout, "bindings are one map: plain letters are commands, digits switch tabs")
+			fmt.Fprintln(stdout)
 			writer := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 			lastCategory := actions.Category("")
 			for _, a := range reg.Palette() {

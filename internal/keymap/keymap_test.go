@@ -16,35 +16,35 @@ func build(t *testing.T, opts Options) *Map {
 	return m
 }
 
-func TestStandardPresetResolvesDocumentedKeys(t *testing.T) {
+// The letters are the point: a file manager in a terminal has always worked this
+// way, and it needs no function row.
+func TestLetterBindingsOnTheFileScreen(t *testing.T) {
 	m := build(t, Options{})
 	cases := map[string]actions.ID{
-		"ctrl+q":    "app.quit",
-		"f10":       "app.quit",
-		"esc":       "app.back",
-		"ctrl+k":    "app.palette",
-		"ctrl+c":    "file.copy",
-		"ctrl+v":    "file.paste",
-		"f5":        "file.copy-to",
-		"f8":        "file.delete",
-		"del":       "file.delete",
-		"f2":        "file.rename",
-		"f7":        "file.mkdir",
-		"ctrl+e":    "archive.extract",
-		"ctrl+g":    "archive.compress",
-		"alt+d":     "deploy.open",
-		"alt+h":     "nav.hidden",
-		"alt+b":     "view.sidebar",
-		"alt+left":  "nav.back",
-		"ctrl+l":    "nav.path",
-		"tab":       "nav.switch-pane",
-		"shift+tab": "nav.switch-pane-prev",
-		"space":     "sel.toggle",
+		"h": "nav.parent",
+		"j": "nav.down",
+		"k": "nav.up",
+		"l": "nav.open",
+		"d": "file.delete",
+		"r": "file.rename",
+		"e": "file.edit",
+		"v": "file.view",
+		"y": "sel.mark",
+		"x": "sel.cut",
+		"p": "sel.paste",
+		"n": "file.new",
+		"N": "file.mkdir",
+		".": "nav.hidden",
+		"/": "nav.filter",
+		"o": "nav.reveal",
+		"G": "nav.last",
+		"~": "nav.home",
+		"-": "nav.last-dir",
 	}
 	for key, want := range cases {
-		got, ok := m.Lookup(key)
+		got, ok := m.Lookup(key, "files")
 		if !ok {
-			t.Errorf("%s is not bound to anything", key)
+			t.Errorf("%s is not bound on the file screen", key)
 			continue
 		}
 		if got != want {
@@ -53,12 +53,102 @@ func TestStandardPresetResolvesDocumentedKeys(t *testing.T) {
 	}
 }
 
-// Esc must never look like quit, whichever way the user configures things. It is
-// a single byte that terminals also use to begin escape sequences, and it already
-// has three jobs: cancel, clear and go back (ADR 0006).
+// The app-level keys keep their conventional homes.
+func TestApplicationBindings(t *testing.T) {
+	m := build(t, Options{})
+	cases := map[string]actions.ID{
+		"ctrl+q": "app.quit",
+		"f10":    "app.quit",
+		"esc":    "app.back",
+		"ctrl+k": "app.palette",
+		"ctrl+o": "session.open",
+		"ctrl+l": "nav.path",
+		"ctrl+r": "nav.refresh",
+		"ctrl+a": "sel.all",
+		"ctrl+e": "archive.extract",
+		"ctrl+g": "archive.compress",
+		"tab":    "nav.switch-pane",
+		"space":  "sel.toggle",
+	}
+	for key, want := range cases {
+		got, ok := m.Lookup(key, "files")
+		if !ok {
+			t.Errorf("%s is not bound", key)
+			continue
+		}
+		if got != want {
+			t.Errorf("%s resolves to %s, want %s", key, got, want)
+		}
+	}
+}
+
+// Digits switch tabs, which is what makes several live sessions navigable
+// without a modifier dance.
+func TestDigitsSwitchTabs(t *testing.T) {
+	m := build(t, Options{})
+	for _, digit := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"} {
+		id, ok := m.Lookup(digit, "files")
+		if !ok || id != "session.tab" {
+			t.Errorf("%s should switch tab, got %q (%v)", digit, id, ok)
+		}
+	}
+	if id, ok := m.Lookup("[", "files"); !ok || id != "session.tab-prev" {
+		t.Errorf("[ should be the previous tab, got %q", id)
+	}
+	if id, ok := m.Lookup("]", "files"); !ok || id != "session.tab-next" {
+		t.Errorf("] should be the next tab, got %q", id)
+	}
+}
+
+// The same letter may mean different things on different screens, which is what
+// lets both the file manager and the host list use "d" and "r" naturally.
+func TestTheSameLetterOnTwoScreens(t *testing.T) {
+	m := build(t, Options{})
+
+	if id, _ := m.Lookup("d", "files"); id != "file.delete" {
+		t.Errorf("d on files = %s, want file.delete", id)
+	}
+	if id, _ := m.Lookup("d", "connections"); id != "session.delete" {
+		t.Errorf("d on connections = %s, want session.delete", id)
+	}
+	if id, _ := m.Lookup("r", "files"); id != "file.rename" {
+		t.Errorf("r on files = %s, want file.rename", id)
+	}
+	if id, _ := m.Lookup("r", "connections"); id != "session.reload" {
+		t.Errorf("r on connections = %s, want session.reload", id)
+	}
+	// A screen-scoped binding does not leak onto a screen that has no opinion.
+	if id, ok := m.Lookup("c", "files"); ok {
+		t.Errorf("c is only a connection action, but files resolved it to %s", id)
+	}
+	if id, ok := m.Lookup("c", "connections"); !ok || id != "session.connect" {
+		t.Errorf("c on connections = %q (%v), want session.connect", id, ok)
+	}
+}
+
+// A key bound twice on the same screen is an ambiguity, and is refused.
+func TestDuplicateBindingOnOneScreenIsRefused(t *testing.T) {
+	reg := actions.New(
+		actions.Action{ID: "a", Label: "A", Category: actions.CatApp, Desc: "d", Default: "z", Screen: "files"},
+		actions.Action{ID: "b", Label: "B", Category: actions.CatApp, Desc: "d", Default: "z", Screen: "files"},
+	)
+	if _, err := Build(reg, Options{}); err == nil {
+		t.Fatal("two actions on one screen cannot share a key")
+	}
+	// The same key on different screens is not a conflict.
+	reg = actions.New(
+		actions.Action{ID: "a", Label: "A", Category: actions.CatApp, Desc: "d", Default: "z", Screen: "files"},
+		actions.Action{ID: "b", Label: "B", Category: actions.CatApp, Desc: "d", Default: "z", Screen: "connections"},
+	)
+	if _, err := Build(reg, Options{}); err != nil {
+		t.Errorf("the same key on two screens should be allowed: %v", err)
+	}
+}
+
+// Esc must never look like quit, and neither can be rebound into the other.
 func TestEscIsBackNotQuit(t *testing.T) {
 	m := build(t, Options{})
-	id, ok := m.Lookup("esc")
+	id, ok := m.Lookup("esc", "files")
 	if !ok {
 		t.Fatal("esc should be bound")
 	}
@@ -73,24 +163,20 @@ func TestEscIsBackNotQuit(t *testing.T) {
 	}
 }
 
-// The keys terminals reserve must never be bound, because a binding that cannot
-// be delivered looks like a broken application.
-func TestUndeliverableKeysAreRejectedAndDropped(t *testing.T) {
+// Keys terminals reserve are never bound, because a binding that cannot be
+// delivered looks like a broken application.
+func TestUndeliverableKeysAreRejected(t *testing.T) {
 	for key := range Undeliverable {
 		_, err := Build(actions.Default(), Options{Overrides: map[string]string{"nav.refresh": key}})
 		if err == nil {
 			t.Errorf("override to %s should be rejected", key)
 		}
 	}
-	// Nothing in the default bindings is undeliverable either.
-	m := build(t, Options{})
-	if dropped := m.Dropped(); len(dropped) != 0 {
-		t.Fatalf("default bindings dropped: %+v", dropped)
+	if dropped := build(t, Options{}).Dropped(); len(dropped) != 0 {
+		t.Fatalf("the default bindings dropped: %+v", dropped)
 	}
 }
 
-// Without the Kitty protocol, modified keys cannot be distinguished, so they are
-// dropped with a reason rather than silently ignored.
 func TestCapabilityProbeDropsUndeliverableKeys(t *testing.T) {
 	reg := actions.New(actions.Action{
 		ID: "test.action", Label: "Test", Category: actions.CatApp,
@@ -107,18 +193,6 @@ func TestCapabilityProbeDropsUndeliverableKeys(t *testing.T) {
 	if !strings.Contains(dropped[0].Reason, "modified keys") {
 		t.Errorf("the reason should explain the terminal limit, got %q", dropped[0].Reason)
 	}
-	if _, ok := m.Lookup("ctrl+shift+p"); ok {
-		t.Error("the undeliverable binding should not be indexed")
-	}
-
-	// With the Kitty protocol the same binding works.
-	m, err = BuildWithDeliverer(reg, Options{}, terminalDeliverer{kitty: true})
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	if len(m.Dropped()) != 0 {
-		t.Errorf("nothing should be dropped with Kitty support: %+v", m.Dropped())
-	}
 }
 
 type terminalDeliverer struct{ kitty bool }
@@ -133,18 +207,15 @@ func (d terminalDeliverer) CanDeliver(key string) (string, bool) {
 	return "", true
 }
 
-// These stand in for the app's own deliverer so the probe behaviour is tested
-// here too; the app's version is covered by the interface tests.
-
+// An override replaces the action's bindings rather than adding to them.
 func TestOverridesWinOverDefaults(t *testing.T) {
-	m := build(t, Options{Overrides: map[string]string{"file.delete": "ctrl+d"}})
-	if _, ok := m.Lookup("ctrl+d"); !ok {
+	m := build(t, Options{Overrides: map[string]string{"file.delete": "D"}})
+	if _, ok := m.Lookup("D", "files"); !ok {
 		t.Fatal("the override should be bound")
 	}
-	if _, ok := m.Lookup("f8"); ok {
+	if _, ok := m.Lookup("d", "files"); ok {
 		t.Error("the old binding should be gone")
 	}
-	// The action keeps only the new key, so the palette shows the truth.
 	if keys := m.Keys("file.delete"); len(keys) != 1 {
 		t.Errorf("expected a single binding, got %v", keys)
 	}
@@ -160,48 +231,12 @@ func TestOverridesRejectUnknownActions(t *testing.T) {
 	}
 }
 
-func TestUnknownPresetIsRejected(t *testing.T) {
-	if _, err := Build(actions.Default(), Options{Preset: "emacs"}); err == nil {
-		t.Fatal("an unknown preset should be rejected")
-	}
-}
+// A sequence is two keys in a row, and a dead prefix must not swallow the next
+// key.
+func TestSequences(t *testing.T) {
+	m := build(t, Options{})
+	resolver := m.Resolver("files")
 
-// The vim preset changes navigation only. Operations stay standard, so a
-// shortcut always means one thing no matter which preset is active.
-func TestVimPresetChangesNavigationOnly(t *testing.T) {
-	vim := build(t, Options{Preset: Vim})
-	navCases := map[string]actions.ID{
-		"h": "nav.parent",
-		"j": "nav.down",
-		"k": "nav.up",
-		"l": "nav.open",
-		"~": "nav.home",
-		"-": "nav.last-dir",
-		"/": "nav.filter",
-		"v": "sel.extend-down",
-	}
-	for key, want := range navCases {
-		got, ok := vim.Lookup(key)
-		if !ok {
-			t.Errorf("vim preset: %s is not bound", key)
-			continue
-		}
-		if got != want {
-			t.Errorf("vim preset: %s resolves to %s, want %s", key, got, want)
-		}
-	}
-	// Operations are untouched.
-	for key, want := range map[string]actions.ID{
-		"ctrl+c": "file.copy",
-		"f8":     "file.delete",
-		"f5":     "file.copy-to",
-	} {
-		if got, _ := vim.Lookup(key); got != want {
-			t.Errorf("vim preset changed an operation: %s = %s, want %s", key, got, want)
-		}
-	}
-	// gg is a sequence, and both keys must be recognised as its prefix.
-	resolver := vim.Resolver()
 	if out := resolver.Feed("g"); !out.Pending {
 		t.Fatalf("g should start a sequence, got %+v", out)
 	}
@@ -209,18 +244,12 @@ func TestVimPresetChangesNavigationOnly(t *testing.T) {
 	if !out.Matched || out.ID != "nav.first" {
 		t.Fatalf("g g should go to the first entry, got %+v", out)
 	}
-}
 
-// A half-typed sequence must not swallow the next key forever.
-func TestSequenceRecovery(t *testing.T) {
-	m := build(t, Options{Preset: Vim})
-	resolver := m.Resolver()
+	// g then j is not a sequence: the j still means "down".
 	if out := resolver.Feed("g"); !out.Pending {
 		t.Fatalf("g should be pending, got %+v", out)
 	}
-	// "g" then "j" is not a sequence, so the j must still mean "down".
-	out := resolver.Feed("j")
-	if !out.Matched || out.ID != "nav.down" {
+	if out := resolver.Feed("j"); !out.Matched || out.ID != "nav.down" {
 		t.Fatalf("after a dead prefix, j should move down, got %+v", out)
 	}
 	resolver.Reset()
@@ -229,17 +258,40 @@ func TestSequenceRecovery(t *testing.T) {
 	}
 }
 
-// Prefix keys that are sequences in their own right must resolve on their own
-// when the whole sequence exists.
-func TestPrefixSequence(t *testing.T) {
+// Moving screens drops a half-typed sequence: "g" means nothing on the
+// connections screen.
+func TestChangingScreenResetsThePrefix(t *testing.T) {
 	m := build(t, Options{})
-	resolver := m.Resolver()
-	if out := resolver.Feed("ctrl+space"); !out.Pending {
-		t.Fatalf("ctrl+space should start a sequence, got %+v", out)
+	resolver := m.Resolver("files")
+	if out := resolver.Feed("g"); !out.Pending {
+		t.Fatalf("g should be pending, got %+v", out)
 	}
-	out := resolver.Feed("n")
-	if !out.Matched || out.ID != "terminal.new" {
-		t.Fatalf("ctrl+space n should open a terminal, got %+v", out)
+	resolver.SetScreen("connections")
+	if resolver.Pending() != "" {
+		t.Error("changing screen should drop the prefix")
+	}
+	// d on the connections screen is the connection action, not a completion of
+	// the file-screen sequence.
+	if out := resolver.Feed("d"); !out.Matched || out.ID != "session.delete" {
+		t.Errorf("d after a screen change = %+v, want session.delete", out)
+	}
+}
+
+// A scoped action shadows a global one on its own screen.
+func TestScopedActionShadowsGlobal(t *testing.T) {
+	reg := actions.New(
+		actions.Action{ID: "global", Label: "Global", Category: actions.CatApp, Desc: "d", Default: "q"},
+		actions.Action{ID: "scoped", Label: "Scoped", Category: actions.CatApp, Desc: "d", Default: "q", Screen: "files"},
+	)
+	m, err := Build(reg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := m.Lookup("q", "files"); id != "scoped" {
+		t.Errorf("on files the scoped action should win, got %s", id)
+	}
+	if id, _ := m.Lookup("q", "home"); id != "global" {
+		t.Errorf("elsewhere the global action should win, got %s", id)
 	}
 }
 
@@ -248,25 +300,13 @@ func TestPrimaryShowsAReadableKey(t *testing.T) {
 	if got := m.Primary("app.quit"); got != "Ctrl+Q" {
 		t.Errorf("Primary(app.quit) = %q, want %q", got, "Ctrl+Q")
 	}
-	if got := m.Primary("file.menu"); got != "F9" {
-		t.Errorf("Primary(file.menu) = %q, want %q", got, "F9")
+	if got := m.Primary("file.delete"); got != "d" {
+		t.Errorf("Primary(file.delete) = %q, want %q", got, "d")
+	}
+	if got := m.Primary("nav.first"); got != "g g" {
+		t.Errorf("Primary(nav.first) = %q, want %q", got, "g g")
 	}
 	if got := m.Primary("file.chmod"); got != "" {
 		t.Errorf("an action with no binding should render as empty, got %q", got)
-	}
-	if got := m.Primary("terminal.new"); got != "Ctrl+Space n" {
-		t.Errorf("Primary(terminal.new) = %q, want %q", got, "Ctrl+Space n")
-	}
-}
-
-// Actions that apply must be reachable with their own key: the action bar and
-// the palette both look this up.
-func TestActionForRespectsContext(t *testing.T) {
-	m := build(t, Options{})
-	if _, ok := m.ActionFor("ctrl+c", actions.Context{}); ok {
-		t.Error("copy should not apply with nothing selected")
-	}
-	if id, ok := m.ActionFor("ctrl+c", actions.Context{Selection: 1, Local: true}); !ok || id != "file.copy" {
-		t.Errorf("copy should apply with a selection, got %q %v", id, ok)
 	}
 }

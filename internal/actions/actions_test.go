@@ -80,23 +80,23 @@ func TestApplicability(t *testing.T) {
 	empty := Context{Overlay: "", Panes: 2, Local: true}
 	withSelection := Context{Overlay: "", Panes: 2, Local: true, Selection: 3, Cursor: true}
 
-	copyAction, ok := reg.Get("file.copy")
+	copyAction, ok := reg.Get("sel.mark")
 	if !ok {
-		t.Fatal("file.copy is missing")
+		t.Fatal("sel.mark is missing")
 	}
 	if copyAction.Applicable(empty) {
-		t.Error("file.copy should not apply with nothing selected")
+		t.Error("marking should not apply with nothing selected")
 	}
 	if !copyAction.Applicable(withSelection) {
-		t.Error("file.copy should apply with a selection")
+		t.Error("marking should apply with a selection")
 	}
 
-	paste, _ := reg.Get("file.paste")
+	paste, _ := reg.Get("sel.paste")
 	if paste.Applicable(empty) {
-		t.Error("file.paste should not apply with nothing staged")
+		t.Error("pasting should not apply with nothing marked")
 	}
 	if !paste.Applicable(Context{Staged: 2}) {
-		t.Error("file.paste should apply once something is staged")
+		t.Error("pasting should apply once something is marked")
 	}
 
 	extract, _ := reg.Get("archive.extract")

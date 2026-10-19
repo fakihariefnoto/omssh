@@ -109,10 +109,7 @@ func buildRegistry() *actions.Registry { return actions.Default() }
 // buildKeymap resolves bindings for the configuration's preset and overrides.
 func buildKeymap(cfg config.Config) (*actions.Registry, *keymap.Map, error) {
 	reg := buildRegistry()
-	keys, err := keymap.Build(reg, keymap.Options{
-		Preset:    keymap.Preset(cfg.Keys.Preset),
-		Overrides: cfg.Keys.Overrides,
-	})
+	keys, err := keymap.Build(reg, keymap.Options{Overrides: cfg.Keys.Overrides})
 	if err != nil {
 		return nil, nil, err
 	}

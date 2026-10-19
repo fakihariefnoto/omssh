@@ -75,6 +75,10 @@ type Model struct {
 
 	tabs      []Tab
 	activeTab int
+	// focusTabs is true while the tab strip has the focus: h/l choose a tab,
+	// Enter dives into its pane, Escape goes up. Escape from a pane lands here
+	// when there is more than one tab, so switching hosts is one key away.
+	focusTabs bool
 
 	Panes   []Pane
 	Focused int
@@ -230,7 +234,7 @@ func New(opts Options) (*Model, error) {
 
 	paneKeys := opts.Keys
 	if paneKeys == nil {
-		paneKeys, err = keymap.Build(opts.Registry, keymap.Options{Preset: keymap.Preset(cfg.Keys.Preset)})
+		paneKeys, err = keymap.Build(opts.Registry, keymap.Options{Overrides: cfg.Keys.Overrides})
 		if err != nil {
 			return nil, err
 		}
@@ -257,7 +261,7 @@ func New(opts Options) (*Model, error) {
 		icons:      theme.IconsFor(cfg.UI.Icons),
 		reg:        opts.Registry,
 		keys:       paneKeys,
-		resolver:   paneKeys.Resolver(),
+		resolver:   paneKeys.Resolver(""),
 		profile:    opts.Profile,
 		hasDark:    opts.HasDark,
 		sshPath:    opts.SSHConfigPath,
@@ -433,6 +437,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if cmd, handled := m.handleConnectionsKey(msg); handled {
 			return m, cmd
 		}
+	}
+	if m.focusTabs {
+		return m.handleTabKey(msg)
 	}
 	if m.filtering {
 		return m.handleFilterKey(msg)
@@ -643,7 +650,12 @@ func (m *Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleNormalKey matches a key against the keymap and runs what it means.
+//
+// There is no type-ahead fallback: plain letters are commands, so an unbound
+// letter does nothing rather than jumping the cursor. Searching is "/" and
+// Ctrl+F, which is one key to learn and never guesses.
 func (m *Model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	m.resolver.SetScreen(m.screenName())
 	out := m.resolver.Feed(msg.String())
 	switch {
 	case out.Matched:
@@ -653,17 +665,6 @@ func (m *Model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			cmd := m.switchTab(tabIndexFromKey(msg.String()))
 			return m, cmd
 		}
-		// A bound key that does not apply here must not swallow printable input:
-		// typing "d" in the file manager is type-ahead, even though "d" deletes a
-		// connection on the connections screen. Type-ahead state survives the
-		// fall-through, so repeating a letter still cycles through matches.
-		if a, ok := m.reg.Get(out.ID); ok && !a.Applicable(m.actionContext()) {
-			key := msg.Key()
-			if key.Text != "" && !key.Mod.Contains(tea.ModCtrl) && !key.Mod.Contains(tea.ModAlt) && msg.String() != "space" {
-				m.typeAhead(key.Text)
-				return m, nil
-			}
-		}
 		m.resetTypeAhead()
 		cmd := m.runAction(out.ID)
 		return m, cmd
@@ -671,17 +672,6 @@ func (m *Model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Half of a sequence is in; wait for the rest.
 		return m, nil
 	}
-
-	// Nothing bound: treat printable input as type-ahead, which is how a file
-	// manager has always let you find a name without knowing a key.
-	key := msg.Key()
-	if key.Text == "" || msg.String() == "space" {
-		return m, nil
-	}
-	if key.Mod.Contains(tea.ModCtrl) || key.Mod.Contains(tea.ModAlt) {
-		return m, nil
-	}
-	m.typeAhead(key.Text)
 	return m, nil
 }
 
@@ -939,11 +929,11 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.toastInfo("Asking the terminal for its background")
 		return tea.RequestBackgroundColor
 
-	case "file.copy":
+	case "sel.mark":
 		m.stage(false)
-	case "file.cut":
+	case "sel.cut":
 		m.stage(true)
-	case "file.paste":
+	case "sel.paste":
 		return m.pasteStaged()
 	case "view.staged":
 		m.Overlay = OverlayStaged
@@ -975,7 +965,7 @@ func (m *Model) stageOf(id actions.ID) string {
 // explainUnavailable replaces silence with the reason and the way out.
 func (m *Model) explainUnavailable(a actions.Action) {
 	switch a.ID {
-	case "file.copy", "file.cut":
+	case "sel.mark", "sel.cut":
 		m.quitHint = "Nothing selected · Space selects · Ctrl+Q quits"
 	case "file.delete":
 		m.quitHint = "Nothing selected to delete"
@@ -1005,10 +995,19 @@ func (m *Model) goBack() {
 	case m.screen == screenConnections:
 		m.screen = m.connReturn
 		m.mode = "NORMAL"
+	case m.focusTabs:
+		// Up out of the tab strip: the launcher.
+		m.focusTabs = false
+		m.screen = screenHome
+		m.home.cursor = 0
+		m.mode = "NORMAL"
+	case m.screen == screenFiles && len(m.tabs) > 1:
+		// With several sessions there is something to choose between, so Escape
+		// moves the focus to the tabs rather than leaving the file manager.
+		m.focusTabs = true
+		m.mode = "TABS"
 	case m.screen == screenFiles:
-		// Escape twice from anywhere lands on the launcher: the first leaves the
-		// file manager, the second explains how to quit rather than bouncing
-		// back into the files.
+		// A single local tab: the launcher is the only thing above.
 		m.screen = screenHome
 		m.home.cursor = 0
 		m.mode = "NORMAL"
@@ -1216,14 +1215,13 @@ func (m *Model) applyTheme(name string) {
 func (m *Model) applyCapabilities(msg tea.KeyboardEnhancementsMsg) {
 	kitty := msg.SupportsKeyDisambiguation()
 	rebuilt, err := keymap.BuildWithDeliverer(m.reg, keymap.Options{
-		Preset:    keymap.Preset(m.cfg.Keys.Preset),
 		Overrides: m.cfg.Keys.Overrides,
 	}, terminalDeliverer{kitty: kitty})
 	if err != nil {
 		return
 	}
 	m.keys = rebuilt
-	m.resolver = rebuilt.Resolver()
+	m.resolver = rebuilt.Resolver(m.screenName())
 	m.dropped = rebuilt.Dropped()
 }
 

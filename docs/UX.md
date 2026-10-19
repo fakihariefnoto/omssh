@@ -21,7 +21,7 @@ keymap; §8–13 cover dialogs, feedback, safety, onboarding and terminal limits
 | P5 | **Two speeds for everything** | Quick path (`Ctrl+C` → `Tab` → `Ctrl+V`) and guided path (`F5` opens a dialog with options). Neither is second-class |
 | P6 | **Few modes, always labelled** | Modes: Normal, Search, Dialog, Terminal. Selection is *not* a mode. The current mode is named in the status bar |
 | P7 | **Never a dead end** | `Esc` always goes back one level of context; every empty, loading and error state offers the action that fixes it |
-| P8 | **Predictable modifier grammar** | `Ctrl+letter` = an action or dialog · `Alt+letter` = a view toggle · `F-keys` = classic file operations · plain letters = type-ahead (or vim navigation) |
+| P8 | **A letter means a command** | Plain letters are commands, digits switch tabs, `Ctrl+letter` opens a dialog, `Alt+letter` toggles a view, `Esc` goes back. No mode where letters sometimes type |
 | P9 | **Teaching empty states** | First run offers to import `~/.ssh/config`; an empty pane says what to press; a failed connect says what to try next |
 | P10 | **Mouse parity** | Tabs, breadcrumbs, buttons, list rows, the action bar and the queue are all clickable; right-click opens the context menu; drag between panes copies |
 | P11 | **Direction is spelled out** | The panes are labelled `LOCAL` and `REMOTE`, and the verbs are `Send` and `Fetch`, not "copy" |
@@ -52,7 +52,7 @@ No prior knowledge, in the order they would try it:
 | Work out what an archive holds | `Enter` or `F3` on it — contents are listed, no extraction |
 | Extract it to the machine on the other side | Select it, `Ctrl+E`, pick the destination side in the dialog |
 | Avoid deleting something you need | `F8` shows `Delete 3 items · 1.4 GB · prod-api:/srv/api` and waits — deletes are permanent, so the dialog is the safety net |
-| Find a file | Start typing — the cursor jumps to matching names (type-ahead) |
+| Find a file | `/` and type — the listing narrows as you go |
 | Find a file anywhere in the tree | `Alt+F` |
 | Deploy | `Alt+D` on a session, or the `Deploy` button in the session header |
 | Do anything else | `Ctrl+K` and type what you want in plain words |
@@ -205,7 +205,7 @@ which.
 | Mode | Entered by | Leaves by | Visible as |
 | --- | --- | --- | --- |
 | Normal | default | — | `NORMAL` |
-| Search | `Ctrl+F` (in-pane filter) or typing (type-ahead) | `Esc` | `SEARCH` + a query chip |
+| Search | `/` or `Ctrl+F` (in-pane filter) | `Esc` | `SEARCH` + a query chip |
 | Dialog | a dialog opens | `Esc` or a button | the dialog card |
 | Palette | `Ctrl+K` | `Enter` / `Esc` | the palette |
 | Terminal | focus a terminal tab | prefix key | terminal chrome bar |
@@ -222,11 +222,17 @@ Learn this once and the rest of the app is guessable:
 
 | Prefix | Meaning | Examples |
 | --- | --- | --- |
-| **Plain letters** | Type-ahead jump, or vim navigation in the vim preset | type `ngx` → cursor jumps to `nginx/` |
+| **Plain letters** | A **command**, the way ranger and lf work | `d` delete, `r` rename, `y` copy, `x` cut, `p` paste |
+| **Digits** | Switch to that session tab | `1` local, `2` the first host |
 | **Arrows / Shift+arrows** | Move, extend selection, `←` up a level, `→` open | `Shift+↓` selects a run |
-| **Alt + letter** | A *view* toggle or a named place | `Alt+B` sidebar, `Alt+J` jobs, `Alt+H` hidden, `Alt+D` deploy, `Alt+C` compare |
-| **Ctrl + letter** | An *action* or a *dialog* | `Ctrl+C` copy, `Ctrl+E` extract, `Ctrl+F` search, `Ctrl+L` path, `Ctrl+K` palette |
-| **F-keys** | Classic file-manager operations | `F2` rename, `F3` view, `F4` edit, `F5` copy, `F6` move, `F7` new folder, `F8` delete, `F9` menu, `F10` quit |
+| **Alt + letter** | A *view* toggle or a named place | `Alt+B` sidebar, `Alt+J` jobs, `Alt+S` marked files, `Alt+D` deploy |
+| **Ctrl + letter** | An *action* or a *dialog* | `Ctrl+K` palette, `Ctrl+E` extract, `Ctrl+L` path, `Ctrl+Q` quit |
+| **Esc** | Back one level: pane → tab strip → launcher | never quits |
+
+There is **no type-ahead**. A letter that sometimes navigates and sometimes types
+is a letter you cannot learn, so letters are commands and finding a file is `/`
+or `Ctrl+F`. Function keys survive only as aliases for people whose hands already
+know them; nothing in the interface advertises them.
 
 `Enter` opens or confirms. `Esc` goes back one level of context, never destroys
 anything and never quits. Pressed twice from anywhere it lands on the launcher —
@@ -245,14 +251,12 @@ Used a thousand times a day, so it gets the most attention.
 visit history (same as a browser). `Ctrl+L` edits the path with completion.
 `Ctrl+R` refreshes.
 
-**Finding** — three levels, all obvious:
+**Finding** — two levels:
 
-1. **Type-ahead** — start typing and the cursor jumps to the first matching
-   name, matches are highlighted, `Esc` clears. Repeating the same letter cycles
-   through matches (classic file-manager behaviour). No key to learn.
-2. **Filter** — `Ctrl+F` narrows the current listing incrementally as you type,
-   `Esc` clears. Fast, and it never hides the current row.
-3. **Recursive find** — `Alt+F` searches the subtree and shows results with
+1. **Filter** — `/` (or `Ctrl+F`) narrows the current listing incrementally as
+   you type, `Esc` clears. One key, no guessing about whether a letter is a
+   command or a search.
+2. **Recursive find** — `Alt+F` searches the subtree and shows results with
    paths, sizes and match highlighting; `Enter` reveals a result in the pane.
 
 Hidden files: `Alt+H`, with a built-in default ignore list (`.git`,
@@ -351,24 +355,25 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 
 | Key | Action |
 | --- | --- |
-| `↑` `↓` | Move cursor |
-| `←` | Parent directory · `→` / `Enter` open (directory) or view (file) |
+| `j` `k` / `↑` `↓` | Move cursor |
+| `h` / `←` / `Backspace` | Parent directory |
+| `l` / `→` / `Enter` | Open (directory) or view (file) |
 | `PgUp` `PgDn` `Home` `End` | Page / first / last |
+| `g g` / `G` | First / last entry |
+| `~` / `-` | Home / last directory |
 | `Alt+←` `Alt+→` | History back / forward |
-| `Ctrl+L` | Edit the path (with completion) |
+| `Ctrl+L` | Edit the path (with folder suggestions) |
 | `Ctrl+R` | Refresh |
-| `Ctrl+P` | Fuzzy jump to a path (quick-open) |
+| `Ctrl+P` | Fuzzy jump to a path |
 | `Alt+F` | Recursive find in the subtree |
-| `Ctrl+F` | Filter the current listing |
-| `Alt+H` | Toggle hidden files |
+| `/` or `Ctrl+F` | Filter the listing |
+| `.` | Toggle hidden files |
 | `Alt+P` | Toggle preview |
 | `Tab` `Shift+Tab` | Switch pane |
-| `Alt+O` | Reveal the selection in the other pane |
-| `Alt+1…9` · `Ctrl+PgUp/PgDn` | Switch session tab |
+| `o` | Reveal the selection in the other pane |
+| `1`…`9` | Switch to that session tab |
+| `[` `]` | Previous / next tab |
 | `Ctrl+O` | Open a connection (host picker) |
-| `Ctrl+T` | New tab at this directory (a terminal tab, already `cd`'d) |
-| `Ctrl+Space` `n` | New terminal tab in the current session |
-| `Ctrl+W` | Close the current tab |
 
 ### 7.2 File operations
 
@@ -377,50 +382,39 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `Space` | Toggle select and advance | selection is not a mode |
 | `Shift+↑` `Shift+↓` | Extend selection | like every GUI list |
 | `Ctrl+A` / `Alt+A` | Select all / invert | |
-| `Ctrl+C` `Ctrl+X` `Ctrl+V` | Copy / cut / paste | standard; see §13 for `Ctrl+C` and quitting |
-| `F5` / `F6` | Copy to… / Move to… | dialog, destination defaults to the other pane |
-| `F3` / `Enter` | View (preview pane) | archives list their contents |
-| `F4` | Edit (local `$EDITOR`; remote download-edit-upload) | |
-| `F2` | Rename (batch rename when multi-selected) | |
-| `F7` / `Ctrl+N` | New folder / new file | |
-| `Ctrl+D` / `F8` / `Del` | Delete | always confirms: items, size, path |
+| `y` / `Ctrl+C` | Mark for copy | `Alt+S` reviews what is marked |
+| `x` / `Ctrl+X` | Mark for move | |
+| `p` / `Ctrl+V` | Paste into this pane | copies or moves, to the other pane |
+| `v` / `F3` | View (preview pane) | archives list their contents |
+| `e` / `F4` | Edit (local `$EDITOR`; remote download-edit-upload) | |
+| `r` / `F2` | Rename (batch rename when multi-selected) | |
+| `n` / `N` | New file / new folder | |
+| `d` / `Ctrl+D` / `Del` | Delete → always asks | no trash, so the dialog is the safety net |
 | `Ctrl+E` | Extract… | destination side is chosen in the dialog |
 | `Ctrl+G` | Compress selection… | format + destination side |
-| `Alt+S` | Toggle sync browse | panes mirror the relative path |
+| `Alt+S` | Review marked files | what, where, and the conflict rule |
 | `Alt+C` | Compare the two panes (read-only diff) | |
 | `Alt+B` `Alt+J` `Alt+D` | Sidebar / jobs queue / deploy | view toggles |
-| — | `Ctrl+Z` / `Ctrl+Y` are **unbound in v1** (no undo; delete confirms instead) | free for rebinding |
 | `F9` / right-click | Context menu — every operation for the selection | discovery net |
 | `Ctrl+K` | Command palette — every action, searchable, with its shortcut | discovery net |
-| `F1` / `?` | Help — searchable keymap grouped by task | discovery net |
-| `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | rebindable via `keys.quit` |
+| `?` / `F1` | Help — searchable keymap grouped by task | discovery net |
+| `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | |
 | `Esc` | Back / dismiss / clear | never destructive, **never quits** |
-| `Esc` in the file manager | Returns to the launcher | `Esc`, `Esc` from anywhere lands on the main menu |
-| `Esc` on the launcher | Nothing above it → shows `Ctrl+Q to quit` | so quitting is never guessed |
 
-### 7.3 Vim preset (optional)
+### 7.3 The tab strip has focus too
 
-`keys.preset = "vim"` restores the navigation letters, and **only** navigation
-and selection change — operations keep the standard keys above, so both hands
-and both mental models keep working:
+`Esc` from a pane moves the focus **to the tab strip** when there is more than one
+tab — choosing another host is then one key, not a remembered shortcut:
 
 | Key | Action |
 | --- | --- |
-| `h` `j` `k` `l` | parent / down / up / open |
-| `gg` `G` | top / bottom |
-| `~` `-` | home / last directory |
-| `/` `n` `N` | filter, next, previous match |
-| `v` | start a visual range (alias for `Shift+arrows`) |
-| `Ctrl+U` `Ctrl+D` | half-page up / down |
+| `h` `l` / `Tab` `Shift+Tab` | Choose a tab (the pane follows, without taking focus) |
+| `Enter` | Dive into the chosen tab's pane |
+| `d` | Close that session tab |
+| `Esc` | Up to the launcher |
+| `1`…`9` | Jump straight to a tab from anywhere |
 
-A fully vim-modal preset (with `dd`, `yy`, `p`) is explicitly **not** in v1: the
-standard operations are what make the app learnable, and forking them by preset
-would break the palette's promise that a shortcut always means one thing. It is
-a candidate for post-1.0 if there is demand.
-
-Keymaps are configurable (`[keys]` in the config) with validation: duplicate
-binds, unbindable keys, and attempts to rebind `Esc` are rejected by
-`omssh config check`, which reports the file and line.
+The strip marks the chosen tab with `▸`, and the status bar says `TABS`.
 
 ---
 

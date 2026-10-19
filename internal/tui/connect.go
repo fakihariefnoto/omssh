@@ -378,17 +378,26 @@ func newSessionManager(requests chan *promptRequest) (*session.Manager, error) {
 // switchTab moves to another session tab, binding the remote pane to that
 // session. The local tab keeps the remote pane where it is, so a copy between
 // the two sides survives a look at the local machine.
+//
+// dive decides whether the focus moves into the pane as well: choosing a tab from
+// the strip previews it, and Enter dives in.
 func (m *Model) switchTab(index int) tea.Cmd {
+	return m.selectTab(index, true)
+}
+
+func (m *Model) selectTab(index int, dive bool) tea.Cmd {
 	if len(m.tabs) == 0 {
 		return nil
 	}
-	// Wrap, so ctrl+pgup from the first tab lands on the last.
+	// Wrap, so [ from the first tab lands on the last.
 	index = ((index % len(m.tabs)) + len(m.tabs)) % len(m.tabs)
 	m.activeTab = index
 	tab := m.tabs[index]
 	if tab.Host == "" {
-		// The local tab: focus the local pane, leave the remote as it was.
-		m.Focused = 0
+		// The local tab: show the local pane, leave the remote as it was.
+		if dive {
+			m.Focused = 0
+		}
 		return nil
 	}
 	sess, ok := m.live[tab.Host]
@@ -398,8 +407,72 @@ func (m *Model) switchTab(index int) tea.Cmd {
 	}
 	m.Panes[1].Bind(sess.FS, sess.Target.Alias, sess.Root)
 	m.Panes[1].Base = sess.Base
-	m.Focused = 1
+	if dive {
+		m.Focused = 1
+	}
 	return m.loadPaneAsync(1)
+}
+
+// handleTabKey drives the tab strip once it has the focus: choose with h/l or
+// Tab, dive with Enter, leave with Escape.
+func (m *Model) handleTabKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "h", "left", "shift+tab", "k", "up":
+		cmd := m.selectTab(m.activeTab-1, false)
+		return m, cmd
+	case "l", "right", "tab", "j", "down":
+		cmd := m.selectTab(m.activeTab+1, false)
+		return m, cmd
+	case "home", "g":
+		cmd := m.selectTab(0, false)
+		return m, cmd
+	case "end", "G":
+		cmd := m.selectTab(len(m.tabs)-1, false)
+		return m, cmd
+	case "enter", "space":
+		m.focusTabs = false
+		m.mode = "NORMAL"
+		cmd := m.selectTab(m.activeTab, true)
+		return m, cmd
+	case "esc":
+		m.focusTabs = false
+		m.screen = screenHome
+		m.home.cursor = 0
+		m.mode = "NORMAL"
+		return m, nil
+	case "d":
+		// Closing the chosen tab is the one destructive thing the strip offers.
+		cmd := m.closeTab(m.activeTab)
+		return m, cmd
+	}
+	// Digits and the global keys still work from the strip.
+	return m.handleNormalKey(msg)
+}
+
+// closeTab drops a session tab, closing the session it belongs to.
+func (m *Model) closeTab(index int) tea.Cmd {
+	if index < 0 || index >= len(m.tabs) {
+		return nil
+	}
+	tab := m.tabs[index]
+	if tab.Host == "" {
+		m.toastInfo("The local tab stays: it is where you started")
+		return nil
+	}
+	if sess, ok := m.live[tab.Host]; ok && m.sessions != nil {
+		_ = m.sessions.Close(sess.ID)
+	}
+	delete(m.live, tab.Host)
+	m.tabs = append(m.tabs[:index], m.tabs[index+1:]...)
+	if m.activeTab >= len(m.tabs) {
+		m.activeTab = max(0, len(m.tabs)-1)
+	}
+	if len(m.tabs) == 1 {
+		m.focusTabs = false
+	}
+	cmd := m.selectTab(m.activeTab, false)
+	m.toastInfo("Closed " + tab.Host)
+	return cmd
 }
 
 // tabIndexFromKey reads the digit out of "alt+3".

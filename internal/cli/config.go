@@ -102,7 +102,7 @@ func newConfigCmd(opts *Options, stdout io.Writer) *cobra.Command {
 				}
 				fmt.Fprintf(stdout, "%s is valid\n", path)
 				fmt.Fprintf(stdout, "  theme %s · icons %s · motion %s\n", cfg.UI.Theme, cfg.UI.Icons, cfg.UI.Motion)
-				fmt.Fprintf(stdout, "  keymap %s · copy %s · quit %s\n", cfg.Keys.Preset, cfg.Keys.Copy, cfg.Keys.Quit)
+				fmt.Fprintf(stdout, "  quit %s · %d key overrides\n", cfg.Keys.Quit, len(cfg.Keys.Overrides))
 				fmt.Fprintf(stdout, "  transfers %d %s · %d deploy %s\n",
 					cfg.Transfers.Workers, plural(cfg.Transfers.Workers, "worker", "workers"),
 					len(cfg.Deploy.Profiles), plural(len(cfg.Deploy.Profiles), "profile", "profiles"))
