@@ -1,0 +1,99 @@
+# GoReleaser — omssh.
+#
+# Drives three install channels in one pass:
+#   1. GitHub Releases    (archives + checksums.txt)
+#   2. Homebrew tap       (brews -> fakihariefnoto/homebrew-tap)
+#   3. go install         (no config: the module path is the channel)
+#
+# Run from a clean checkout with a token in the environment:
+#
+#   TAP_GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+#
+# or use ./scripts/release.sh, which finds a token for you.
+#
+# The binary is pure Go with no cgo, so every target cross-compiles from one
+# machine. macOS and Linux only: the terminal handling and the keyring path have
+# never been exercised on Windows, so it is not advertised rather than shipped
+# untested (see ROADMAP M7).
+
+version: 2
+
+project_name: omssh
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: omssh
+    main: ./cmd/omssh
+    binary: omssh
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.FullCommit}}
+      - -X main.date={{.Date}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: omssh
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+    # No wrap_in_directory: the Homebrew formula does `bin.install "omssh"` and
+    # expects the binary at the archive root, matching the other formulae in the
+    # tap.
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: fakihariefnoto
+    name: omssh
+  draft: false
+  prerelease: auto
+
+brews:
+  - name: omssh
+    repository:
+      owner: fakihariefnoto
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/fakihariefnoto/omssh"
+    description: "Oh My SSH — a modern SSH/SFTP client for the terminal"
+    license: "MIT"
+    install: |
+      bin.install "omssh"
+    # `brew test` must exercise something real. Printing the version is also
+    # what a package manager runs immediately after install, so this doubles as
+    # a smoke test that the binary starts at all.
+    test: |
+      assert_match "omssh", shell_output("#{bin}/omssh version")
+
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999

@@ -52,6 +52,17 @@ all being solid.
 - Fixed the launcher's centring: the plate and the menu are separate centred
   units, because padding the 44-cell wordmark into the menu's wider box left it
   visibly left of centre. The tagline is the backronym ("Oh My SSH").
+- Built the connections screen (`Ctrl+O`): list, add, edit, delete, filter and
+  "open in $EDITOR" for `~/.ssh/config`, with surgical writes that preserve
+  comments, unknown directives and ordering. `internal/sshconfig` has its own
+  round-trip tests. Connecting still comes with M1 below.
+- Folder suggestions in the "go to a folder" prompt: directories matching what
+  is typed, folders only, dot-folders hidden until a dot is typed.
+- `amber` is the default theme, with an accent of its own; `auto` remains
+  available for people who want the terminal to decide.
+- Release tooling mirroring the account's other projects: `.goreleaser.yaml`,
+  `scripts/release.sh` (tag, push, publish, update the tap), a tag-triggered
+  workflow, and `RELEASING.md`. Verified with `make snapshot` before any tag.
 
 **Acceptance:** `make run` shows the UI from `UX.md` §2 at 140 and 100 cols
 without layout breakage; theme switch changes everything; `F1` shows the
@@ -65,6 +76,9 @@ returns one level and the terminal is usable on exit.
 ## M1 — Connections
 
 **Goal:** connect to a real host and see it is alive.
+
+Host *management* landed early with M0 (the connections screen edits
+`~/.ssh/config`); this milestone is what turns a listed host into a session.
 
 - `~/.ssh/config` parser (with `Include` and wildcards) and written-back
   metadata as OpenSSH-safe comments.
@@ -246,8 +260,10 @@ setting `remote_root = "/"` cannot be run without typing the path.
 - Cross-host copy UX (source and destination on different remotes).
 - Documentation: README with real screenshots/recording, man page, shell
   completions, `docs/` reviewed against the shipped behaviour.
-- Release engineering: goreleaser archives and checksums for
-  `darwin/linux/windows` × `amd64/arm64`, Homebrew tap, tagged `v1.0.0`.
+- Release engineering: already wired (`scripts/release.sh`, `.goreleaser.yaml`,
+  tag-triggered workflow). Remaining: verify the Windows build and add it to the
+  release targets, then tag `v1.0.0`. Until then the release ships
+  `darwin/linux` × `amd64/arm64`.
 - Optional, only if the above lands early: port-forwarding manager
   (`-L`/`-R`/`-D`) — the first post-1.0 feature.
 

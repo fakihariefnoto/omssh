@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -146,6 +148,33 @@ func spaces(n int) string {
 	}
 	return strings.Repeat(" ", n)
 }
+
+// itoa renders a port, and "" for the default.
+func itoa(n int) string { return strconv.Itoa(n) }
+
+// itoaZero renders a port, or "" when it is unset (the default of 22).
+func itoaZero(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
+}
+
+// atoi parses a port.
+func atoi(s string) (int, error) { return strconv.Atoi(strings.TrimSpace(s)) }
+
+// spread puts one label on the left and another on the right of one row.
+func spread(left, right string, width int) string {
+	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		return ansi.Truncate(left, width, "…")
+	}
+	return left + spaces(gap) + right
+}
+
+// userHome is os.UserHomeDir, wrapped so callers in this package do not all
+// repeat the error handling.
+func userHome() (string, error) { return os.UserHomeDir() }
 
 // clamp keeps v inside [lo, hi].
 func clamp(v, lo, hi int) int {

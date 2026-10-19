@@ -140,7 +140,44 @@ ASCII icon, so it reads the same on any terminal before a theme is applied.
 - `ui.start: files` skips the launcher for people who do not want a front door.
 - The whole menu is clickable.
 
-### 2.2 The tab strip
+### 2.2 The connections screen
+
+`Ctrl+O`, or **SSH connections** on the launcher, opens the host manager. It edits
+`~/.ssh/config` directly, so what it shows is what `ssh` will use.
+
+```
+SSH connections                                          ~/.ssh/config · 3 hosts
+────────────────────────────────────────────────────────────────────────────────
+Ctrl+F to filter
+▸ prod-api        203.0.113.10          deploy      :2222
+  staging         staging.example.com   ubuntu
+  orb             127.0.0.1             default           (from include)
+────────────────────────────────────────────────────────────────────────────────
+prod-api
+  host     203.0.113.10
+  user     deploy
+  port     2222
+  key      ~/.ssh/id_ed25519
+  jump     —
+  source   ~/.ssh/config
+
+Enter/e edit · a add · d delete · r reload · o edit file · Ctrl+F filter · Esc back
+```
+
+- **Enter edits**, because managing hosts is what this screen is for; connecting
+  is a separate action and arrives with the SSH layer.
+- `a` adds a form: name, host, user, port, key, jump host — with the same
+  validation `ssh` would apply, so a typo is caught here rather than at connect
+  time.
+- `d` deletes, behind the usual confirmation stating which host and which file.
+- `r` reloads, `o` opens the file in `$EDITOR` (omssh suspends and resumes), `Esc`
+  goes back to where it was opened from.
+- Hosts that come from an `Include` are listed and marked: they are **read-only**
+  here, because the write would land in the wrong file. `o` is how they are
+  edited.
+- An empty file is an invitation, not an error: *"No hosts yet · a adds one"*.
+
+### 2.3 The tab strip
 
 The strip is labelled `sessions` and its tabs are separated by rules, so the row
 is self-explanatory. The active tab is marked with colour **and an underline**,
@@ -495,8 +532,9 @@ it.
 ## 11. Themes, colour and accessibility
 
 - Built-ins: `midnight` (default dark), `dawn` (light), `mist` (low contrast),
-  `ember` (warm), `mono` (no colour), `contrast` (high contrast), `auto`
-  (follows the terminal background, via `COLORFGBG` or an OSC 11 query).
+  **`amber` (the default — warm, with an amber accent of its own)**, `mono` (no
+  colour), `contrast` (high contrast), `auto` (follows the terminal background,
+  read from `COLORFGBG`).
 
 ### 11.1 The signature accent
 

@@ -25,8 +25,12 @@ makes moving files between local and remote machines pleasant:
   with excludes, dry-run preview, pre/post hooks, and a run history.
 - **Interactive terminal tabs** — real PTY sessions with a built-in VT
   emulator, scrollback, resize and clipboard.
+- **Manage `~/.ssh/config` in place** — list, add, edit and delete hosts from a
+  screen (`Ctrl+O`), including filtering and "open in `$EDITOR`". Writes are
+  surgical: comments and directives omssh does not manage survive untouched.
+  (Authenticating and connecting arrives with the SSH layer — see the roadmap.)
 - **Many hosts at once** — tabbed sessions, a connection pool with keepalive
-  and reconnect, imported from `~/.ssh/config` and written back compatibly.
+  and reconnect, shared with `~/.ssh/config`.
 - **Modern UI** — contextual action bar, command palette that shows every
   shortcut, themes with light/dark adaptation, honest degradation to 256/16
   colours, Nerd Font icons with ASCII fallback, full mouse support, and a
@@ -45,6 +49,7 @@ makes moving files between local and remote machines pleasant:
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Packages, the unified filesystem abstraction, concurrency, security |
 | [`docs/UX.md`](docs/UX.md) | Screen layouts, keybindings, themes, folder-walking UX |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Milestones with deliverables and acceptance criteria |
+| [`RELEASING.md`](RELEASING.md) | How a release is cut: tags, Homebrew tap, credentials |
 | [`docs/adr/`](docs/adr) | Architecture decision records |
 
 ## Building and running
@@ -57,6 +62,16 @@ make help             # every target
 ```
 
 Requires Go 1.26+ (the Charm v2 stack needs it).
+
+Install a release:
+
+```sh
+brew tap fakihariefnoto/tap && brew install fakihariefnoto/tap/omssh
+go install github.com/fakihariefnoto/omssh/cmd/omssh@latest
+```
+
+Ships for macOS and Linux, amd64 and arm64. Windows is planned, not claimed:
+the terminal and credential paths have not been exercised there yet.
 
 ```sh
 omssh                 # the interface, in your current directory

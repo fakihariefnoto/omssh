@@ -30,7 +30,7 @@ The tagline we design against:
 | G5 | Deploy to a specific remote reliably | Save a profile, preview the diff, run it, read the log, inspect history |
 | G6 | Best-in-class folder walking | Fuzzy path jump, bookmarks, incremental filter, preview, history, no dead ends |
 | G7 | Beautiful, modern, keyboard-first UI | Command palette, themes, mouse support, no layout breakage at any width |
-| G8 | One static binary, cross-platform | macOS/Linux/Windows, no `ssh`, `scp`, `tar` or `unzip` required on either end |
+| G8 | One static binary, cross-platform | macOS and Linux ship today (amd64 and arm64); Windows is a goal, not a claim — it ships once the terminal and credential paths have been exercised there (M7). No `ssh`, `scp`, `tar` or `unzip` required on either end |
 | G9 | Intuitive without a manual | A new user can connect, copy to the server and delete safely using only what the screen shows: the action bar, the palette, the context menu and standard shortcuts |
 | G10 | Safe by default | Every irreversible action confirms first, and the confirmation states exactly what is affected (items, size, path) |
 
@@ -49,6 +49,12 @@ The tagline we design against:
 
 ### 4.1 Connection management
 
+- **Manage `~/.ssh/config` in place.** A connections screen lists the hosts in
+  the file — and the ones pulled in by `Include`, read-only, so a write cannot
+  land in the wrong file — with add, edit, delete, search and "open in
+  `$EDITOR`". Writes are surgical: comments, unknown directives and ordering
+  survive, and a test asserts it against a realistic file. This part is built;
+  authenticating and connecting is the rest of this section.
 - Import from `~/.ssh/config`, including `Include`, wildcards, and `Host *`
   defaults. Changes written back as structured comments that OpenSSH ignores,
   so the file stays valid for `ssh(1)`.
@@ -77,6 +83,9 @@ The tagline we design against:
   reachable only by memorising a key.
 - Directory listing with the columns that matter (perms, size, mtime, owner),
   sortable, with hidden-file toggle and a live byte total of the selection.
+- **Folder suggestions** in the "go to a folder" prompt: matching directories
+  appear as you type, folders only, dot-folders hidden until a dot is typed.
+  Tab completes into the highlighted one, arrows pick, Enter goes.
 - **Type-ahead navigation**: start typing and the cursor jumps to the matching
   name, with repeat-to-cycle — classic file-manager behaviour, no key to learn.
   Backed by an incremental filter (`Ctrl+F`) and a recursive find (`Alt+F`) for
@@ -362,7 +371,7 @@ stdin/stdout where it makes sense. `--json` on the non-interactive commands.
 | D1 | Module path | `github.com/fakihariefnoto/omssh`. A bare `omssh` module path would break `go install github.com/fakihariefnoto/omssh/cmd/omssh@latest` and the goreleaser/Homebrew pipeline, both promised in the goals (§2 G8) and `ARCHITECTURE.md` §10. Renaming later is a one-line `go mod edit -module` plus an import rewrite, so this stays cheap to revisit. |
 | D2 | Deploy atomic writes | **On by default** (`atomic = true`), per profile opt-out. Correctness first: a dropped connection must never leave a half-written file in place. The cost is a temporary second copy during upload, which the plan accepts. |
 | D3 | Remote→remote across hosts | **Always stream through the client** with bounded buffers. No bastion-to-bastion `ssh`/`rsync` path: it would need a second credential context, a second quoting surface, and would not work when the two hosts cannot reach each other — which is the common case. |
-| D4 | Colour identity | **Signature accent**: `#57D9C9` aqua/teal, with `#8FF5E6` for emphasis, mapped to 256 `80`/`123` and 16-colour `bright cyan`. Reserved semantic colours stay separate. See `UX.md` §11.1. |
+| D4 | Colour identity | **Signature accent**: `#57D9C9` aqua/teal, with `#8FF5E6` for emphasis, mapped to 256 `80`/`123` and 16-colour `bright cyan`. Reserved semantic colours stay separate. See `UX.md` §11.1. The default theme is `amber`, which carries an amber accent of its own (`#E8A33D`); the brand teal remains the accent of `midnight`, `dawn` and `mist`. |
 | D5 | Config format | **YAML**, loaded strictly with `goccy/go-yaml`: unknown keys and duplicate keys are errors with a line and column, which is what `omssh config check` reports. Deploy profiles nested under `deploy.profiles.<name>` read better in YAML than as TOML tables of tables. |
 | D6 | Quit and `Esc` | Quit is **`Ctrl+Q`** (and `F10`), rebindable via `keys.quit`. **`Esc` is never quit**: it dismisses, cancels and goes back. At the top level with nothing to dismiss, `Esc` explains how to quit instead of quitting. `Ctrl+C` stays *copy*, with a `Ctrl+Q quits` hint when nothing is selected. |
 | D7 | Deletes | **Confirm-only and permanent.** No trash, no undo: `Ctrl+Z`/`Ctrl+Y` are unbound in v1. The confirmation states items, size and path, expands short lists, reports depth and counts for recursive deletes, and requires typing the path for root-ish targets. We use our own naming for our own artefacts — `.omssh-tmp` for atomic writes, `.omssh-backup/` beside the target when `backup = true` — and do **not** adopt the freedesktop trash spec. |
