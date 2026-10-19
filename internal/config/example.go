@@ -62,13 +62,4 @@ deploy:
   #       - node_modules/
   #       - .env
   #     include_hidden: false
-  #     follow_symlinks: false
-  #     atomic: true                   # upload to .omssh-tmp then rename
-  #     preserve_perms: true
-  #     backup: true                   # keep one previous version
-  #     workers: 4
-  #     hooks:
-  #       local_pre:  ["npm run build"]
-  #       remote_post:
-  #         - sudo systemctl restart api
 `

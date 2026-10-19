@@ -39,6 +39,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderSecret(l)
 	case OverlayStaged:
 		return m.renderStaged(l)
+	case OverlayDeploy:
+		return m.renderDeploy(l)
 	default:
 		return ""
 	}

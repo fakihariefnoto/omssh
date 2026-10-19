@@ -136,6 +136,10 @@ type Model struct {
 	confirmAlias string
 
 	staged stagedState
+	// deploy is the deploy card's state, and pendingDeploy is the profile waiting
+	// for its host to finish connecting.
+	deploy        deployState
+	pendingDeploy string
 
 	toasts   []toast
 	toastSeq int
@@ -373,6 +377,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dirLoadedMsg:
 		m.applyListing(msg)
 		return m, nil
+
+	case deployPlanMsg:
+		m.deploy.loading = false
+		if msg.err != nil {
+			m.deploy.err = msg.err.Error()
+			return m, nil
+		}
+		m.deploy.plan = &msg.plan
+		return m, nil
+
+	case deployDoneMsg:
+		m.deploy.loading = false
+		m.deploy.applied = true
+		if msg.err != nil {
+			m.deploy.err = msg.err.Error()
+			m.toastError("Deploy finished with errors: " + msg.err.Error())
+			return m, nil
+		}
+		create, update, remove := msg.plan.Counts()
+		m.toastSuccess(fmt.Sprintf("Deployed %s: %d created, %d updated, %d deleted",
+			msg.profile, create, update, remove))
+		m.Overlay = OverlayNone
+		m.mode = "NORMAL"
+		cmd := m.refreshAll()
+		return m, cmd
 
 	case terminalDoneMsg:
 		m.mode = "NORMAL"
@@ -633,6 +662,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlayForm:
 		m.overlayCmd = m.handleFormKey(msg)
+		return true
+
+	case OverlayDeploy:
+		m.overlayCmd = m.handleDeployKey(msg)
 		return true
 
 	case OverlayStaged:
@@ -969,6 +1002,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openPrompt("prompt.chmod")
 	case "file.symlink":
 		m.openPrompt("prompt.symlink")
+	case "deploy.open":
+		m.openDeploy()
 	case "terminal.new":
 		return m.openTerminalForPane()
 	case "session.terminal":
@@ -1161,7 +1196,7 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged:
+	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy:
 		// These have no text field of their own. The connections filter below is
 		// the only field outside an overlay.
 	}

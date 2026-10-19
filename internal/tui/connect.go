@@ -140,6 +140,13 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 
 	// A session gets a tab and the remote pane.
 	m.addSessionTab(msg.session)
+	if name := m.pendingDeploy; name != "" {
+		m.pendingDeploy = ""
+		if profile, ok := m.cfg.Deploy.Profiles[name]; ok && profile.Host == msg.target.Alias {
+			m.Overlay = OverlayDeploy
+			return m.reviewDeploy(name, profile, msg.session.FS)
+		}
+	}
 	if len(m.Panes) > 1 {
 		m.Panes[1].Bind(msg.session.FS, msg.session.Target.Alias, msg.session.Root)
 		m.Panes[1].Base = msg.session.Base

@@ -54,7 +54,7 @@ No prior knowledge, in the order they would try it:
 | Avoid deleting something you need | `F8` shows `Delete 3 items · 1.4 GB · prod-api:/srv/api` and waits — deletes are permanent, so the dialog is the safety net |
 | Find a file | `/` and type — the listing narrows as you go |
 | Find a file anywhere in the tree | `Alt+F` |
-| Deploy | `Alt+D` on a session, or the `Deploy` button in the session header |
+| Deploy | `Alt+D` opens the deploy card: pick a profile, review the diff, Enter deploys |
 | Do anything else | `Ctrl+K` and type what you want in plain words |
 
 ---

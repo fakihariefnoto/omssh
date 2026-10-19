@@ -288,6 +288,7 @@ const (
 	OverlayHostKey
 	OverlaySecret
 	OverlayStaged
+	OverlayDeploy
 )
 
 // Name returns the identifier the action registry expects in Context.Overlay.
@@ -305,6 +306,8 @@ func (o Overlay) Name() string {
 		return "settings"
 	case OverlayConfirm, OverlayPrompt, OverlayForm, OverlayHostKey, OverlaySecret, OverlayStaged:
 		return "dialog"
+	case OverlayDeploy:
+		return "deploy"
 	default:
 		return ""
 	}
