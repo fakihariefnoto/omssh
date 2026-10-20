@@ -41,6 +41,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderStaged(l)
 	case OverlayDeploy:
 		return m.renderDeploy(l)
+	case OverlayPanes:
+		return m.renderPanesChooser(l)
 	default:
 		return ""
 	}

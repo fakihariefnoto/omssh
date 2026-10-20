@@ -320,17 +320,23 @@ func TestSwitchingBetweenConnectedTabs(t *testing.T) {
 		t.Errorf("the local tab should focus the local pane, focused %d", m.Focused)
 	}
 
-	// Alt+2 binds the first session; Alt+3 the second.
+	// Each session gets a pane of its own, and choosing its tab puts the keys
+	// there without disturbing the other session.
 	m.switchTab(1)
-	if m.Panes[1].Host != "one" {
-		t.Errorf("tab 2 should show the first session, got %q", m.Panes[1].Host)
+	if host := m.Panes[m.Focused].Host; host != "one" {
+		t.Errorf("tab 2 should focus the first session, focused pane shows %q", host)
 	}
+	onePane := m.Focused
 	m.switchTab(2)
-	if m.Panes[1].Host != "two" {
-		t.Errorf("tab 3 should show the second session, got %q", m.Panes[1].Host)
+	twoPane := m.Focused
+	if host := m.Panes[twoPane].Host; host != "two" {
+		t.Errorf("tab 3 should focus the second session, focused pane shows %q", host)
 	}
-	if m.Focused != 1 {
-		t.Error("a session tab should focus the remote pane")
+	if onePane == twoPane {
+		t.Error("two sessions should not share one pane")
+	}
+	if m.Panes[onePane].Host != "one" {
+		t.Error("switching to the second session must leave the first one as it was")
 	}
 }
 

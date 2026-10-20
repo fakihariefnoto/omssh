@@ -97,7 +97,7 @@ func (m *Model) openExtractPrompt() {
 		m.quitHint = "Put the cursor on an archive first"
 		return
 	}
-	other := 1 - m.Focused
+	other := m.nextPane(m.Focused)
 	dst := pane
 	if other >= 0 && other < len(m.Panes) && m.Panes[other].FS != nil {
 		dst = &m.Panes[other]

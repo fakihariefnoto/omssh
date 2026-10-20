@@ -141,7 +141,11 @@ type Model struct {
 	staged stagedState
 	// deploy is the deploy card's state, and pendingDeploy is the profile waiting
 	// for its host to finish connecting.
-	deploy        deployState
+	deploy deployState
+	// panes is the pane chooser's state, and panesAsked records that the
+	// question was answered once so it does not reopen on every return.
+	panes         panesState
+	panesAsked    bool
 	pendingDeploy string
 	// autoConnect is the host named on the command line, opened by Init.
 	autoConnect string
@@ -706,6 +710,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.overlayCmd = m.handleDeployKey(msg)
 		return true
 
+	case OverlayPanes:
+		m.handlePanesKey(msg)
+		return true
+
 	case OverlayStaged:
 		switch msg.String() {
 		case "esc":
@@ -854,16 +862,27 @@ func (m *Model) clickAt(x, y int, l layout) {
 		}
 		left = l.SidebarWidth
 	}
-	index := 0
-	if l.Panes > 1 {
-		if x-left >= l.PaneWidth {
-			index = 1
+	column := 0
+	if l.Panes > 1 && x-left >= l.PaneWidth {
+		column = 1
+	}
+
+	// In the grid the second row of panes starts after one block (breadcrumb,
+	// two borders, the listing rows) and one row of air.
+	top := y - bodyTop
+	if l.Grid {
+		blockHeight := l.PaneRows + 3
+		if top >= blockHeight+1 {
+			column += 2
+			top -= blockHeight + 1
 		}
 	}
+	index := column
 	m.Focused = min(index, len(m.Panes)-1)
+	m.syncActiveTab()
 
 	// Row 0 of a pane is the breadcrumb, row 1 is the top border.
-	row := y - bodyTop - 2
+	row := top - 2
 	if row < 0 {
 		return
 	}
@@ -1042,6 +1061,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openPrompt("prompt.symlink")
 	case "deploy.open":
 		m.openDeploy()
+	case "view.panes":
+		m.openPanes()
 	case "terminal.new":
 		return m.openTerminalForPane()
 	case "session.terminal":
@@ -1234,7 +1255,7 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy:
+	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes:
 		// These have no text field of their own. The connections filter below is
 		// the only field outside an overlay.
 	}

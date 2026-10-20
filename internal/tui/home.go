@@ -276,4 +276,9 @@ func (m *Model) activateHome(item homeItem) tea.Cmd {
 func (m *Model) openFiles() {
 	m.screen = screenFiles
 	m.mode = "NORMAL"
+	// More sessions than panes: which four are on screen is the person's choice,
+	// and it is asked once rather than silently deciding for them.
+	if !m.panesAsked && 1+len(m.live) > maxPanes {
+		m.openPanes()
+	}
 }

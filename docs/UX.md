@@ -379,7 +379,8 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `/` or `Ctrl+F` | Filter the listing |
 | `.` | Toggle hidden files |
 | `Alt+P` | Toggle preview |
-| `w` | Switch pane (the keys for `w` = window) |
+| `w` | Switch pane — walks all four in the grid |
+| `V` | Choose panes: which sessions are on screen (four at most) |
 | `Tab` `Shift+Tab` | Next / previous host tab (the session strip follows) |
 | `o` | Reveal the selection in the other pane |
 | `1`…`9` | Switch to that session tab |

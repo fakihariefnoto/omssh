@@ -30,8 +30,11 @@ type layout struct {
 
 	// SidebarWidth is zero when the sidebar is hidden.
 	SidebarWidth int
-	// Panes is 1 or 2.
+	// Panes is 1…4.
 	Panes int
+	// Grid is true when the panes are laid out two by two instead of side by
+	// side. It is what makes four sessions readable at once.
+	Grid bool
 	// PaneWidth is the width of one pane, borders included.
 	PaneWidth int
 	// PaneRows is how many listing rows fit inside a bordered pane.
@@ -73,15 +76,21 @@ func (m *Model) measure() layout {
 
 	switch {
 	case width >= wideWidth:
-		l.Panes = 2
+		// The dashboard's promise: up to four sessions at once, two by two.
+		l.Panes = min(len(m.Panes), 4)
+		l.Grid = l.Panes > 2
+		if l.Grid {
+			// Four listings need the width more than the sidebar does; the hosts
+			// are named on the tabs and on every pane's breadcrumb.
+			l.Sidebar = false
+		}
 	case width >= narrowWidth:
-		l.Panes = 1
+		l.Panes = min(len(m.Panes), 2)
 		l.Compact = true
 	default:
 		l.Panes = 1
 		l.Compact = true
 	}
-	l.Panes = min(l.Panes, len(m.Panes))
 	if width >= mediumWidth && width < narrowWidth {
 		l.Compact = false
 	}
@@ -91,12 +100,20 @@ func (m *Model) measure() layout {
 	if l.Sidebar {
 		paneArea -= l.SidebarWidth + 1 // the gap between the sidebar and the panes
 	}
-	if l.Panes == 2 {
+	if l.Panes >= 2 {
 		l.PaneWidth = (paneArea - 1) / 2 // one cell of air between the panes
 	} else {
 		l.PaneWidth = paneArea
 	}
 	l.PaneWidth = max(l.PaneWidth, 12)
+	if l.Grid {
+		// Each block is a breadcrumb, a top border, the rows, a bottom border:
+		// rows+3. Two of them plus one row of air is the body.
+		l.PaneRows = max(3, (body-7)/2)
+		// A preview inside a quarter-width pane would be a sliver, and four panes
+		// are about seeing four listings at once.
+		return l
+	}
 	// Two rows are lost to the border and the breadcrumb line.
 	l.PaneRows = max(body-3, 1)
 

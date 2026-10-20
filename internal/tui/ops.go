@@ -12,6 +12,15 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
+// nextPane is the pane after index, wrapping: with four panes "the other one" is
+// "the next one", which is the rule the copy engine and the view toggles share.
+func (m *Model) nextPane(index int) int {
+	if len(m.Panes) < 2 {
+		return index
+	}
+	return (index + 1) % len(m.Panes)
+}
+
 // --- cursor movement ---------------------------------------------------------
 
 // Pane returns the focused pane.
@@ -180,7 +189,7 @@ func (m *Model) followOtherPanes(path string) tea.Cmd {
 	if !m.syncBrowse || len(m.Panes) < 2 {
 		return nil
 	}
-	index := 1 - m.Focused
+	index := m.nextPane(m.Focused)
 	pane := m.Panes[index]
 	if pane.FS == nil || pane.Path == path {
 		return nil
@@ -547,7 +556,21 @@ func (m *Model) switchPane(delta int) {
 		return
 	}
 	m.Focused = ((m.Focused+delta)%len(m.Panes) + len(m.Panes)) % len(m.Panes)
+	m.syncActiveTab()
 	m.ensureVisible()
+}
+
+// syncActiveTab keeps the strip's highlight on the session that has the keys.
+// With one pane that is a nicety; with four panes on screen it is the only thing
+// that says which of them you are typing into.
+func (m *Model) syncActiveTab() {
+	host := m.Pane().Host
+	for i, tab := range m.tabs {
+		if tab.Host == host {
+			m.activeTab = i
+			return
+		}
+	}
 }
 
 // revealInOtherPane opens the cursor entry in the other pane.
@@ -556,7 +579,7 @@ func (m *Model) revealInOtherPane() tea.Cmd {
 		return nil
 	}
 	pane := m.Pane()
-	other := 1 - m.Focused
+	other := m.nextPane(m.Focused)
 	if pane.FS == nil || m.Panes[other].FS == nil {
 		m.toastInfo("Both panes need a directory to reveal between")
 		return nil

@@ -138,7 +138,8 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 		return nil
 	}
 
-	// A session gets a tab and the remote pane.
+	// A session gets a tab and a pane of its own: with four panes, four sessions
+	// can be on screen at once.
 	m.addSessionTab(msg.session)
 	if name := m.pendingDeploy; name != "" {
 		m.pendingDeploy = ""
@@ -147,17 +148,74 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 			return m.reviewDeploy(name, profile, msg.session.FS)
 		}
 	}
-	if len(m.Panes) > 1 {
-		m.Panes[1].Bind(msg.session.FS, msg.session.Target.Alias, msg.session.Root)
-		m.Panes[1].Base = msg.session.Base
-		m.Focused = 1
-	}
+	index := m.paneForSession(msg.session)
+	m.Focused = index
 	m.tabState(msg.target.Alias, StateReady)
 	m.mode = "NORMAL"
+	// Four panes is the dashboard's limit; the fifth host gets a tab and waits.
+	if m.paneCount() >= maxPanes && !m.paneShows(index, msg.session.Target.Alias) {
+		m.toastInfo("Four panes are full · V chooses which sessions are shown")
+	}
 	m.toastSuccess("Connected to " + msg.target.Alias)
 	// The listing goes off the update loop: a home directory on a slow link is
 	// many round trips, and the interface has just become usable.
-	return m.loadPaneAsync(1)
+	return m.loadPaneAsync(index)
+}
+
+// maxPanes is the dashboard's limit: four sessions, two by two.
+const maxPanes = 4
+
+// paneCount is how many panes the model has, never more than maxPanes.
+func (m *Model) paneCount() int { return min(len(m.Panes), maxPanes) }
+
+// paneShows reports whether a pane is currently showing a host.
+func (m *Model) paneShows(index int, alias string) bool {
+	return index >= 0 && index < len(m.Panes) && m.Panes[index].Host == alias
+}
+
+// paneForSession finds the pane showing a session, binds an empty one, or makes a
+// new one. When all four are taken it replaces the focused pane — the one the
+// person is looking at — and says which host it displaced.
+func (m *Model) paneForSession(s *session.Session) int {
+	alias := s.Target.Alias
+	for i := range m.Panes {
+		if m.Panes[i].Host == alias {
+			m.bindPane(i, s)
+			return i
+		}
+	}
+	for i := range m.Panes {
+		if m.Panes[i].Side == SideRemote && m.Panes[i].Host == "" {
+			m.bindPane(i, s)
+			return i
+		}
+	}
+	if len(m.Panes) < maxPanes {
+		m.Panes = append(m.Panes, NewRemotePane())
+		m.bindPane(len(m.Panes)-1, s)
+		return len(m.Panes) - 1
+	}
+	// Full: replace the pane with the keys, or the last one when the keys are in
+	// the local pane.
+	index := m.Focused
+	if m.Panes[index].Side == SideLocal {
+		index = len(m.Panes) - 1
+	}
+	old := m.Panes[index].Host
+	m.bindPane(index, s)
+	if old != "" {
+		m.toastInfo(alias + " replaced " + old + " in this pane · V to choose panes")
+	}
+	return index
+}
+
+// bindPane points a pane at a session.
+func (m *Model) bindPane(index int, s *session.Session) {
+	if index < 0 || index >= len(m.Panes) {
+		return
+	}
+	m.Panes[index].Bind(s.FS, s.Target.Alias, s.Root)
+	m.Panes[index].Base = s.Base
 }
 
 // addSessionTab adds or focuses the tab for a session.
@@ -408,16 +466,15 @@ func (m *Model) selectTab(index int, dive bool) tea.Cmd {
 		return nil
 	}
 	sess, ok := m.live[tab.Host]
-	if !ok || len(m.Panes) < 2 {
+	if !ok {
 		m.toastInfo(tab.Host + " is no longer connected")
 		return nil
 	}
-	m.Panes[1].Bind(sess.FS, sess.Target.Alias, sess.Root)
-	m.Panes[1].Base = sess.Base
+	paneIndex := m.paneForSession(sess)
 	if dive {
-		m.Focused = 1
+		m.Focused = paneIndex
 	}
-	return m.loadPaneAsync(1)
+	return m.loadPaneAsync(paneIndex)
 }
 
 // handleTabKey drives the tab strip once it has the focus: choose with h/l or

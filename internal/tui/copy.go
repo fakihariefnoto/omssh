@@ -50,7 +50,7 @@ func (m *Model) stagedRoute() (from, to string) {
 	if m.staged.From < 0 || m.staged.From >= len(m.Panes) {
 		return "(none)", "(none)"
 	}
-	dstIndex := 1 - m.staged.From
+	dstIndex := m.nextPane(m.staged.From)
 	src := m.Panes[m.staged.From]
 	from = m.paneDescription(m.staged.From) + "  " + src.Path
 	if dstIndex < 0 || dstIndex >= len(m.Panes) {
@@ -122,9 +122,14 @@ func (m *Model) pasteStaged() tea.Cmd {
 		return nil
 	}
 	from := m.staged.From
-	to := 1 - from
+	// Paste where the keys are: mark in one pane, move to another, press p. If the
+	// focus never left the source, use the next pane so p still means something.
+	to := m.Focused
+	if to == from {
+		to = m.nextPane(from)
+	}
 	if from < 0 || from >= len(m.Panes) || to < 0 || to >= len(m.Panes) {
-		m.toastError("The other pane is not available at this width")
+		m.toastError("There is no other pane to paste into")
 		return nil
 	}
 	src, dst := m.Panes[from], m.Panes[to]

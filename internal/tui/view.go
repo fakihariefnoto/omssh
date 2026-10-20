@@ -166,10 +166,44 @@ func (m *Model) renderPanes(l layout) string {
 	if l.Panes == 1 {
 		return m.renderPane(m.Focused, l.PaneWidth, l.PaneRows, l)
 	}
+	if l.Grid {
+		return m.renderGrid(l)
+	}
 	left := m.renderPane(0, l.PaneWidth, l.PaneRows, l)
 	right := m.renderPane(1, l.PaneWidth, l.PaneRows, l)
 	// A gap keeps the two borders from reading as one thick line.
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+}
+
+// renderGrid draws up to four panes two by two. A slot with no session is drawn
+// as a pane-shaped invitation rather than left blank, so the shape of the screen
+// never depends on how many hosts happen to be open.
+func (m *Model) renderGrid(l layout) string {
+	cell := func(index int) string {
+		if index < len(m.Panes) {
+			return m.renderPane(index, l.PaneWidth, l.PaneRows, l)
+		}
+		return m.renderEmptySlot(l.PaneWidth, l.PaneRows)
+	}
+	top := lipgloss.JoinHorizontal(lipgloss.Top, cell(0), " ", cell(1))
+	bottom := lipgloss.JoinHorizontal(lipgloss.Top, cell(2), " ", cell(3))
+	gap := strings.Repeat(" ", l.PaneWidth*2+1)
+	return lipgloss.JoinVertical(lipgloss.Left, top, gap, bottom)
+}
+
+// renderEmptySlot is a pane with nothing in it: the same border and breadcrumb
+// rhythm, and one line that says how to fill it.
+func (m *Model) renderEmptySlot(width, rows int) string {
+	header := m.st.PaneTitleBlurred.Render("empty") + "  " + m.st.Breadcrumb.Render("no session")
+	body := make([]string, 0, rows)
+	body = append(body, "", m.st.PaneEmpty.Render("V chooses the panes"),
+		m.st.PaneEmpty.Render("Tab opens the next host here"))
+	for len(body) < rows {
+		body = append(body, "")
+	}
+	content := strings.Join(body, "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, header,
+		m.st.PaneBorderBlur.Width(width).Height(rows+2).Render(content))
 }
 
 // renderPane draws one pane: its breadcrumb, its border, and its rows.
