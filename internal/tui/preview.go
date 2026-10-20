@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"path"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 
@@ -24,6 +25,12 @@ const hexBytes = 256
 
 // renderPreview draws the right half of the focused pane: the contents of the
 // entry under the cursor, or an explanation of why it cannot be shown.
+//
+// Reading a remote file is a network round trip, and render runs on every
+// keystroke and every heartbeat. Uncached, that turned typing in the palette into
+// a stream of SFTP reads: the screen blinked while each one came back. The cache
+// is keyed by everything the answer depends on, and a remote preview is allowed
+// to be two seconds stale rather than blocking the keyboard.
 func (m *Model) renderPreview(width, rows int) string {
 	if width <= 0 || rows <= 0 {
 		return ""
@@ -34,6 +41,23 @@ func (m *Model) renderPreview(width, rows int) string {
 		return m.previewLines([]string{m.st.PaneEmpty.Render("Nothing under the cursor")}, width, rows)
 	}
 
+	bucket := int64(0)
+	if pane.Side == SideRemote {
+		bucket = time.Now().Unix() / 2
+	}
+	key := fmt.Sprintf("%d|%d|%s|%s|%d|%d|%d|%s|%d|%t",
+		m.previewGen, m.Focused, pane.Path, entry.Name, entry.Size,
+		width, rows, m.themeName, bucket, entry.Dir)
+	if m.previewKey == key {
+		return m.previewBody
+	}
+	body := m.renderPreviewNow(pane, entry, width, rows)
+	m.previewKey, m.previewBody = key, body
+	return body
+}
+
+// renderPreviewNow does the reading that renderPreview caches.
+func (m *Model) renderPreviewNow(pane *Pane, entry Entry, width, rows int) string {
 	name := entry.Name
 	switch {
 	case entry.Dir:

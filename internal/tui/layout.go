@@ -107,9 +107,7 @@ func (m *Model) measure() layout {
 		l.PaneRows = max(3, (body-7)/2)
 		// The preview still sits to the right of the focused listing; four panes
 		// are about seeing four listings at once, not about losing the preview.
-		if m.preview && l.PaneWidth >= 56 {
-			l.PreviewWidth = max(20, l.PaneWidth*2/5)
-		}
+		l.PreviewWidth = previewWidthFor(l.PaneWidth, m.preview)
 		return l
 	}
 	// Two rows are lost to the border and the breadcrumb line.
@@ -118,10 +116,21 @@ func (m *Model) measure() layout {
 	// The preview needs real room: it is only shown when the listing keeps
 	// enough width for names to stay readable beside it. A preview that turns
 	// every name into "n…" is worse than no preview.
-	if m.preview && width >= mediumWidth && l.PaneWidth >= 70 {
-		l.PreviewWidth = l.PaneWidth * 2 / 5
+	if width >= mediumWidth {
+		l.PreviewWidth = previewWidthFor(l.PaneWidth, m.preview)
 	}
 	return l
+}
+
+// previewWidthFor is how much of a pane the preview may take, or zero when the
+// listing would be squeezed too far. The old threshold of 70 meant a preview
+// vanished for anyone with the sidebar open at a normal width; 52 keeps it, with
+// two fifths of the pane rather than more.
+func previewWidthFor(paneWidth int, wanted bool) int {
+	if !wanted || paneWidth < 52 {
+		return 0
+	}
+	return max(18, paneWidth*2/5)
 }
 
 // paneRows is how many listing rows are visible, used for paging.

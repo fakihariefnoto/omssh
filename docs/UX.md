@@ -250,7 +250,10 @@ Used a thousand times a day, so it gets the most attention.
 visit history (same as a browser). `Ctrl+L` edits the path with completion.
 `Ctrl+R` refreshes.
 
-**Marking** — `y` or `x` marks the selection, and it shows up twice: the sidebar
+**Marking** — `y` or `x` marks, and marking is cumulative: mark a file, walk to the
+next, mark that too. With a selection, one press marks all of it. `y` on a file
+that is already marked takes the mark back, so one key covers both gestures. The
+set shows up twice: the sidebar
 lists the names and sizes under `MARKED`, and a bar under the panes carries the
 count, the destination and the keys:
 
@@ -429,8 +432,8 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `Space` | Toggle select and advance | selection is not a mode |
 | `Shift+↑` `Shift+↓` | Extend selection | like every GUI list |
 | `Ctrl+A` / `Alt+A` | Select all / invert | |
-| `y` / `Ctrl+C` | Mark for copy | a bar under the panes shows where they go |
-| `x` / `Ctrl+X` | Mark for move | the same bar says `move →` |
+| `y` / `Ctrl+C` | Mark for copy — cumulative; `y` again unmarks | a bar under the panes shows where they go |
+| `x` / `Ctrl+X` | Mark for move (`y` then `x` changes a mark, it does not remove it) | the same bar says `move →` |
 | `p` / `Ctrl+V` | Paste into this pane | copies or moves, to the other pane |
 | `C` | Copy to… | choose the destination instead of using the other pane |
 | `M` | Move to… | same, for a move |
@@ -635,6 +638,7 @@ semantic colours, which are reserved:
 | Width | Behaviour |
 | --- | --- |
 | ≥ 140 | Up to four panes (2×2 grid) or two side by side, sidebar, preview, full metadata |
+| 100–139 | One pane, preview, metadata |
 | 100–139 | Two panes, sidebar as an icon rail, preview on demand |
 | 80–99 | One pane with `Tab` switching, name + size columns, abbreviated action bar |
 | < 80 | Single column, action bar collapses to `F9 More…`, dialogs take the width |

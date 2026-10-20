@@ -93,6 +93,13 @@ type Model struct {
 	syncBrowse bool
 	filtering  bool
 
+	// The preview is cached: it reads files, render runs on every keystroke, and a
+	// remote read per frame is what made the interface blink. previewGen is bumped
+	// whenever a listing changes, so the cache cannot outlive the truth.
+	previewKey  string
+	previewBody string
+	previewGen  int
+
 	mode       string
 	statusHint string
 	quitHint   string

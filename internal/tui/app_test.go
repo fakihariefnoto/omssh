@@ -237,19 +237,23 @@ func TestPanesHaveEqualHeight(t *testing.T) {
 // The preview is a wide-terminal convenience; on a narrow one it would squeeze
 // both halves into uselessness.
 func TestPreviewIsOffOnNarrowTerminals(t *testing.T) {
-	// Below 100 columns there is no preview, and even at 140 the panes are too
-	// narrow for both halves to be useful.
-	for _, width := range []int{76, 90, 99, 140, 150} {
+	// Below 100 columns there is no preview at all.
+	for _, width := range []int{76, 90, 99} {
 		m := newTestModel(t)
 		resize(t, m, width, 30)
 		if got := m.measure().PreviewWidth; got != 0 {
 			t.Errorf("at %d columns the preview should be off, it is %d wide", width, got)
 		}
 	}
-	m := newTestModel(t)
-	resize(t, m, 200, 40)
-	if m.measure().PreviewWidth == 0 {
-		t.Error("on a wide terminal the preview should be available")
+	// At 140 with the sidebar open the panes are 55 wide, which is enough for a
+	// preview beside the listing — it used to vanish here, which looked like a
+	// missing feature.
+	for _, width := range []int{140, 160, 200} {
+		m := newTestModel(t)
+		resize(t, m, width, 40)
+		if got := m.measure().PreviewWidth; got == 0 {
+			t.Errorf("at %d columns the preview should be available", width)
+		}
 	}
 }
 

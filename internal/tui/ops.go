@@ -672,6 +672,7 @@ func (m *Model) applyListing(msg dirLoadedMsg) {
 	}
 	pane.Loading = false
 	pane.Err = msg.err
+	m.previewGen++
 	if msg.err != nil {
 		pane.Entries = nil
 		if pane.Host != "" {

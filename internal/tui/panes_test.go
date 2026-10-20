@@ -266,7 +266,7 @@ func TestSidebarListsTheMarkedFiles(t *testing.T) {
 	press(t, m, run('y', 0, "y"))
 
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"MARKED 1", "notes.txt"} {
+	for _, want := range []string{"MARKED 2", "notes.txt", "README.md"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the sidebar should show %q:\n%s", want, out)
 		}
@@ -305,5 +305,47 @@ func TestSwitchingToABoundTabDoesNotReload(t *testing.T) {
 	}
 	if m.Focused != pane {
 		t.Errorf("the focus should move to the pane, got %d", m.Focused)
+	}
+}
+
+// Marking is cumulative: one file at a time, or a whole selection at once. The
+// old behaviour replaced the set, so marking the second file lost the first.
+func TestMarkingAccumulates(t *testing.T) {
+	m := newTestModel(t)
+
+	m.selectByName("README.md")
+	press(t, m, run('y', 0, "y"))
+	m.selectByName("notes.txt")
+	press(t, m, run('y', 0, "y"))
+	if m.stagedCount() != 2 {
+		t.Fatalf("marking two files should mark two, got %v", m.staged.Paths)
+	}
+	if m.staged.Paths[0] != "notes.txt" || m.staged.Paths[1] != "README.md" {
+		t.Errorf("the set should keep the listing's order, got %v", m.staged.Paths)
+	}
+
+	// y again on a marked file takes it back.
+	m.selectByName("notes.txt")
+	press(t, m, run('y', 0, "y"))
+	if m.stagedCount() != 1 || m.staged.Paths[0] != "README.md" {
+		t.Errorf("y on a marked file should unmark it, got %v", m.staged.Paths)
+	}
+
+	// y then x on the same file changes the kind instead of unmarking it.
+	m.selectByName("README.md")
+	press(t, m, run('x', 0, "x"))
+	if m.stagedCount() != 1 || !m.staged.Cut {
+		t.Errorf("x should turn the mark into a move, got %+v", m.staged)
+	}
+
+	// A selection marks all of it in one go.
+	m.clearStaged()
+	m.clearSelection()
+	m.selectByName("notes.txt")
+	press(t, m, keyNamed(tea.KeySpace))
+	press(t, m, keyNamed(tea.KeySpace))
+	press(t, m, run('y', 0, "y"))
+	if m.stagedCount() != 2 {
+		t.Errorf("y with two selected should mark both, got %v", m.staged.Paths)
 	}
 }

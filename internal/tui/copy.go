@@ -13,20 +13,61 @@ import (
 // say where they go. The review step exists because a copy between machines is
 // the kind of thing a person wants to look at once before it happens.
 
-// stage records the focused pane's selection for a later paste.
+// stage adds the current targets to the marked set. Marking is cumulative: mark
+// a file, walk to the next, mark that too, and the set grows. A cursor entry that
+// is already marked is unmarked, so y both adds and removes and one key covers
+// both gestures.
 func (m *Model) stage(cut bool) {
 	entries := m.targets()
 	if len(entries) == 0 {
 		m.quitHint = "Nothing selected · Space selects · Ctrl+Q quits"
 		return
 	}
-	names := make([]string, 0, len(entries))
-	var total int64
-	for _, entry := range entries {
-		names = append(names, entry.Name)
-		total += entry.Size
+
+	// A marked set belongs to the pane it came from: a copy has one source. Moving
+	// to another pane and marking there starts a new set rather than mixing two.
+	if m.stagedCount() > 0 && m.staged.From != m.Focused {
+		m.clearStaged()
 	}
-	m.staged = stagedState{Paths: names, Cut: cut, From: m.Focused}
+	if m.stagedCount() == 0 {
+		m.staged = stagedState{From: m.Focused}
+	}
+
+	// With a selection, y marks all of it. On a bare cursor it toggles, so the
+	// same key takes a mark back — unless the other gesture was asked for, in
+	// which case y then x changes a mark from copy to move rather than removing
+	// it.
+	marked := make(map[string]bool, len(m.staged.Paths))
+	for _, name := range m.staged.Paths {
+		marked[name] = true
+	}
+	selected := m.Pane().SelectedCount() > 0
+	sameKind := m.staged.Cut == cut
+	for _, entry := range entries {
+		if marked[entry.Name] {
+			if selected || !sameKind {
+				continue
+			}
+			delete(marked, entry.Name)
+			continue
+		}
+		marked[entry.Name] = true
+	}
+	if len(marked) == 0 {
+		m.clearStaged()
+		m.toastInfo("Nothing marked now")
+		return
+	}
+
+	// Keep the order the pane shows, so the card and the bar read like the listing.
+	paths := make([]string, 0, len(marked))
+	for _, entry := range m.Panes[m.staged.From].Entries {
+		if marked[entry.Name] {
+			paths = append(paths, entry.Name)
+		}
+	}
+	m.staged.Paths = paths
+	m.staged.Cut = cut
 
 	verb := "copied"
 	if cut {
@@ -35,7 +76,7 @@ func (m *Model) stage(cut bool) {
 	// The review screen is offered rather than opened: marking is a step, not a
 	// decision, and taking over the screen mid-selection would interrupt it.
 	m.toastInfo(fmt.Sprintf("%d %s marked to be %s · s reviews it",
-		len(names), plural(len(names), "item", "items"), verb))
+		len(paths), plural(len(paths), "item", "items"), verb))
 }
 
 // clearStaged forgets the selection.
