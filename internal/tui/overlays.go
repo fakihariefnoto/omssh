@@ -358,8 +358,11 @@ func (m *Model) renderPrompt(l layout) string {
 // and the box stays rectangular.
 func (m *Model) card(width int, lines []string) string {
 	content := cardContent(width)
+	// A line may be a block of lines — the wall of session cards is one element
+	// per row of cards — so the split happens after the join. Truncating an
+	// element would cut everything after its first line.
 	padded := make([]string, 0, len(lines))
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.Join(lines, "\n"), "\n") {
 		padded = append(padded, padVisible(ansi.Truncate(line, content, "…"), content))
 	}
 	return m.st.Card.Width(width).Render(strings.Join(padded, "\n"))

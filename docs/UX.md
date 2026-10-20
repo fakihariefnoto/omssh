@@ -304,6 +304,33 @@ ten, and the entry is asked about directly so a directory is still a directory.
 
 ---
 
+### Choosing sessions
+
+With more than four sessions, `V` opens a wall of cards — one per host plus the
+local machine — each showing where it is, what it is doing, and whether it is
+already on screen:
+
+```
+╭──────────────────────────────────────────────────────╮ ╭──────────────────────────────────────────────────────╮
+│  one                                            [x]  │ │  two                                            [x]  │
+│  deploy@203.0.113.10:22                              │ │  ubuntu@staging.example.com:2222                     │
+│  /var/www/site                                       │ │  /srv/api                                            │
+│                                                      │ │                                                      │
+│  load 0.52             ░░░░░░░░░░   6%               │ │  load 6.40             █████████░  98%               │
+│  mem  3.0 GB/7.6 GB    ███░░░░░░░  39%               │ │  mem  7.0 GB/8.0 GB    ████████░░  87%               │
+│  disk 39 GB/98 GB      ████░░░░░░  40%               │ │  disk 39 GB/40 GB      █████████░  95%               │
+│  ready                                  on screen     │ │  ready                                  on screen     │
+╰──────────────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────╯
+ 4 of 4 chosen · arrows choose · Space picks · Enter shows · Esc keeps
+```
+
+The numbers come from one read-only shell command (`/proc/loadavg`, `free -b`,
+`df -Pk`), refreshed every three seconds while the card is open and never at any
+other time. A host that does not answer shows `—` rather than zeroes that look
+like a healthy machine. Load is load average against the CPU count, not a CPU
+percentage: it also counts processes waiting on disk, which is what a busy server
+feels like.
+
 ## 6. Operations: two speeds, always previewed
 
 **Quick path** — `Ctrl+C` (or `Ctrl+X`), `Tab`, `Ctrl+V`. Standard, immediate,
@@ -378,7 +405,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `Y` | Sync browse: the other pane follows the same path |
 | `/` or `Ctrl+F` | Filter the listing |
 | `.` | Toggle hidden files |
-| `Alt+P` | Toggle preview |
+| `Alt+P` | Toggle preview (in the 2×2 grid it takes the focused pane whole) |
 | `w` | Switch pane — walks all four in the grid |
 | `V` | Choose panes: which sessions are on screen (four at most) |
 | `Tab` `Shift+Tab` | Next / previous host tab (the session strip follows) |
@@ -598,7 +625,7 @@ semantic colours, which are reserved:
 
 | Width | Behaviour |
 | --- | --- |
-| ≥ 140 | Two panes, sidebar, preview, full metadata |
+| ≥ 140 | Up to four panes (2×2 grid) or two side by side, sidebar, preview, full metadata |
 | 100–139 | Two panes, sidebar as an icon rail, preview on demand |
 | 80–99 | One pane with `Tab` switching, name + size columns, abbreviated action bar |
 | < 80 | Single column, action bar collapses to `F9 More…`, dialogs take the width |

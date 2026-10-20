@@ -384,3 +384,38 @@ func (h *harness) serverPort(t *testing.T) int {
 	_, port := h.server.HostPort(t)
 	return port
 }
+
+// Two sessions can share one pooled connection; closing one must leave the other
+// working. This is the bug that made a second tab say "no longer connected".
+func TestClosingOneSessionKeepsTheOtherOnTheSameHost(t *testing.T) {
+	h := newHarness(t, sshserver.Options{SFTP: true, AcceptAnyKey: true})
+	target := h.target(t)
+	h.trust(t, target.Alias)
+	ctx := context.Background()
+
+	first, err := h.manager.Connect(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := h.manager.Connect(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Client != second.Client {
+		t.Fatal("the second connection should reuse the pooled one")
+	}
+
+	// Read through the first filesystem after the second one closes: the
+	// connection has to still be there.
+	if err := h.manager.Close(second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.FS.ReadDir("/"); err != nil {
+		t.Fatalf("the first session should still work: %v", err)
+	}
+
+	// Closing the last reference really does end the connection.
+	if err := h.manager.Close(first.ID); err != nil {
+		t.Fatal(err)
+	}
+}

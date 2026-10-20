@@ -108,7 +108,12 @@ func (m *Model) connect(target ssh.Target) tea.Cmd {
 	if m.connecting == nil {
 		m.connecting = map[string]bool{}
 	}
+	if m.connecting[alias] {
+		// Pressing Enter twice should not dial twice.
+		return nil
+	}
 	m.connecting[alias] = true
+	m.ensureTab(alias)
 	m.tabState(alias, StateConnecting)
 	m.toastInfo("Connecting to " + alias + "…")
 
@@ -249,8 +254,21 @@ func (m *Model) tabState(alias string, state ConnState) {
 			return
 		}
 	}
-	m.tabs = append(m.tabs, Tab{Title: alias, Host: alias, State: state})
-	m.activeTab = len(m.tabs) - 1
+	// No tab: nothing to mark. A tab is created when a connection starts, so a
+	// failure always has one to land on; inventing one here left phantom tabs for
+	// hosts that never connected, and choosing them said "no longer connected".
+}
+
+// ensureTab makes sure a host has a tab, without changing the open one. It is
+// called when a connection starts: the tab is the promise, the session is the
+// result.
+func (m *Model) ensureTab(alias string) {
+	for i := range m.tabs {
+		if m.tabs[i].Host == alias {
+			return
+		}
+	}
+	m.tabs = append(m.tabs, Tab{Title: alias, Host: alias, State: StateConnecting})
 }
 
 // connectionMessage turns a connection failure into something a person can act
@@ -467,8 +485,15 @@ func (m *Model) selectTab(index int, dive bool) tea.Cmd {
 	}
 	sess, ok := m.live[tab.Host]
 	if !ok {
-		m.toastInfo(tab.Host + " is no longer connected")
-		return nil
+		// The session ended (the server dropped it, or it was never finished).
+		// Choosing its tab again is a request to have it back, not a dead end.
+		target, found := m.targetForAlias(tab.Host)
+		if !found {
+			m.toastError(tab.Host + " is no longer connected, and is not in ~/.ssh/config")
+			return nil
+		}
+		m.toastInfo("Reconnecting to " + tab.Host + "…")
+		return m.connect(target)
 	}
 	paneIndex := m.paneForSession(sess)
 	if dive {

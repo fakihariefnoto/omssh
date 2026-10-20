@@ -16,6 +16,7 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/clipboard"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keymap"
+	"github.com/fakihariefnoto/omssh/internal/remoteinfo"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/sshconfig"
 	"github.com/fakihariefnoto/omssh/internal/theme"
@@ -147,6 +148,10 @@ type Model struct {
 	panes         panesState
 	panesAsked    bool
 	pendingDeploy string
+	// samples are the numbers on the session cards, and sampleSeq is the
+	// repeating read while the chooser is open.
+	samples   map[string]remoteinfo.Info
+	sampleSeq tea.Cmd
 	// autoConnect is the host named on the command line, opened by Init.
 	autoConnect string
 
@@ -480,6 +485,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mode = "NORMAL"
 		m.toastError("Edit failed: " + msg.err.Error())
 		return m, nil
+
+	case sessionSampleMsg:
+		if m.samples == nil {
+			m.samples = map[string]remoteinfo.Info{}
+		}
+		m.samples[msg.alias] = msg.info
+		return m, nil
+
+	case sampleTickMsg:
+		if m.Overlay != OverlayPanes {
+			return m, nil
+		}
+		cmd := m.sampleSessions()
+		return m, cmd
 
 	case editReloadMsg:
 		m.mode = "NORMAL"

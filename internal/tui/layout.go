@@ -79,11 +79,6 @@ func (m *Model) measure() layout {
 		// The dashboard's promise: up to four sessions at once, two by two.
 		l.Panes = min(len(m.Panes), 4)
 		l.Grid = l.Panes > 2
-		if l.Grid {
-			// Four listings need the width more than the sidebar does; the hosts
-			// are named on the tabs and on every pane's breadcrumb.
-			l.Sidebar = false
-		}
 	case width >= narrowWidth:
 		l.Panes = min(len(m.Panes), 2)
 		l.Compact = true

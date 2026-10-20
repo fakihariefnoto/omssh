@@ -38,12 +38,27 @@ func (m *Model) render() string {
 		// Already rendered above; named so the switch is exhaustive.
 	}
 	if card := m.renderOverlay(l); card != "" {
-		content = m.overlayOn(content, card, l)
+		// The session chooser is a wall of cards, not a dialog: it owns the
+		// screen, so the panes behind it are cleared rather than peeking through.
+		if m.Overlay == OverlayPanes {
+			content = m.overlayOn(blankScreen(l), card, l)
+		} else {
+			content = m.overlayOn(content, card, l)
+		}
 	}
 	if len(m.toasts) > 0 {
 		content = m.toastOn(content, l)
 	}
 	return content
+}
+
+// blankScreen is a full screen of spaces, for an overlay that replaces the view.
+func blankScreen(l layout) string {
+	rows := make([]string, l.Height)
+	for i := range rows {
+		rows[i] = spaces(l.Width)
+	}
+	return strings.Join(rows, "\n")
 }
 
 // renderFiles draws the file manager: tab strip, panes, action bar, status bar.
@@ -214,6 +229,12 @@ func (m *Model) renderPane(index, width, rows int, l layout) string {
 	header := m.renderBreadcrumb(pane, width, focused)
 	inner := width - 2 // the border takes a cell on each side
 
+	// In the grid a side-by-side preview would be a sliver, so the preview takes
+	// the focused pane's whole listing instead: one readable thing at a time.
+	if l.Grid && focused && m.preview {
+		return lipgloss.JoinVertical(lipgloss.Left, header,
+			m.border(m.renderPreview(inner, rows), width, rows, focused))
+	}
 	if l.PreviewWidth > 0 && focused && width >= 56 {
 		list := m.renderRows(pane, inner-l.PreviewWidth-1, rows, focused)
 		preview := m.renderPreview(l.PreviewWidth, rows)

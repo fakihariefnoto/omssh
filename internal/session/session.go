@@ -136,9 +136,10 @@ type Manager struct {
 
 	mu       sync.Mutex
 	sessions map[string]*Session
-	// held keeps the pool reference for each live connection, so a session can
-	// hand it back when it closes.
-	held     map[string]func()
+	// held keeps the pool reference for each live connection. It is a count, not
+	// one function: two sessions can share one connection, and closing one must
+	// not close the connection the other is still using.
+	held     map[string]*heldRef
 	sequence int
 }
 
@@ -286,12 +287,18 @@ func (m *Manager) acquire(ctx context.Context, target ssh.Target) (*ssh.Client, 
 		return nil, err
 	}
 	// The reference is held until the session closes, which is what makes a
-	// second tab onto the same host cheap.
+	// second tab onto the same host cheap. The count is what makes closing one of
+	// those tabs safe.
+	key := client.Target().PoolKey()
 	m.mu.Lock()
 	if m.held == nil {
-		m.held = map[string]func(){}
+		m.held = map[string]*heldRef{}
 	}
-	m.held[client.Target().PoolKey()] = release
+	if ref, ok := m.held[key]; ok {
+		ref.count++
+	} else {
+		m.held[key] = &heldRef{count: 1, release: release}
+	}
 	m.mu.Unlock()
 	return client, nil
 }
@@ -300,14 +307,26 @@ func (m *Manager) acquire(ctx context.Context, target ssh.Target) (*ssh.Client, 
 func (m *Manager) release(client *ssh.Client) {
 	key := client.Target().PoolKey()
 	m.mu.Lock()
-	release, ok := m.held[key]
+	ref, ok := m.held[key]
 	if ok {
-		delete(m.held, key)
+		ref.count--
+		if ref.count <= 0 {
+			delete(m.held, key)
+			ok = true
+		} else {
+			ok = false
+		}
 	}
 	m.mu.Unlock()
-	if ok {
-		release()
+	if ok && ref != nil {
+		ref.release()
 	}
+}
+
+// heldRef is one pooled connection and how many sessions are using it.
+type heldRef struct {
+	count   int
+	release func()
 }
 
 // consent asks the prompter, which is the only thing that can decide whether a
