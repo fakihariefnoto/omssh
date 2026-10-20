@@ -399,3 +399,22 @@ func readText(t *testing.T, path string) string {
 	}
 	return string(data)
 }
+
+// The key legend is the only place this screen explains itself, so it must not be
+// the row that gets clipped when the layout is tight.
+func TestConnectionsKeepsItsKeyLegend(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{140, 40}, {100, 24}, {90, 20}} {
+		m, _ := newConnectionsModel(t, connFixture)
+		resize(t, m, size.w, size.h)
+		lines := strings.Split(ansi.Strip(render(m)), "\n")
+		if len(lines) != size.h {
+			t.Errorf("%dx%d: the screen should fill exactly, got %d lines", size.w, size.h, len(lines))
+		}
+		joined := strings.Join(lines, "\n")
+		for _, want := range []string{"t terminal", "Enter browse", "a add", "Esc back"} {
+			if !strings.Contains(joined, want) {
+				t.Errorf("%dx%d: the legend is missing %q:\n%s", size.w, size.h, want, joined)
+			}
+		}
+	}
+}

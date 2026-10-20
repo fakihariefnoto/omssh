@@ -150,8 +150,10 @@ func (m *Model) renderConnections(l layout) string {
 	// The details box is exactly as tall as its content, so it never looks like an
 	// empty panel; the list takes the rest of the screen, which is where a person
 	// is looking anyway.
-	const detailHeight = 5
-	listRows := max(4, height-detailHeight-6) // title, blank, footer, two borders
+	const detailHeight = 6 // title, host/user, port/key, jump, source, keys
+	// title, blank, the list's two borders, the detail box, and the key line —
+	// fourteen rows of chrome, so the legend is never the row that gets cut.
+	listRows := max(4, height-detailHeight-8)
 	inner := width - 2
 
 	headers := m.connHeaderRow(inner)
@@ -188,8 +190,7 @@ func (m *Model) renderConnections(l layout) string {
 	if m.conn != nil && (m.conn.filtering || m.conn.filter.Value != "") {
 		rows = append(rows, m.st.PathInput.Width(width).Render("filter: "+m.conn.filter.Rendered()))
 	} else {
-		rows = append(rows, m.st.StatusMuted.Render(
-			"Enter browse · t terminal · e edit · a add · d delete · r reload · o edit file · / filter · Esc back"))
+		rows = append(rows, m.st.StatusMuted.Render(connKeyLegend(width)))
 	}
 
 	// The row slice holds multi-line boxes, so it is joined before it is trimmed:
@@ -205,6 +206,20 @@ func (m *Model) renderConnections(l layout) string {
 		out = append(out, spaces(width))
 	}
 	return strings.Join(out, "\n")
+}
+
+// connKeyLegend is the key line, in as much detail as the width allows. The
+// terminal key is never the one dropped: it is the whole point of the screen for
+// someone who came here to get a shell.
+func connKeyLegend(width int) string {
+	switch {
+	case width >= 104:
+		return "Enter browse · t terminal · e edit · a add · d delete · r reload · o edit file · / filter · Esc back"
+	case width >= 82:
+		return "Enter browse · t terminal · e edit · a add · d delete · / filter · Esc back"
+	default:
+		return "Enter browse · t terminal · a add · / filter · Esc"
+	}
 }
 
 // connHeaderRow labels the columns once, so the table explains itself.
@@ -333,6 +348,8 @@ func (m *Model) connDetailRows(inner, rows int) []string {
 	if len(entry.Extra) > 0 {
 		lines = append(lines, pair("also", strings.Join(entry.Extra, ", "), "", ""))
 	}
+	// The keys for this host, beside the host: choose it, or open a shell on it.
+	lines = append(lines, pair("keys", "t terminal · Enter browse", "", ""))
 	for len(lines) < rows {
 		lines = append(lines, "")
 	}
