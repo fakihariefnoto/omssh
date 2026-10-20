@@ -52,9 +52,9 @@ func TestChooserOwnsTheScreen(t *testing.T) {
 	}
 }
 
-// In the grid the preview takes the focused pane rather than halving it: a
-// quarter-width pane split again is unreadable.
-func TestPreviewInTheGridUsesTheWholePane(t *testing.T) {
+// The preview sits to the right of the listing in the grid too: one rule for both
+// layouts, so "where is the preview" never has two answers.
+func TestPreviewInTheGridIsBesideTheListing(t *testing.T) {
 	m, _ := fourPanes(t)
 	m.Panes[0].Path = m.Panes[0].Home
 	m.Panes[0].Load(false)
@@ -67,6 +67,16 @@ func TestPreviewInTheGridUsesTheWholePane(t *testing.T) {
 	out := ansi.Strip(render(m))
 	if !strings.Contains(out, "the quick brown fox") {
 		t.Errorf("the preview should show the file in the focused pane:\n%s", out)
+	}
+	// The listing is still there, to the left of the preview, in the same pane.
+	if !strings.Contains(out, "hello.txt") {
+		t.Errorf("the listing should stay beside its preview:\n%s", out)
+	}
+	// And the preview is inside the focused pane's box, not a panel of its own.
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "the quick brown fox") && strings.Contains(line, "│") {
+			break
+		}
 	}
 	// And the frame is still exact.
 	l := m.measure()

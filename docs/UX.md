@@ -439,7 +439,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `Y` | Sync browse: the other pane follows the same path |
 | `/` or `Ctrl+F` | Filter the listing |
 | `.` | Toggle hidden files |
-| `Alt+P` | Toggle preview (in the 2×2 grid it takes the focused pane whole) |
+| `Alt+P` | Toggle preview — always to the right of the listing, in the grid too |
 | `w` | Switch pane — walks all four in the grid |
 | `V` | Choose panes: which sessions are on screen (four at most) |
 | `Tab` `Shift+Tab` | Next / previous host tab (the session strip follows) |

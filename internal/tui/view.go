@@ -229,12 +229,8 @@ func (m *Model) renderPane(index, width, rows int, l layout) string {
 	header := m.renderBreadcrumb(pane, width, focused)
 	inner := width - 2 // the border takes a cell on each side
 
-	// In the grid a side-by-side preview would be a sliver, so the preview takes
-	// the focused pane's whole listing instead: one readable thing at a time.
-	if l.Grid && focused && m.preview {
-		return lipgloss.JoinVertical(lipgloss.Left, header,
-			m.border(m.renderPreview(inner, rows), width, rows, focused))
-	}
+	// The preview is always to the right of the listing, in the grid exactly as in
+	// the two-pane layout: one rule, one place to look.
 	if l.PreviewWidth > 0 && focused && width >= 56 {
 		list := m.renderRows(pane, inner-l.PreviewWidth-1, rows, focused)
 		preview := m.renderPreview(l.PreviewWidth, rows)
@@ -312,33 +308,24 @@ func crumbPath(path string) string {
 func (m *Model) renderRows(pane *Pane, width, rows int, focused bool) string {
 	lines := make([]string, 0, rows)
 
+	// Every line is cut to the width the pane actually has: a hint that wraps is a
+	// broken frame, which is exactly what a split preview in a narrow pane caused.
+	empty := func(text string) string { return m.st.PaneEmpty.Render(truncate(text, width)) }
 	switch {
 	case pane.Err != nil:
 		lines = append(lines,
-			m.st.Danger.Render("Cannot read this directory"),
-			m.st.PaneEmpty.Render(truncate(pane.Err.Error(), width)),
-			m.st.PaneEmpty.Render("Ctrl+R to retry"),
+			m.st.Danger.Render(truncate("Cannot read this directory", width)),
+			empty(pane.Err.Error()),
+			empty("Ctrl+R to retry"),
 		)
 	case !pane.Connected():
-		lines = append(lines,
-			m.st.PaneEmpty.Render("No connection yet"),
-			m.st.PaneEmpty.Render("Ctrl+O to open one"),
-		)
+		lines = append(lines, empty("No connection yet"), empty("Ctrl+O to open one"))
 	case pane.Loading:
-		lines = append(lines,
-			m.st.PaneEmpty.Render("Loading…"),
-			m.st.PaneEmpty.Render("This can take a moment on a slow link"),
-		)
+		lines = append(lines, empty("Loading…"), empty("This can take a moment on a slow link"))
 	case len(pane.Entries) == 0:
-		lines = append(lines,
-			m.st.PaneEmpty.Render("Empty directory"),
-			m.st.PaneEmpty.Render("Ctrl+N for a file, Ctrl+Shift+N for a folder"),
-		)
+		lines = append(lines, empty("Empty directory"), empty("Ctrl+N for a file, Ctrl+Shift+N for a folder"))
 	case len(pane.Visible()) == 0:
-		lines = append(lines,
-			m.st.PaneEmpty.Render("Nothing matches "+pane.Filter),
-			m.st.PaneEmpty.Render("Esc to clear the filter"),
-		)
+		lines = append(lines, empty("Nothing matches "+pane.Filter), empty("Esc to clear the filter"))
 	default:
 		visible := pane.Visible()
 		offset := clamp(pane.Offset, 0, max(0, len(visible)-1))
