@@ -15,6 +15,7 @@ import (
 
 // extractDoneMsg reports a finished extraction.
 type extractDoneMsg struct {
+	id      int
 	count   int
 	dst     string
 	archive string
@@ -23,6 +24,7 @@ type extractDoneMsg struct {
 
 // compressDoneMsg reports a finished archive.
 type compressDoneMsg struct {
+	id    int
 	count int
 	dst   string
 	err   error
@@ -131,10 +133,15 @@ func (m *Model) extractCursor(value string) tea.Cmd {
 	name := entry.Name
 	ctx := m.connectContext()
 	m.mode = "EXTRACTING"
+	id, onProgress := m.startTransfer("extract " + name)
 
 	return func() tea.Msg {
-		count, err := archive.Extract(ctx, srcFS, srcPath, dstFS, dstDir, nil)
-		return extractDoneMsg{count: count, dst: dstDir, archive: name, err: err}
+		seen := 0
+		count, err := archive.Extract(ctx, srcFS, srcPath, dstFS, dstDir, func(member string) {
+			seen++
+			onProgress(int64(seen), 0, member)
+		})
+		return extractDoneMsg{id: id, count: count, dst: dstDir, archive: name, err: err}
 	}
 }
 
@@ -184,9 +191,14 @@ func (m *Model) compressTargets(value string) tea.Cmd {
 	}
 	ctx := m.connectContext()
 	m.mode = "COMPRESSING"
+	id, onProgress := m.startTransfer("archive " + dstFS.Base(dstPath))
 
 	return func() tea.Msg {
-		count, err := archive.Compress(ctx, dstFS, dstPath, items, nil)
-		return compressDoneMsg{count: count, dst: dstPath, err: err}
+		seen := 0
+		count, err := archive.Compress(ctx, dstFS, dstPath, items, func(name string) {
+			seen++
+			onProgress(int64(seen), 0, name)
+		})
+		return compressDoneMsg{id: id, count: count, dst: dstPath, err: err}
 	}
 }

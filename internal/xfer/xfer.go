@@ -303,7 +303,7 @@ func Copy(ctx context.Context, req Request, plan Plan) (Result, error) {
 			continue
 		}
 
-		written, err := copyFile(ctx, req, srcPath, dstPath, buf)
+		written, err := copyFile(ctx, req, srcPath, dstPath, buf, done, plan.Bytes, item.Name)
 		if err != nil {
 			// A cancelled copy is not an item failing: report the context, which
 			// is what the caller asked about.
@@ -331,7 +331,7 @@ func Copy(ctx context.Context, req Request, plan Plan) (Result, error) {
 }
 
 // copyFile streams one file, keeping its mode and time.
-func copyFile(ctx context.Context, req Request, srcPath, dstPath string, buf []byte) (int64, error) {
+func copyFile(ctx context.Context, req Request, srcPath, dstPath string, buf []byte, done, total int64, name string) (int64, error) {
 	src, err := req.Src.Open(srcPath)
 	if err != nil {
 		return 0, err
@@ -348,7 +348,16 @@ func copyFile(ctx context.Context, req Request, srcPath, dstPath string, buf []b
 		return 0, err
 	}
 
-	written, copyErr := io.CopyBuffer(dst, &ctxReader{ctx: ctx, reader: src}, buf)
+	reader := io.Reader(&ctxReader{ctx: ctx, reader: src})
+	if req.Progress != nil {
+		// A single large file still moves: report while it is writing, throttled,
+		// so a sidebar can show progress instead of an unexplained pause.
+		reader = &progressReader{
+			reader: reader,
+			report: func(written int64) { req.Progress(done+written, total, name) },
+		}
+	}
+	written, copyErr := io.CopyBuffer(dst, reader, buf)
 	// The metadata belongs to a file that is fully written: setting it first
 	// would be wiped by the write on some servers.
 	_ = dst.Sync()
@@ -368,6 +377,24 @@ func copyFile(ctx context.Context, req Request, srcPath, dstPath string, buf []b
 		_ = req.Dst.Chtimes(dstPath, info.ModTime(), info.ModTime())
 	}
 	return written, nil
+}
+
+// progressReader counts bytes and reports them no more than once per interval.
+type progressReader struct {
+	reader  io.Reader
+	written int64
+	last    time.Time
+	report  func(written int64)
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.reader.Read(b)
+	p.written += int64(n)
+	if p.report != nil && time.Since(p.last) >= DefaultProgressInterval {
+		p.last = time.Now()
+		p.report(p.written)
+	}
+	return n, err
 }
 
 // ctxReader stops a long copy when the context is cancelled, which is what makes

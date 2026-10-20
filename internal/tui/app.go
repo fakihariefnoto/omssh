@@ -93,6 +93,13 @@ type Model struct {
 	syncBrowse bool
 	filtering  bool
 
+	// transfers are the copies running right now, for the sidebar. The copy itself
+	// runs in a command; the progress arrives on a channel so a slow link never
+	// freezes the update loop.
+	transfers   map[int]transfer
+	transferSeq int
+	progress    chan transferUpdate
+
 	// The preview is cached: it reads files, render runs on every keystroke, and a
 	// remote read per frame is what made the interface blink. previewGen is bumped
 	// whenever a listing changes, so the cache cannot outlive the truth.
@@ -219,9 +226,9 @@ type stagedState struct {
 	Cut bool
 	// From is the pane the marks came from; a copy has one source.
 	From int
-	// Policy and Extract are the paste options, changed with A.
-	Policy  int
-	Extract bool
+	// Policy and After are the paste options, changed with A.
+	Policy int
+	After  pasteAfter
 }
 
 // heartbeatMsg drives toast expiry and clears transient hints.
@@ -340,13 +347,16 @@ func New(opts Options) (*Model, error) {
 
 // Jobs is the number of running transfers. The transfer engine arrives in M3;
 // until then there is never anything running, and the interface says so.
-func (m *Model) Jobs() int { return 0 }
+func (m *Model) Jobs() int { return len(m.transfers) }
 
 // Init starts the heartbeat and asks the terminal for its size. Nothing here
 // waits for a reply, so the first frame is painted immediately: a startup query
 // is a startup delay at best and a blank screen at worst.
 func (m *Model) Init() tea.Cmd {
 	commands := []tea.Cmd{tea.RequestWindowSize, heartbeat()}
+	if m.progress != nil {
+		commands = append(commands, waitForTransfer(m.progress))
+	}
 	if m.sessions != nil {
 		// The connection goroutines ask through this channel while they wait.
 		commands = append(commands, waitForPrompt(m.prompts))
@@ -426,8 +436,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case copyReport:
-		m.handleCopyReport(msg)
-		return m, nil
+		cmd := m.handleCopyReport(msg)
+		return m, cmd
 
 	case dirLoadedMsg:
 		m.applyListing(msg)
@@ -470,6 +480,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case extractDoneMsg:
 		m.mode = "NORMAL"
+		m.finishTransfer(msg.id)
 		if msg.err != nil {
 			m.toastError("Extract failed: " + msg.err.Error())
 			return m, nil
@@ -481,6 +492,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case compressDoneMsg:
 		m.mode = "NORMAL"
+		m.finishTransfer(msg.id)
 		if msg.err != nil {
 			m.toastError("Compress failed: " + msg.err.Error())
 			return m, nil
@@ -502,6 +514,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mode = "NORMAL"
 		m.toastError("Edit failed: " + msg.err.Error())
 		return m, nil
+
+	case transferUpdate:
+		if job, ok := m.transfers[msg.id]; ok {
+			job.done, job.total, job.name = msg.done, msg.total, msg.name
+			m.transfers[msg.id] = job
+		}
+		cmd := waitForTransfer(m.progress)
+		return m, cmd
 
 	case sessionSampleMsg:
 		if m.samples == nil {

@@ -88,13 +88,13 @@ func DefaultName(names []string) string {
 	case 0:
 		return "archive.tar.gz"
 	case 1:
-		base := strings.TrimSuffix(names[0], "/")
-		if format := Detect(base); format == Unknown {
-			return base + ".tar.gz"
-		}
-		return base + ".tar.gz"
+		// An archive already: pack it under the same stem rather than
+		// "site.tar.gz.tar.gz".
+		return Stem(strings.TrimSuffix(names[0], "/")) + ".tar.gz"
 	default:
-		return names[0] + "-and-more.tar.gz"
+		// Several things packed together are a bundle, not the first one's name
+		// with a suffix that pretends otherwise.
+		return "bundle.tar.gz"
 	}
 }
 

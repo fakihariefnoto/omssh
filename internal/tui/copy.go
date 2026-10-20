@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/fakihariefnoto/omssh/internal/archive"
 
@@ -149,6 +150,8 @@ func (m *Model) stagedBytes() int64 {
 // copyReport is the result of a finished copy, for the toast and for refreshing
 // the panes it touched.
 type copyReport struct {
+	// id ties the report to the progress it replaces in the sidebar.
+	id                        int
 	created, updated, skipped int
 	bytes                     int64
 	cut                       bool
@@ -156,7 +159,9 @@ type copyReport struct {
 	// extracted is the directory an archive was unpacked into, when the paste
 	// asked for it.
 	extracted string
-	err       error
+	// packed is the archive a pack-paste wrote instead of copying the files.
+	packed string
+	err    error
 }
 
 // pasteStaged copies the marked files to the other pane.
@@ -206,12 +211,51 @@ func (m *Model) pasteStaged() tea.Cmd {
 		Policy: policy,
 	}
 	cut := m.staged.Cut
-	extract := m.staged.Extract
+	after := m.staged.After
+	packName := m.packName()
+
+	verb := "copy"
+	if cut {
+		verb = "move"
+	}
+	id, onProgress := m.startTransfer(fmt.Sprintf("%s → %s", verb, m.paneLabel(to)))
+	request.Progress = onProgress
 	m.mode = "COPYING"
+	if after == pastePack {
+		m.mode = "ARCHIVING"
+	}
 	ctx := m.connectContext()
 
 	return func() tea.Msg {
-		report := copyReport{cut: cut, from: from, to: to}
+		report := copyReport{id: id, cut: cut, from: from, to: to}
+
+		// Pack instead of copying: the destination gets one archive, not the files.
+		// "Copy this folder over there, but as a tarball" is one gesture.
+		if after == pastePack {
+			items := make([]archive.Item, 0, len(request.Names))
+			for _, name := range request.Names {
+				items = append(items, archive.Item{FS: src.FS, Dir: srcDir, Name: name})
+			}
+			target := dst.FS.Join(dst.Path, packName)
+			seen := 0
+			count, err := archive.Compress(ctx, dst.FS, target, items, func(name string) {
+				seen++
+				onProgress(int64(seen), 0, name)
+			})
+			report.created, report.packed, report.err = count, target, err
+			if err == nil {
+				if info, statErr := dst.FS.Stat(target); statErr == nil {
+					report.bytes = info.Size()
+				}
+			}
+			if cut && err == nil {
+				for _, name := range request.Names {
+					_ = src.FS.RemoveAll(src.FS.Join(srcDir, name))
+				}
+			}
+			return report
+		}
+
 		plan, err := xfer.PlanCopy(ctx, request)
 		if err != nil {
 			report.err = err
@@ -227,7 +271,7 @@ func (m *Model) pasteStaged() tea.Cmd {
 				_ = src.FS.RemoveAll(src.FS.Join(srcDir, name))
 			}
 		}
-		if extract && err == nil && len(request.Names) == 1 {
+		if after == pasteExtract && err == nil && len(request.Names) == 1 {
 			// "Copy this tarball and unpack it over there" is one gesture, not two.
 			name := request.Names[0]
 			target := dst.FS.Join(dst.Path, archive.Stem(name))
@@ -243,17 +287,26 @@ func (m *Model) pasteStaged() tea.Cmd {
 
 // handleCopyReport turns a finished copy into a message and refreshes what
 // changed.
-func (m *Model) handleCopyReport(report copyReport) {
+func (m *Model) handleCopyReport(report copyReport) tea.Cmd {
 	m.mode = "NORMAL"
-	// Both ends may have changed: a move removes from the source.
+	took := m.finishTransfer(report.id)
+
+	// Both ends may have changed: a move removes from the source. The reloads go
+	// through the same path as every other listing, so a slow link cannot stall
+	// the update loop right after a transfer finishes.
+	cmds := make([]tea.Cmd, 0, 2)
 	for _, index := range []int{report.from, report.to} {
 		if index >= 0 && index < len(m.Panes) {
-			m.Panes[index].Load(m.showHidden)
+			if cmd := m.loadPaneAsync(index); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 	}
+	refresh := tea.Batch(cmds...)
+
 	if report.err != nil {
 		m.toastError("Copy: " + report.err.Error())
-		return
+		return refresh
 	}
 
 	verb := "Copied"
@@ -279,10 +332,18 @@ func (m *Model) handleCopyReport(report copyReport) {
 	if report.extracted != "" {
 		message += " · unpacked into " + report.extracted
 	}
+	if report.packed != "" {
+		message = fmt.Sprintf("%s %d %s into %s (%s)", verb,
+			report.created, plural(report.created, "entry", "entries"), report.packed, humanSize(report.bytes))
+	}
+	if took > 50*time.Millisecond {
+		message += " · " + took.Round(100*time.Millisecond).String()
+	}
 	if !report.cut {
 		// The marks stay: copying the same set to a second place is normal, and
 		// re-marking it by hand every time is not.
 		message += " · marks kept"
 	}
 	m.toastSuccess(message)
+	return refresh
 }

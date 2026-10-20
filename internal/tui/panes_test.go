@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/archive"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
@@ -393,8 +394,8 @@ func TestPasteOptionsExtractOnArrival(t *testing.T) {
 
 	// Unpack on arrival, and paste.
 	press(t, m, run('e', 0, "e"))
-	if !m.staged.Extract {
-		t.Fatal("e should turn on unpacking")
+	if m.staged.After != pasteExtract {
+		t.Fatal("e should choose unpacking")
 	}
 	cmd := m.handlePasteOptionsKey(keyNamed(tea.KeyEnter))
 	if cmd == nil {
@@ -449,5 +450,114 @@ func TestMarksSurviveNavigation(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dest, "README.md")); err != nil {
 		t.Errorf("the marked file should have travelled from its own directory: %v", err)
+	}
+}
+
+// Pack-on-paste: the destination gets one archive, not the files. "Copy this
+// folder over there, but as a tarball" is one gesture.
+func TestPasteOptionsPackInsteadOfCopy(t *testing.T) {
+	m := newTestModel(t)
+	m.selectByName("assets")
+	press(t, m, run('y', 0, "y"))
+
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1] = Pane{Side: SideRemote, Host: "contabo", FS: destFS, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 1
+
+	press(t, m, run('A', 0, "A"))
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "packed into assets.tar.gz") {
+		t.Fatalf("the card should offer the pack name:\n%s", out)
+	}
+	press(t, m, run('c', 0, "c"))
+	cmd := m.handlePasteOptionsKey(keyNamed(tea.KeyEnter))
+	if cmd == nil {
+		t.Fatalf("Enter should paste: %v", m.toasts)
+	}
+	report, ok := cmd().(copyReport)
+	if !ok || report.err != nil {
+		t.Fatalf("pack paste failed: %+v", report)
+	}
+	if report.packed == "" {
+		t.Fatalf("the report should name the archive: %+v", report)
+	}
+
+	// The archive is there, and the loose files are not.
+	if _, err := os.Stat(filepath.Join(dest, "assets.tar.gz")); err != nil {
+		t.Fatalf("the archive should be in the destination: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "assets")); err == nil {
+		t.Error("a pack paste must not copy the files loose as well")
+	}
+
+	// And the archive really holds the tree.
+	entries, err := archive.List(destFS, "/assets.tar.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name, "logo.svg") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the archive should hold the folder's files, got %+v", entries)
+	}
+}
+
+// A copy in flight is visible in the sidebar, with a bar and the current file,
+// and it disappears when the report lands.
+func TestTransfersShowProgressInTheSidebar(t *testing.T) {
+	m := newTestModel(t)
+	m.selectByName("README.md")
+	press(t, m, run('y', 0, "y"))
+
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1] = Pane{Side: SideRemote, Host: "contabo", FS: destFS, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 1
+
+	cmd := m.pasteStaged()
+	if cmd == nil {
+		t.Fatalf("paste should start: %v", m.toasts)
+	}
+	if m.Jobs() != 1 {
+		t.Fatalf("the copy should be registered as running, jobs=%d", m.Jobs())
+	}
+
+	// Progress arrives on the channel; feed one report the way the runtime would.
+	var id int
+	for key := range m.transfers {
+		id = key
+	}
+	m.Update(transferUpdate{id: id, name: "README.md", done: 5, total: 10})
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "TRANSFERS") || !strings.Contains(out, "50%") {
+		t.Errorf("the sidebar should show the copy's progress:\n%s", out)
+	}
+	if !strings.Contains(out, "README.md") {
+		t.Errorf("the sidebar should name the file being copied:\n%s", out)
+	}
+
+	// The report finishes it.
+	report, ok := cmd().(copyReport)
+	if !ok || report.err != nil {
+		t.Fatalf("the copy should finish: %+v", report)
+	}
+	m.Update(report)
+	if m.Jobs() != 0 {
+		t.Errorf("a finished copy should leave the sidebar, jobs=%d", m.Jobs())
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "Nothing running") {
+		t.Errorf("the sidebar should go back to saying nothing is running:\n%s", out)
 	}
 }

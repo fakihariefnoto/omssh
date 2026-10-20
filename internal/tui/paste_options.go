@@ -14,6 +14,19 @@ import (
 // The options card is that choice, in one place, without a second dialog per
 // question.
 
+// pasteAfter is what a paste does once the bytes have arrived.
+type pasteAfter int
+
+const (
+	// pastePlain copies the files as they are.
+	pastePlain pasteAfter = iota
+	// pasteExtract unpacks one marked archive into a folder named after it.
+	pasteExtract
+	// pastePack writes the marked set into one archive at the destination instead
+	// of copying the files loose.
+	pastePack
+)
+
 // openPasteOptions shows the card, or explains why there is nothing to paste.
 func (m *Model) openPasteOptions() {
 	if m.stagedCount() == 0 {
@@ -38,17 +51,26 @@ func (m *Model) handlePasteOptionsKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.staged.Policy = int(xfer.PolicyOverwrite)
 	case "s":
 		m.staged.Policy = int(xfer.PolicySkip)
+	case "n":
+		m.staged.After = pastePlain
 	case "e":
 		if !m.canExtractOnPaste() {
 			m.toastInfo("Extract on paste works with one archive marked")
 			break
 		}
-		m.staged.Extract = !m.staged.Extract
+		m.staged.After = pasteExtract
+	case "c":
+		m.staged.After = pastePack
 	case "enter":
 		m.Overlay = OverlayNone
 		return m.pasteStaged()
 	}
 	return nil
+}
+
+// packName is the archive a pack-paste would write.
+func (m *Model) packName() string {
+	return archive.DefaultName(m.staged.Paths)
 }
 
 // canExtractOnPaste reports whether the marked set is one archive.
@@ -92,16 +114,20 @@ func (m *Model) renderPasteOptions(l layout) string {
 		m.rowChoice("s", "", "keep what is there", pastePolicyLabel(m.staged.Policy) == "keep what is there", content),
 		"",
 	}
+	lines = append(lines,
+		m.optionRow("", "after", "what arrives", content),
+		m.rowChoice("n", "", "the files themselves", m.staged.After == pastePlain, content),
+	)
 	if m.canExtractOnPaste() {
-		state := "no"
-		if m.staged.Extract {
-			state = "yes, into a folder named after the archive"
-		}
-		lines = append(lines, m.rowChoice("e", "after", state, m.staged.Extract, content))
+		lines = append(lines, m.rowChoice("e", "", "unpacked into "+archive.Stem(m.staged.Paths[0])+"/",
+			m.staged.After == pasteExtract, content))
 	} else {
-		lines = append(lines, m.st.CardMuted.Render(truncate("e  after   unpack an archive on arrival", content)))
+		lines = append(lines, m.st.CardMuted.Render(truncate(
+			"e           unpack an archive (mark one archive)", content)))
 	}
-	lines = append(lines, "",
+	lines = append(lines,
+		m.rowChoice("c", "", "packed into "+m.packName(), m.staged.After == pastePack, content),
+		"",
 		m.st.CardMuted.Render(truncate("Enter pastes · Esc cancels", content)))
 	return m.card(width, lines)
 }

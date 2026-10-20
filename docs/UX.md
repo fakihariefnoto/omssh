@@ -270,24 +270,45 @@ u  conflicts  ● update if newer
 o             ○ overwrite
 s             ○ keep what is there
 
-e  after      ● yes, into a folder named after the archive
+   after      what arrives
+n             ● the files themselves
+e             ○ unpacked into site/
+c             ○ packed into assets.tar.gz
 Enter pastes · Esc cancels
 ```
 
-The unpack-on-arrival row appears when exactly one archive is marked: copying
-`site.tar.gz` and extracting it into `site/` on the far side is one gesture.
+The last three are the shape of the result, not a detail:
+
+- **the files themselves** — an ordinary copy.
+- **unpacked into site/** — mark one archive and it arrives already extracted, into
+  a folder named after it.
+- **packed into assets.tar.gz** — mark any set and the destination gets one archive
+  instead of the loose files. "Copy this folder over there, but as a tarball" is
+  one gesture, and no bytes are written twice.
 The set shows up twice: the sidebar
 lists the names and sizes under `MARKED`, and a bar under the panes carries the
 count, the destination and the keys:
 
 ```
-MARKED 1              │  ▸ 1 item · 32 B copy → contabo  /var/www   p paste · s review · Esc cancel
+MARKED 1              │  ▸ 1 item · 32 B copy → contabo  /var/www   p paste · A options · s review · Esc cancel
 → contabo  /var/www   │
   index.html  1.2 kB  │
 ```
 
 The sidebar is where state lives, so the names belong there; the bar is where the
-next keystroke is decided, so the keys belong there. The review screen (`s`) is
+next keystroke is decided, so the keys belong there. The same sidebar carries
+running work:
+
+```
+TRANSFERS
+copy → contabo
+██████░░  75%
+assets/logo.svg
+```
+
+A copy reports per item and, inside a large file, every 100 ms, so the bar moves
+while the bytes do. Copies, extractions and archive writes all appear here; the
+section says "Nothing running" when they are done. The review screen (`s`) is
 still there when the list is long or the conflict rule matters.
 
 Switching to a tab that is already showing its directory is a change of focus,
@@ -458,7 +479,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `y` / `Ctrl+C` | Mark for copy — cumulative; `y` again unmarks | a bar under the panes shows where they go |
 | `x` / `Ctrl+X` | Mark for move (`y` then `x` changes a mark, it does not remove it) | the same bar says `move →` |
 | `p` / `Ctrl+V` | Paste into this pane | copies or moves, to the other pane |
-| `A` | Paste options | copy or move, the conflict rule, and unpack-on-arrival |
+| `A` | Paste options | copy or move, the conflict rule, and what arrives: files, an unpacked tree, or one archive |
 | `C` | Copy to… | choose the destination instead of using the other pane |
 | `M` | Move to… | same, for a move |
 | `v` / `F3` | View (preview pane) | archives list their contents |

@@ -484,7 +484,8 @@ func (m *Model) renderSidebar(l layout) string {
 	if m.Jobs() == 0 {
 		rows = append(rows, jobs, m.st.PaneEmpty.Render("Nothing running"))
 	} else {
-		rows = append(rows, fmt.Sprintf("%s %d", jobs, m.Jobs()))
+		rows = append(rows, jobs)
+		rows = append(rows, m.renderTransfers(width)...)
 	}
 	rows = append(rows, "", m.st.SidebarTitle.Render("THEME"),
 		m.st.SidebarItem.Render(m.themeName))
@@ -638,7 +639,7 @@ func (m *Model) actionBarOrder() []actions.ID {
 	// order is about what comes next, not about a fixed hierarchy.
 	if m.stagedCount() > 0 {
 		return []actions.ID{
-			"sel.paste", "sel.mark", "sel.cut", "file.delete", "file.rename",
+			"sel.paste", "sel.paste-options", "sel.mark", "sel.cut", "file.delete", "file.rename",
 			"file.view", "file.edit", "file.copy-to", "file.move-to",
 			"archive.extract", "archive.compress", "nav.open", "nav.parent", "file.mkdir",
 		}
