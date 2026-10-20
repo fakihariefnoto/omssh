@@ -25,6 +25,7 @@ func twoHosts(t *testing.T) *Model {
 		m.addSessionTab(&session.Session{
 			ID: alias, Target: omssh.Target{Alias: alias}, FS: fsys, Root: "/", Base: dir,
 		})
+		m.paneForSession(m.live[alias])
 	}
 	m.screen = screenFiles
 	return m
@@ -62,10 +63,13 @@ func TestSidebarFollowsTheOpenSession(t *testing.T) {
 	m.Focused = 0
 
 	out := ansi.Strip(render(m))
-	if n := strings.Count(out, "contabo"); n > 2 {
-		// The tab strip and the sidebar are two views of the same session, so two
-		// mentions are expected; a third would mean a duplicate row.
-		t.Errorf("contabo should appear at most twice, found %d:\n%s", n, out)
+	if n := strings.Count(out, "contabo"); n > 3 {
+		// Tab strip, sidebar row, pane breadcrumb: three mentions of one session.
+		// A fourth would mean a duplicate row.
+		t.Errorf("contabo should appear at most three times, found %d:\n%s", n, out)
+	}
+	if hosts := m.liveSessions(); len(hosts) != 2 {
+		t.Errorf("the sidebar should list each host once, got %+v", hosts)
 	}
 	for _, host := range m.liveSessions() {
 		if host.alias == "contabo" && !host.active {

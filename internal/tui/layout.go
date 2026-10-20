@@ -105,8 +105,11 @@ func (m *Model) measure() layout {
 		// Each block is a breadcrumb, a top border, the rows, a bottom border:
 		// rows+3. Two of them plus one row of air is the body.
 		l.PaneRows = max(3, (body-7)/2)
-		// A preview inside a quarter-width pane would be a sliver, and four panes
-		// are about seeing four listings at once.
+		// The preview still sits to the right of the focused listing; four panes
+		// are about seeing four listings at once, not about losing the preview.
+		if m.preview && l.PaneWidth >= 56 {
+			l.PreviewWidth = max(20, l.PaneWidth*2/5)
+		}
 		return l
 	}
 	// Two rows are lost to the border and the breadcrumb line.

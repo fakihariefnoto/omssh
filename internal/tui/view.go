@@ -465,6 +465,27 @@ func (m *Model) renderSidebar(l layout) string {
 			rows = append(rows, dot+" "+style.Render(name))
 		}
 	}
+	// The marked set, on the left: a copy is a state the interface is holding, and
+	// the sidebar is where state is said. The bar below the panes keeps the keys;
+	// this keeps the names.
+	if m.stagedCount() > 0 {
+		rows = append(rows, "", m.st.SidebarTitle.Render("MARKED "+itoa(m.stagedCount())))
+		if _, to := m.stagedRoute(); to != "" {
+			rows = append(rows, m.st.PaneEmpty.Render(truncate("→ "+to, width)))
+		}
+		entries := m.stagedEntries()
+		for i, entry := range entries {
+			if i >= 3 {
+				rows = append(rows, m.st.PaneEmpty.Render(fmt.Sprintf("… %d more", len(entries)-i)))
+				break
+			}
+			name := entry.Name
+			if entry.Size > 0 {
+				name += " " + humanSize(entry.Size)
+			}
+			rows = append(rows, "  "+m.st.SidebarItem.Render(truncate(name, width-2)))
+		}
+	}
 	rows = append(rows,
 		"",
 		m.st.SidebarTitle.Render("BOOKMARKS"),

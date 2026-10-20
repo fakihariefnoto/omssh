@@ -250,15 +250,23 @@ Used a thousand times a day, so it gets the most attention.
 visit history (same as a browser). `Ctrl+L` edits the path with completion.
 `Ctrl+R` refreshes.
 
-**Marking** — `y` or `x` marks the selection, and a bar appears under the panes:
+**Marking** — `y` or `x` marks the selection, and it shows up twice: the sidebar
+lists the names and sizes under `MARKED`, and a bar under the panes carries the
+count, the destination and the keys:
 
 ```
-▸ 3 items · 12.4 MB copy → contabo  /var/www      p paste · s review · Esc cancel
+MARKED 1              │  ▸ 1 item · 32 B copy → contabo  /var/www   p paste · s review · Esc cancel
+→ contabo  /var/www   │
+  index.html  1.2 kB  │
 ```
 
-It says what is marked, where it is going, and the three keys that decide it, so
-the answer to "what am I about to do" never needs a screen of its own. The review
-screen (`s`) is there when the list is long or the conflict rule matters.
+The sidebar is where state lives, so the names belong there; the bar is where the
+next keystroke is decided, so the keys belong there. The review screen (`s`) is
+still there when the list is long or the conflict rule matters.
+
+Switching to a tab that is already showing its directory is a change of focus,
+not a new question for the server: the listing is kept, which is what makes
+browsing tabs feel immediate.
 
 **Finding** — two levels:
 
@@ -445,6 +453,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `Ctrl+K` | Command palette — every action, searchable, with its shortcut | discovery net |
 | `?` / `F1` | Help — searchable keymap grouped by task | discovery net |
 | `T` | Full SSH terminal (or a local shell) — the terminal is handed to `ssh` | |
+| `Q` | Disconnect, keeping the tab — choosing it reconnects | |
 | `Ctrl+Q` / `F10` | Quit (confirms if jobs are running) | |
 | `Esc` | Back / dismiss / clear | never destructive, **never quits** |
 

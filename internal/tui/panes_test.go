@@ -220,3 +220,90 @@ func TestDashboardAsksWhenThereAreTooManySessions(t *testing.T) {
 		t.Error("the question should be asked once, not every time")
 	}
 }
+
+// Disconnecting ends the connection but keeps the tab: the place in the
+// interface stays, and choosing it reconnects.
+func TestDisconnectKeepsTheTab(t *testing.T) {
+	m := twoHosts(t)
+	m.activeTab = 1 // contabo
+	m.Focused = m.paneIndexFor("contabo")
+	if m.Focused < 0 {
+		t.Fatal("contabo should have a pane")
+	}
+
+	press(t, m, run('Q', 0, "Q"))
+	if _, live := m.live["contabo"]; live {
+		t.Error("the session should be gone")
+	}
+	if len(m.tabs) < 2 || m.tabs[1].Host != "contabo" {
+		t.Error("the tab should stay")
+	}
+	if m.tabs[1].State != StateIdle {
+		t.Errorf("the tab should say idle, got %v", m.tabs[1].State)
+	}
+	if m.paneIndexFor("contabo") >= 0 {
+		t.Error("no pane should still point at the closed connection")
+	}
+
+	// Choosing the tab asks for the connection back instead of dead-ending.
+	m.activeTab = 1
+	cmd := m.switchTab(1)
+	if cmd == nil {
+		t.Fatalf("choosing a disconnected tab should reconnect: %v", m.toasts)
+	}
+	if m.tabs[1].State != StateConnecting {
+		t.Errorf("the tab should say connecting, got %v", m.tabs[1].State)
+	}
+}
+
+// Marked files are state, and state lives in the sidebar: names, sizes and the
+// destination, not just a count.
+func TestSidebarListsTheMarkedFiles(t *testing.T) {
+	m := newTestModel(t)
+	m.selectByName("README.md")
+	press(t, m, run('y', 0, "y"))
+	m.selectByName("notes.txt")
+	press(t, m, run('y', 0, "y"))
+
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"MARKED 1", "notes.txt"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the sidebar should show %q:\n%s", want, out)
+		}
+	}
+}
+
+// In the grid the preview still splits the focused pane when there is room: the
+// folder description on the right of the listing, as before.
+func TestPreviewSplitsTheFocusedGridPane(t *testing.T) {
+	m, _ := fourPanes(t)
+	m.preview = true
+	m.Focused = 0
+	l := m.measure()
+	if l.PreviewWidth == 0 {
+		t.Fatalf("a %d-wide pane should keep the preview", l.PaneWidth)
+	}
+	if l.PreviewWidth >= l.PaneWidth {
+		t.Errorf("the preview must leave the listing room: %d of %d", l.PreviewWidth, l.PaneWidth)
+	}
+}
+
+// Switching back to a tab that is already showing its directory is a change of
+// focus, not a reason to ask the server again: that is what made it feel laggy.
+func TestSwitchingToABoundTabDoesNotReload(t *testing.T) {
+	m := twoHosts(t)
+	m.activeTab = 1
+	pane := m.paneIndexFor("contabo")
+	m.Panes[pane].Entries = []Entry{{Name: "kept.txt"}}
+
+	cmd := m.switchTab(1)
+	if cmd != nil {
+		t.Error("a pane that already has its listing should not load again")
+	}
+	if len(m.Panes[pane].Entries) != 1 || m.Panes[pane].Entries[0].Name != "kept.txt" {
+		t.Error("the listing should be left exactly as it was")
+	}
+	if m.Focused != pane {
+		t.Errorf("the focus should move to the pane, got %d", m.Focused)
+	}
+}

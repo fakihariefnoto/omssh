@@ -1084,6 +1084,15 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openPanes()
 	case "terminal.new":
 		return m.openTerminalForPane()
+	case "session.disconnect":
+		if m.screen == screenConnections {
+			if entry, ok := m.currentConnection(); ok {
+				return m.disconnectHost(entry.Alias)
+			}
+			m.quitHint = "Put the cursor on a host first"
+			break
+		}
+		return m.disconnectPane()
 	case "session.terminal":
 		entry, ok := m.currentConnection()
 		if !ok {

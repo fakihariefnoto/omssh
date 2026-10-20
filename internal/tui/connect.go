@@ -167,6 +167,16 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 	return m.loadPaneAsync(index)
 }
 
+// paneIndexFor is the pane showing a host, or -1.
+func (m *Model) paneIndexFor(alias string) int {
+	for i := 0; i < m.paneCount(); i++ {
+		if m.Panes[i].Host == alias {
+			return i
+		}
+	}
+	return -1
+}
+
 // maxPanes is the dashboard's limit: four sessions, two by two.
 const maxPanes = 4
 
@@ -495,9 +505,20 @@ func (m *Model) selectTab(index int, dive bool) tea.Cmd {
 		m.toastInfo("Reconnecting to " + tab.Host + "…")
 		return m.connect(target)
 	}
-	paneIndex := m.paneForSession(sess)
+	// The pane may already be showing this session. Rebuilding its listing on
+	// every keystroke is what made browsing tabs feel slow: a tab switch is a
+	// change of focus, not a reason to ask the server again.
+	paneIndex := m.paneIndexFor(tab.Host)
+	already := paneIndex >= 0 && len(m.Panes[paneIndex].Entries) > 0
+	if paneIndex < 0 {
+		paneIndex = m.paneForSession(sess)
+	}
 	if dive {
 		m.Focused = paneIndex
+	}
+	if already {
+		m.ensureVisible()
+		return nil
 	}
 	return m.loadPaneAsync(paneIndex)
 }
