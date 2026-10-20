@@ -252,8 +252,31 @@ visit history (same as a browser). `Ctrl+L` edits the path with completion.
 
 **Marking** — `y` or `x` marks, and marking is cumulative: mark a file, walk to the
 next, mark that too. With a selection, one press marks all of it. `y` on a file
-that is already marked takes the mark back, so one key covers both gestures. The
-set shows up twice: the sidebar
+that is already marked takes the mark back, so one key covers both gestures.
+
+Marks belong to the folder they were made in, not to where the pane happens to be
+looking: mark in one folder, walk anywhere, paste into several destinations. A
+copy keeps the marks (pasting the same set somewhere else is normal); a move
+clears them, because the sources are gone.
+
+`A` opens the paste options, for when the default is not what you meant:
+
+```
+Paste options
+3 items · copy → contabo  /var/www
+
+m  mode       copy
+u  conflicts  ● update if newer
+o             ○ overwrite
+s             ○ keep what is there
+
+e  after      ● yes, into a folder named after the archive
+Enter pastes · Esc cancels
+```
+
+The unpack-on-arrival row appears when exactly one archive is marked: copying
+`site.tar.gz` and extracting it into `site/` on the far side is one gesture.
+The set shows up twice: the sidebar
 lists the names and sizes under `MARKED`, and a bar under the panes carries the
 count, the destination and the keys:
 
@@ -435,6 +458,7 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `y` / `Ctrl+C` | Mark for copy — cumulative; `y` again unmarks | a bar under the panes shows where they go |
 | `x` / `Ctrl+X` | Mark for move (`y` then `x` changes a mark, it does not remove it) | the same bar says `move →` |
 | `p` / `Ctrl+V` | Paste into this pane | copies or moves, to the other pane |
+| `A` | Paste options | copy or move, the conflict rule, and unpack-on-arrival |
 | `C` | Copy to… | choose the destination instead of using the other pane |
 | `M` | Move to… | same, for a move |
 | `v` / `F3` | View (preview pane) | archives list their contents |

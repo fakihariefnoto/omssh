@@ -98,6 +98,18 @@ func DefaultName(names []string) string {
 	}
 }
 
+// Stem is the name without its archive extension: "site.tar.gz" becomes "site",
+// which is the folder an extraction should land in.
+func Stem(name string) string {
+	lower := strings.ToLower(name)
+	for _, suffix := range []string{".tar.gz", ".tar.bz2", ".tgz", ".tbz2", ".tbz", ".tar", ".zip", ".gz"} {
+		if strings.HasSuffix(lower, suffix) {
+			return name[:len(name)-len(suffix)]
+		}
+	}
+	return name
+}
+
 // Entry is one member of an archive.
 type Entry struct {
 	Name string

@@ -210,8 +210,18 @@ type promptState struct {
 // stagedState is what Ctrl+C or Ctrl+X put on the "clipboard".
 type stagedState struct {
 	Paths []string
-	Cut   bool
-	From  int
+	// Sizes are captured with the marks: the source pane may be looking at
+	// another directory by the time the pasted copy is reviewed.
+	Sizes map[string]int64
+	// Dir is the directory the names are relative to. Marks outlive navigation —
+	// marking in one folder and pasting in three others is one gesture, not three.
+	Dir string
+	Cut bool
+	// From is the pane the marks came from; a copy has one source.
+	From int
+	// Policy and Extract are the paste options, changed with A.
+	Policy  int
+	Extract bool
 }
 
 // heartbeatMsg drives toast expiry and clears transient hints.
@@ -740,6 +750,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.handlePanesKey(msg)
 		return true
 
+	case OverlayPaste:
+		m.overlayCmd = m.handlePasteOptionsKey(msg)
+		return true
+
 	case OverlayStaged:
 		switch msg.String() {
 		case "esc":
@@ -1145,6 +1159,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.stage(true)
 	case "sel.paste":
 		return m.pasteStaged()
+	case "sel.paste-options":
+		m.openPasteOptions()
 	case "view.staged":
 		m.Overlay = OverlayStaged
 	default:
@@ -1290,7 +1306,7 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes:
+	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
 		// the only field outside an overlay.
 	}

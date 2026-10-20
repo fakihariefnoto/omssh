@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fakihariefnoto/omssh/internal/archive"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/fakihariefnoto/omssh/internal/xfer"
@@ -30,7 +32,7 @@ func (m *Model) stage(cut bool) {
 		m.clearStaged()
 	}
 	if m.stagedCount() == 0 {
-		m.staged = stagedState{From: m.Focused}
+		m.staged = stagedState{From: m.Focused, Dir: m.Pane().Path, Policy: int(xfer.PolicyUpdateIfNewer)}
 	}
 
 	// With a selection, y marks all of it. On a bare cursor it toggles, so the
@@ -68,6 +70,10 @@ func (m *Model) stage(cut bool) {
 	}
 	m.staged.Paths = paths
 	m.staged.Cut = cut
+	m.staged.Sizes = map[string]int64{}
+	for _, entry := range m.Panes[m.staged.From].Entries {
+		m.staged.Sizes[entry.Name] = entry.Size
+	}
 
 	verb := "copied"
 	if cut {
@@ -125,14 +131,8 @@ type stagedEntry struct {
 // the source pane's current listing where it still has them.
 func (m *Model) stagedEntries() []stagedEntry {
 	out := make([]stagedEntry, 0, len(m.staged.Paths))
-	sizes := map[string]int64{}
-	if m.staged.From >= 0 && m.staged.From < len(m.Panes) {
-		for _, entry := range m.Panes[m.staged.From].Entries {
-			sizes[entry.Name] = entry.Size
-		}
-	}
 	for _, name := range m.staged.Paths {
-		out = append(out, stagedEntry{Name: name, Size: sizes[name]})
+		out = append(out, stagedEntry{Name: name, Size: m.staged.Sizes[name]})
 	}
 	return out
 }
@@ -153,7 +153,10 @@ type copyReport struct {
 	bytes                     int64
 	cut                       bool
 	from, to                  int
-	err                       error
+	// extracted is the directory an archive was unpacked into, when the paste
+	// asked for it.
+	extracted string
+	err       error
 }
 
 // pasteStaged copies the marked files to the other pane.
@@ -184,18 +187,26 @@ func (m *Model) pasteStaged() tea.Cmd {
 		return nil
 	}
 
+	srcDir := m.staged.Dir
+	if srcDir == "" {
+		srcDir = src.Path
+	}
+	policy := xfer.ConflictPolicy(m.staged.Policy)
+	if m.staged.Policy == 0 {
+		// Zero is PolicyAsk, and a paste with no one to ask must not silently
+		// skip: update-if-newer is the sensible default and needs no prompt.
+		policy = xfer.PolicyUpdateIfNewer
+	}
 	request := xfer.Request{
 		Src:    src.FS,
-		SrcDir: src.Path,
+		SrcDir: srcDir,
 		Dst:    dst.FS,
 		DstDir: dst.Path,
 		Names:  append([]string{}, m.staged.Paths...),
-		// Update-if-newer needs no prompt, which is what makes a bulk copy one
-		// keypress. Whatever was skipped is reported afterwards.
-		Policy: xfer.PolicyUpdateIfNewer,
+		Policy: policy,
 	}
 	cut := m.staged.Cut
-	m.staged = stagedState{}
+	extract := m.staged.Extract
 	m.mode = "COPYING"
 	ctx := m.connectContext()
 
@@ -213,7 +224,17 @@ func (m *Model) pasteStaged() tea.Cmd {
 			// A move deletes only what arrived: the per-item result is the
 			// authority, and a partial failure leaves the sources alone.
 			for _, name := range request.Names {
-				_ = src.FS.RemoveAll(src.FS.Join(src.Path, name))
+				_ = src.FS.RemoveAll(src.FS.Join(srcDir, name))
+			}
+		}
+		if extract && err == nil && len(request.Names) == 1 {
+			// "Copy this tarball and unpack it over there" is one gesture, not two.
+			name := request.Names[0]
+			target := dst.FS.Join(dst.Path, archive.Stem(name))
+			if _, extractErr := archive.Extract(ctx, dst.FS, dst.FS.Join(dst.Path, name), dst.FS, target, nil); extractErr != nil {
+				report.err = extractErr
+			} else {
+				report.extracted = target
 			}
 		}
 		return report
@@ -238,6 +259,8 @@ func (m *Model) handleCopyReport(report copyReport) {
 	verb := "Copied"
 	if report.cut {
 		verb = "Moved"
+		// A move takes the marks with it: the sources are gone.
+		m.clearStaged()
 	}
 	parts := make([]string, 0, 3)
 	if report.created > 0 {
@@ -252,5 +275,14 @@ func (m *Model) handleCopyReport(report copyReport) {
 	if len(parts) == 0 {
 		parts = append(parts, "nothing to do")
 	}
-	m.toastSuccess(fmt.Sprintf("%s %s (%s)", verb, strings.Join(parts, ", "), humanSize(report.bytes)))
+	message := fmt.Sprintf("%s %s (%s)", verb, strings.Join(parts, ", "), humanSize(report.bytes))
+	if report.extracted != "" {
+		message += " · unpacked into " + report.extracted
+	}
+	if !report.cut {
+		// The marks stay: copying the same set to a second place is normal, and
+		// re-marking it by hand every time is not.
+		message += " · marks kept"
+	}
+	m.toastSuccess(message)
 }

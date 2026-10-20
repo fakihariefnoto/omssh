@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -347,5 +349,105 @@ func TestMarkingAccumulates(t *testing.T) {
 	press(t, m, run('y', 0, "y"))
 	if m.stagedCount() != 2 {
 		t.Errorf("y with two selected should mark both, got %v", m.staged.Paths)
+	}
+}
+
+// Advanced paste: choose the conflict rule, the mode, and whether an archive is
+// unpacked on arrival — one card, not three dialogs.
+func TestPasteOptionsExtractOnArrival(t *testing.T) {
+	m := newTestModel(t)
+	root := m.Pane().Path
+
+	// Build an archive to mark.
+	m.selectByName("assets")
+	if cmd := m.compressTargets("local:" + filepath.Join(root, "site.tar.gz")); cmd != nil {
+		cmd()
+	}
+	m.refresh()
+	m.clearSelection()
+	m.selectByName("site.tar.gz")
+	press(t, m, run('y', 0, "y"))
+	if m.stagedCount() != 1 {
+		t.Fatalf("expected the archive to be marked, got %v", m.staged.Paths)
+	}
+
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1] = Pane{Side: SideRemote, Host: "contabo", FS: destFS, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 1
+
+	press(t, m, run('A', 0, "A"))
+	if m.Overlay != OverlayPaste {
+		t.Fatalf("A should open the paste options, overlay is %v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Paste options", "update if newer", "after"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the options card should say %q:\n%s", want, out)
+		}
+	}
+
+	// Unpack on arrival, and paste.
+	press(t, m, run('e', 0, "e"))
+	if !m.staged.Extract {
+		t.Fatal("e should turn on unpacking")
+	}
+	cmd := m.handlePasteOptionsKey(keyNamed(tea.KeyEnter))
+	if cmd == nil {
+		t.Fatalf("Enter should paste: %v", m.toasts)
+	}
+	report, ok := cmd().(copyReport)
+	if !ok || report.err != nil {
+		t.Fatalf("paste failed: %+v", report)
+	}
+	if report.extracted == "" {
+		t.Fatalf("the archive should have been unpacked: %+v", report)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "site", "assets", "logo.svg")); err != nil {
+		t.Errorf("the extracted tree should be in the destination: %v", err)
+	}
+
+	// A copy keeps the marks; a move clears them.
+	if m.stagedCount() != 1 {
+		t.Error("a copy should leave the marks in place")
+	}
+}
+
+// Marks outlive navigation: marking in one folder and pasting into several places
+// is one gesture, so the source directory travels with the marks.
+func TestMarksSurviveNavigation(t *testing.T) {
+	m := newTestModel(t)
+	root := m.Pane().Path
+	m.selectByName("README.md")
+	press(t, m, run('y', 0, "y"))
+
+	// Walk somewhere else in the source pane.
+	m.navigate(filepath.Join(root, "assets"))
+	if m.stagedCount() != 1 {
+		t.Fatalf("navigating should not drop the marks, got %v", m.staged.Paths)
+	}
+
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1] = Pane{Side: SideRemote, Host: "contabo", FS: destFS, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 1
+
+	cmd := m.pasteStaged()
+	if cmd == nil {
+		t.Fatalf("paste should start: %v", m.toasts)
+	}
+	if report, ok := cmd().(copyReport); !ok || report.err != nil {
+		t.Fatalf("paste failed: %+v", report)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "README.md")); err != nil {
+		t.Errorf("the marked file should have travelled from its own directory: %v", err)
 	}
 }

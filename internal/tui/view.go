@@ -636,7 +636,7 @@ func (m *Model) renderStagedBar(l layout) string {
 		m.st.CardText.Render(verb+" → "+to)
 	// The keys are the point of the bar, so the destination gives way first: a
 	// truncated path still says where, a missing "p paste" says nothing.
-	keys := m.st.ActionHint.Render("p paste · s review · Esc cancel")
+	keys := m.st.ActionHint.Render("p paste · A options · s review · Esc cancel")
 	inner := max(20, l.Width-2) // the style's own padding takes two cells
 	if room := inner - lipgloss.Width(keys) - 1; lipgloss.Width(left) > room {
 		left = ansi.Truncate(left, max(4, room), "…")

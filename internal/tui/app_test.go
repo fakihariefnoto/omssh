@@ -423,8 +423,10 @@ func TestPasteCopiesBetweenPanes(t *testing.T) {
 	if !strings.Contains(string(body), "hello") {
 		t.Errorf("the copy holds %q", body)
 	}
-	if m.stagedCount() != 0 {
-		t.Error("pasting should clear the marks")
+	// A copy keeps the marks: pasting the same set into a second place is a
+	// normal thing to do. A move clears them, because the sources are gone.
+	if m.stagedCount() != 1 {
+		t.Error("a copy should keep the marks")
 	}
 }
 
@@ -1001,7 +1003,7 @@ func TestMarkedFilesShowTheirDestination(t *testing.T) {
 	press(t, m, run('y', 0, "y"))
 
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"1 item", "copy →", "p paste", "s review", "Esc cancel"} {
+	for _, want := range []string{"1 item", "copy →", "p paste", "A options", "s review", "Esc cancel"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the marked bar should say %q:\n%s", want, out)
 		}

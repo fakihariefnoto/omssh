@@ -43,6 +43,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderDeploy(l)
 	case OverlayPanes:
 		return m.renderPanesChooser(l)
+	case OverlayPaste:
+		return m.renderPasteOptions(l)
 	default:
 		return ""
 	}
