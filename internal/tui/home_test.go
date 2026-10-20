@@ -38,13 +38,13 @@ func TestHomeIsTheDefaultScreen(t *testing.T) {
 		t.Fatal("a first run should start on the launcher")
 	}
 	out := ansi.Strip(render(m))
-	for _, want := range []string{strings.TrimSpace(logo[0]), "Oh My SSH", "Browse local files", "Settings and theme", "Quit"} {
+	for _, want := range []string{strings.TrimSpace(logo[0]), "Oh My SSH", "Browse local files", "Settings, theme and keys", "Quit"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the launcher is missing %q:\n%s", want, out)
 		}
 	}
 	// Every entry carries a plain ASCII icon, good on any terminal.
-	for _, icon := range []string{"[~]", "[/]", "[?]", "[+]", "[x]"} {
+	for _, icon := range []string{"[~]", "[/]", "[+]", "[x]"} {
 		if !strings.Contains(out, icon) {
 			t.Errorf("the launcher is missing the %s icon:\n%s", icon, out)
 		}
@@ -105,7 +105,7 @@ func TestPlateAndMenuAreCentred(t *testing.T) {
 		// with a pointer, so the leading spaces differ on purpose; the icon column
 		// must not.
 		iconColumn := func(line string) int {
-			for _, icon := range []string{"[~]", "[/]", "[?]", "[+]", "[x]"} {
+			for _, icon := range []string{"[~]", "[/]", "[+]", "[x]"} {
 				if i := strings.Index(line, icon); i >= 0 {
 					return visibleWidth(line[:i])
 				}

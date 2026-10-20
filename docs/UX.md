@@ -120,8 +120,7 @@ ASCII icon, so it reads the same on any terminal before a theme is applied.
 
         ▸ [~] Browse local files        Enter
           [/] Go to a folder            Ctrl+L
-          [?] Keyboard and help         F1
-          [+] Settings and theme        Ctrl+,
+          [+] Settings, theme and keys  Ctrl+,
           [x] Quit                      Ctrl+Q
 
         ↑↓ choose · Enter open · Ctrl+K actions
@@ -380,10 +379,11 @@ undo (`Ctrl+Z` is unbound in v1). Instead:
 | `/` or `Ctrl+F` | Filter the listing |
 | `.` | Toggle hidden files |
 | `Alt+P` | Toggle preview |
-| `Tab` `Shift+Tab` | Switch pane |
+| `w` | Switch pane (the keys for `w` = window) |
+| `Tab` `Shift+Tab` | Next / previous host tab (the session strip follows) |
 | `o` | Reveal the selection in the other pane |
 | `1`…`9` | Switch to that session tab |
-| `[` `]` | Previous / next tab |
+| `[` `]` | Previous / next tab (aliases for Shift+Tab / Tab) |
 | `Ctrl+O` | Open a connection (host picker) |
 
 ### 7.2 File operations

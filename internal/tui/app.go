@@ -620,18 +620,27 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlaySettings:
 		options := m.settingsOptions()
+		// The last row is the keymap, which is why the range is one longer.
+		last := len(options)
 		switch msg.String() {
-		case "esc", "ctrl+,", "enter":
-			if msg.String() == "enter" && m.settings.cursor < len(options) {
+		case "esc", "ctrl+,":
+			m.Overlay = OverlayNone
+		case "enter":
+			if m.settings.cursor == last {
+				m.Overlay = OverlayHelp
+				m.help.input.Clear()
+				break
+			}
+			if m.settings.cursor < len(options) {
 				m.applyTheme(options[m.settings.cursor])
 			}
-			if msg.String() != "enter" {
-				m.Overlay = OverlayNone
-			}
+		case "?":
+			m.Overlay = OverlayHelp
+			m.help.input.Clear()
 		case "up", "k":
 			m.settings.cursor = max(0, m.settings.cursor-1)
 		case "down", "j":
-			m.settings.cursor = min(max(0, len(options)-1), m.settings.cursor+1)
+			m.settings.cursor = min(last, m.settings.cursor+1)
 		}
 		return true
 

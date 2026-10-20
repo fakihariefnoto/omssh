@@ -92,8 +92,9 @@ func (m *Model) homeItems() []homeItem {
 		homeItem{ID: "session.open", Icon: ">", Label: "SSH connections", Hint: "Ctrl+O"},
 		homeItem{ID: "app.files", Icon: "~", Label: "Browse local files", Hint: "Enter"},
 		homeItem{ID: "nav.path", Icon: "/", Label: "Go to a folder", Hint: "Ctrl+L"},
-		homeItem{ID: "app.help", Icon: "?", Label: "Keyboard and help", Hint: "?"},
-		homeItem{ID: "app.settings", Icon: "+", Label: "Settings and theme", Hint: "Ctrl+,"},
+		// Keys and help live inside settings: one card for "how do I change how
+		// this behaves", rather than two menu rows that each answer half of it.
+		homeItem{ID: "app.settings", Icon: "+", Label: "Settings, theme and keys", Hint: "Ctrl+,"},
 		homeItem{ID: "app.quit", Icon: "x", Label: "Quit", Hint: "Ctrl+Q"},
 	)
 }

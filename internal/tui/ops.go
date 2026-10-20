@@ -651,7 +651,15 @@ func (m *Model) applyListing(msg dirLoadedMsg) {
 	pane.Err = msg.err
 	if msg.err != nil {
 		pane.Entries = nil
+		if pane.Host != "" {
+			// A directory that cannot be read is the first honest sign that a
+			// connection is no longer what it was.
+			m.tabState(pane.Host, StateError)
+		}
 		return
+	}
+	if pane.Host != "" {
+		m.tabState(pane.Host, StateReady)
 	}
 	pane.Entries = msg.entries
 	if pane.pendingCursor != "" {

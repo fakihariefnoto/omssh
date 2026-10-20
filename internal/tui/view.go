@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/actions"
-	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/version"
 )
 
@@ -120,13 +119,14 @@ func (m *Model) renderTabs(l layout) string {
 			b.WriteString(" ")
 		}
 		if i == m.activeTab {
+			// The open session is always marked, so "where am I" is answered even
+			// while the keys are in a pane. When the strip itself has the focus the
+			// mark is bolder, because Enter will act on it.
+			mark := "▸"
 			if m.focusTabs {
-				// The strip has the focus: the chosen tab is marked outright, not
-				// just tinted, so it is obvious where Enter will land.
-				b.WriteString(m.st.Accent.Bold(true).Render("▸" + label))
-			} else {
-				b.WriteString(m.st.TabActive.Render(label))
+				mark = "▸▸"
 			}
+			b.WriteString(m.st.TabActive.Render(mark + " " + label))
 		} else {
 			b.WriteString(m.st.TabInactive.Render(label))
 		}
@@ -395,10 +395,17 @@ func (m *Model) renderSidebar(l layout) string {
 			// nesting one rendered string inside another splits its escapes (see
 			// the tab strip).
 			dot := m.stateDot(host.state)
-			name := truncate(host.alias, width-3)
+			label := host.alias
+			if len(m.tabs) > 1 {
+				// The same digit the tab strip shows, so the sidebar and the tabs
+				// are obviously two views of one list.
+				label = fmt.Sprintf("%d %s", host.number, host.alias)
+			}
+			name := truncate(label, width-3)
 			style := m.st.SidebarItem
 			if host.active {
 				style = m.st.SidebarItemActive
+				name = "▸ " + truncate(label, width-5)
 			}
 			rows = append(rows, dot+" "+style.Render(name))
 		}
@@ -444,47 +451,37 @@ type liveHost struct {
 	alias  string
 	state  ConnState
 	active bool
+	// number is the digit that switches to this session, shown only when there is
+	// more than one tab to tell apart.
+	number int
 }
 
-// liveSessions is the sidebar's host list: the sessions this interface is
-// holding, newest first, with the one the focused pane is showing marked.
+// liveSessions is the sidebar's host list. It is built from the tabs, not from
+// the connection manager: the tabs are what the interface is actually holding,
+// so closing one removes its row immediately and a host can never appear twice.
+// The manager keeps connections for reuse; that is not the same question.
 func (m *Model) liveSessions() []liveHost {
-	if m.sessions == nil {
-		return nil
+	live := make([]liveHost, 0, len(m.tabs))
+	// The highlighted row is the open session, not the focused pane: moving the
+	// keys to the local pane is not the same act as leaving the host.
+	activeHost := ""
+	if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
+		activeHost = m.tabs[m.activeTab].Host
 	}
-	live := make([]liveHost, 0, m.sessions.Len())
-	focusedHost := ""
-	if m.Focused < len(m.Panes) {
-		focusedHost = m.Panes[m.Focused].Host
-	}
-	for _, s := range m.sessions.Sessions() {
+	seen := map[string]bool{}
+	for i, tab := range m.tabs {
+		if tab.Host == "" || seen[tab.Host] {
+			continue
+		}
+		seen[tab.Host] = true
 		live = append(live, liveHost{
-			alias:  s.Target.Alias,
-			state:  connStateFor(s.State),
-			active: s.Target.Alias == focusedHost,
+			alias:  tab.Host,
+			state:  tab.State,
+			active: tab.Host == activeHost,
+			number: i + 1,
 		})
 	}
-	// Newest first reads better in a short list.
-	for i, j := 0, len(live)-1; i < j; i, j = i+1, j-1 {
-		live[i], live[j] = live[j], live[i]
-	}
 	return live
-}
-
-// connStateFor maps a session's state onto the tab dot's vocabulary.
-func connStateFor(state session.State) ConnState {
-	switch state {
-	case session.StateConnecting:
-		return StateConnecting
-	case session.StateReady:
-		return StateReady
-	case session.StateBusy:
-		return StateBusy
-	case session.StateError:
-		return StateError
-	default:
-		return StateIdle
-	}
 }
 
 // renderActionBar is the interface's main teaching surface: the verbs that apply

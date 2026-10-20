@@ -67,7 +67,8 @@ func TestApplicationBindings(t *testing.T) {
 		"ctrl+a": "sel.all",
 		"ctrl+e": "archive.extract",
 		"ctrl+g": "archive.compress",
-		"tab":    "nav.switch-pane",
+		"tab":    "session.tab-next",
+		"w":      "nav.switch-pane",
 		"space":  "sel.toggle",
 	}
 	for key, want := range cases {

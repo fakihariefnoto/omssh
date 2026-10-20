@@ -252,11 +252,11 @@ func (m *Model) button(active bool, label string) string {
 
 // renderSettings draws the small settings card.
 func (m *Model) renderSettings(l layout) string {
-	width := cardWidth(l, 40, 60)
+	width := cardWidth(l, 44, 64)
 	content := cardContent(width)
 	options := m.settingsOptions()
 
-	lines := []string{m.st.CardTitle.Render("Settings"), "", m.st.CardMuted.Render("Theme")}
+	lines := []string{m.st.CardTitle.Render("Settings and theme"), "", m.st.CardMuted.Render("Theme")}
 	for i, name := range options {
 		mark := " "
 		if name == m.themeName {
@@ -272,7 +272,19 @@ func (m *Model) renderSettings(l layout) string {
 	lines = append(lines, "",
 		m.st.CardMuted.Render("Icons: "+m.cfg.UI.Icons+"   Motion: "+m.cfg.UI.Motion),
 		"",
-		m.st.CardMuted.Render("↑↓ choose · Enter apply · Ctrl+, close"),
+	)
+
+	// The keys live here too: "how does this behave" and "what can I press" are
+	// the same question asked at different moments.
+	helpRow := m.listRow("Keyboard and help", "?", content)
+	if m.settings.cursor == len(options) {
+		lines = append(lines, m.st.PaletteItemActive.Render(helpRow))
+	} else {
+		lines = append(lines, m.st.PaletteItem.Render(helpRow))
+	}
+	lines = append(lines,
+		"",
+		m.st.CardMuted.Render("↑↓ choose · Enter apply · ? opens the keymap · Ctrl+, close"),
 	)
 	return m.card(width, lines)
 }

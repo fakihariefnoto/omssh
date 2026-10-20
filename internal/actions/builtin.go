@@ -68,9 +68,9 @@ func standardPreset() []Action {
 			Desc: "Show or hide dotfiles and ignored directories", Enabled: f(always)},
 		{ID: "nav.preview", Label: "Toggle preview", Category: CatNavigation, Default: "alt+p",
 			Desc: "Show or hide the preview pane", Enabled: f(always)},
-		{ID: "nav.switch-pane", Label: "Switch pane", Category: CatNavigation, Default: "tab",
+		{ID: "nav.switch-pane", Label: "Switch pane", Category: CatNavigation, Default: "w",
 			Desc: "Move focus to the other pane", Enabled: f(always)},
-		{ID: "nav.switch-pane-prev", Label: "Switch pane (back)", Category: CatNavigation, Default: "shift+tab",
+		{ID: "nav.switch-pane-prev", Label: "Switch pane (back)", Category: CatNavigation,
 			Desc: "Move focus to the previous pane", Enabled: f(always)},
 		{ID: "nav.reveal", Label: "Reveal in other pane", Category: CatNavigation, Default: "o",
 			Desc: "Open the cursor in the other pane", Enabled: f(func(ctx Context) bool { return ctx.Panes > 1 })},
@@ -171,9 +171,9 @@ func standardPreset() []Action {
 			Enabled: func(Context) bool {
 				return true
 			}},
-		{ID: "session.tab-prev", Label: "Previous tab", Category: CatSession, Default: "[", Keys: []string{"ctrl+pgup"},
+		{ID: "session.tab-prev", Label: "Previous tab", Category: CatSession, Default: "shift+tab", Keys: []string{"[", "ctrl+pgup"},
 			Desc: "Move to the previous session tab", Enabled: func(Context) bool { return true }},
-		{ID: "session.tab-next", Label: "Next tab", Category: CatSession, Default: "]", Keys: []string{"ctrl+pgdown"},
+		{ID: "session.tab-next", Label: "Next tab", Category: CatSession, Default: "tab", Keys: []string{"]", "ctrl+pgdown"},
 			Desc: "Move to the next session tab", Enabled: func(Context) bool { return true }},
 		{ID: "terminal.new", Label: "Terminal", Category: CatSession, Default: "T",
 			Desc:    "Open a full SSH shell on this host, and come back when you exit it",
