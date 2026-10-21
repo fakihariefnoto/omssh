@@ -36,8 +36,8 @@ func candidates(goos string) []command {
 			{read: []string{"xsel", "-b", "-o"}, write: []string{"xsel", "-b", "-i"}},
 		}
 	default:
-		// Windows is not a shipped target yet (see docs/ROADMAP.md M7). When it
-		// is, this becomes the console clipboard API rather than an external tool.
+		// Windows is not a shipped target yet. When it is, this becomes the console
+		// clipboard API rather than an external tool.
 		return nil
 	}
 }

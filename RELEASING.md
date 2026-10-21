@@ -101,8 +101,7 @@ fine-grained and scoped to the single tap repository.
 | checksums | `checksums.txt` per release |
 
 Windows is not built. The terminal handling and the credential path have never
-been exercised there, so it is not advertised rather than shipped untested (see
-`docs/ROADMAP.md` M7).
+been exercised there, so it is not advertised rather than shipped untested.
 
 Archives deliberately have no wrapping directory: the formula does
 `bin.install "omssh"` and expects the binary at the archive root, matching the

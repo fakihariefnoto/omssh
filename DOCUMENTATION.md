@@ -1,0 +1,487 @@
+# omssh documentation
+
+Everything you need to use `omssh`: the screens, every key, the command line and
+the configuration file.
+
+If you are looking for installation, see the [README](README.md).
+
+- [Getting started](#getting-started)
+- [The launcher](#the-launcher)
+- [The dashboard](#the-dashboard)
+- [Moving around](#moving-around)
+- [Selecting and marking](#selecting-and-marking)
+- [Copying and moving](#copying-and-moving)
+- [Archives](#archives)
+- [Editing, permissions and links](#editing-permissions-and-links)
+- [Transfers](#transfers)
+- [Connections](#connections)
+- [Terminal](#terminal)
+- [Deploy](#deploy)
+- [Command line](#command-line)
+- [Configuration](#configuration)
+- [Themes and icons](#themes-and-icons)
+- [Troubleshooting](#troubleshooting)
+- [Keymap reference](#keymap-reference)
+
+---
+
+## Getting started
+
+```sh
+omssh            # the launcher
+omssh prod       # the interface, connected to prod on startup
+```
+
+`omssh` starts on a launcher, not in a menu-less void. From there:
+
+- **SSH connections** (`Ctrl+O`) — the hosts in `~/.ssh/config`.
+- **Browse local files** (`Esc` or `Enter`) — the file manager at the directory
+  you started in.
+- **Settings, theme and keys** (`Ctrl+,`) — themes, icons, motion, and the keymap.
+
+Nothing is modal. You can open the palette (`Ctrl+K`), the keymap (`?`), or the
+connections screen from anywhere, and `Esc` always takes you one step back.
+
+## The launcher
+
+```
+    OMSHH
+    Oh My SSH — SSH/SFTP with terminal UI
+
+ ▸ [>] SSH connections           Ctrl+O
+   [~] Browse local files        Enter
+   [/] Go to a folder            Ctrl+L
+   [+] Settings, theme and keys  Ctrl+,
+   [x] Quit                      Ctrl+Q
+```
+
+`↑↓` chooses, `Enter` opens, `Esc` goes straight to the files. Connected hosts
+appear above the menu, so returning to the launcher also offers the way back to
+where you were.
+
+## The dashboard
+
+Each connection lives in a pane. One or two panes sit side by side; three or four
+lay out 2×2 on terminals at least 140 columns wide.
+
+```
+sessions  │  1 localhost  │  ● 2 contabo  │  ● ▸ 3 ovh
+┌──────────────────────────┐ ┌──────────────────────────────────┐
+│LOCAL  /Users/me/project  │ │contabo  /srv/app                 │
+│  ▸ cmd                   │ │  - index.html                    │
+└──────────────────────────┘ └──────────────────────────────────┘
+┌──────────────────────────┐ ┌──────────────────────────────────┐
+│▌ovh  /home/deploy        │ │empty  no session                 │
+│  ▸ logs                  │ │V chooses the panes               │
+└──────────────────────────┘ └──────────────────────────────────┘
+```
+
+- **`w`** moves the focus between panes. The tab strip's highlight follows it, so
+  you can see which of the four you are typing into.
+- **`Tab` / `Shift+Tab`** switch sessions. **`1`…`9`** jump straight to one.
+- **`V`** chooses which sessions are on screen. When you have more sessions than
+  panes, the chooser opens on entering the dashboard and asks once.
+- Each pane keeps its own path, selection and history. Switching panes never
+  disturbs the other one.
+
+The **sidebar** (left, hidden below 140 columns) shows:
+
+| Section | Meaning |
+| --- | --- |
+| HOSTS | Live sessions, numbered like the tabs, `▸` on the open one |
+| TRANSFERS | Running copies, with a bar, percentage and current file |
+| MARKED | What is marked, its destination and size |
+| BOOKMARKS | Placeholder for saved folders |
+| THEME | The active theme |
+
+## Moving around
+
+These keys work in whichever pane has the focus.
+
+| Key | Action |
+| --- | --- |
+| `j` `k` / `↓` `↑` | Move the cursor |
+| `h` / `←` / `Backspace` | Parent directory |
+| `l` / `→` / `Enter` | Open a folder, or view a file |
+| `PgUp` `PgDn` | Page |
+| `g g` / `Home` | First entry |
+| `G` / `End` | Last entry |
+| `~` | Home of this pane (yours locally, the session's remotely) |
+| `-` | Back to the previous directory |
+| `Alt+←` / `Alt+→` | History back and forward |
+| `Ctrl+L` | Go to a path (`~` is home, names are relative) |
+| `Ctrl+P` | Jump to a path, with suggestions |
+| `Alt+F` | Find part of a name below the cursor |
+| `/` / `Ctrl+F` | Filter this listing as you type; `Esc` clears |
+| `.` | Show hidden files |
+| `Alt+P` | Preview on the right of the focused pane |
+| `o` | Reveal the cursor entry in the next pane |
+| `Alt+C` | Compare the two panes (counts: only here, only there, both) |
+| `Y` | Sync browse: the next pane follows the same path |
+| `Ctrl+R` | Refresh |
+
+Typed paths are forgiving: `~` means the pane's home, `~/Documents` is inside it,
+and a bare name is relative to where the pane is. A path that is not a folder says
+so and leaves the pane where it was.
+
+## Selecting and marking
+
+There are two different things, and both are useful:
+
+- **Selecting** (`Space`, `Shift+↑/↓`, `Ctrl+A`, `Alt+A`) builds a set inside the
+  pane, shown with a `*` marker. Actions that take several files use it.
+- **Marking** (`y`, `x`) builds the copy set, which survives moving around and is
+  what the paste uses.
+
+Marking is cumulative: mark a file, walk to the next, mark that too. With files
+selected, one `y` marks all of them. `y` on a file that is already marked takes
+the mark back; `y` then `x` on the same file turns it into a move.
+
+Marked files appear twice — names and sizes in the sidebar, count, destination
+and keys in the bar under the panes:
+
+```
+▸ 3 items · 12.4 MB copy → contabo  /var/www    p paste · A options · s review · Esc cancel
+```
+
+`Esc` cancels the marked set. `s` reviews it (what, where, the conflict rule).
+
+## Copying and moving
+
+`p` pastes the marked files into the **focused** pane. If you marked and pasted
+without moving, it uses the next pane instead.
+
+| Key | Action |
+| --- | --- |
+| `y` / `Ctrl+C` | Mark for copy |
+| `x` / `Ctrl+X` | Mark for move |
+| `p` / `Ctrl+V` | Paste into the focused pane |
+| `A` | Paste options |
+| `C` / `M` | Copy to… / Move to…, choosing any folder on either side |
+| `o` | Reveal the cursor entry in the next pane |
+
+`C` and `M` accept a side: `local:/path` or `remote:/path`. Without a side the
+current pane's filesystem is assumed.
+
+### Paste options
+
+`A` opens one card with the three decisions that matter:
+
+```
+Paste options
+3 items · copy → contabo  /var/www
+
+m  mode       copy
+u  conflicts  [x] update if newer
+o             [ ] overwrite
+s             [ ] keep what is there
+
+n  after      [x] the files themselves
+e             [ ] unpacked into site/
+c             [ ] packed into assets.tar.gz
+Enter pastes · Esc cancels
+```
+
+- **mode** — copy or move, without re-marking.
+- **conflicts** — what happens when the destination already has the file:
+  update if newer (default), overwrite, or keep what is there.
+- **after** — the shape of the result:
+  - *the files themselves* — an ordinary copy;
+  - *unpacked into site/* — one marked archive arrives already extracted, into a
+    folder named after it;
+  - *packed into assets.tar.gz* — the destination gets one archive instead of the
+    loose files. Nothing is copied and then compressed: the archive is written
+    straight from the source.
+
+A move deletes the sources only after they arrive, and clears the marks. A copy
+keeps them, so the same set can go to a second place.
+
+## Archives
+
+Supported: `.zip`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`.
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+E` | Extract… — asks `local:/path` or `remote:/path`, defaulting to the next pane |
+| `Ctrl+G` | Compress the selection… — the format follows the name you type |
+| `v` on an archive | List its contents, with sizes |
+
+Extraction writes into a folder named after the archive's stem (`site.tar.gz` →
+`site/`). Members that would escape the destination are refused before anything is
+written, and a symlink whose target leaves the archive is refused too. Entries
+that cannot be created (devices, fifos) are skipped.
+
+Zip needs random access, so a remote zip is spooled to a temporary local file
+first — one extra copy in exchange for working over SFTP at all.
+
+## Editing, permissions and links
+
+| Key | Action |
+| --- | --- |
+| `e` | Edit in `$EDITOR` |
+| `P` | Change permissions (octal, e.g. `644`) |
+| `L` | Create a symlink to the cursor entry |
+| `n` | New file |
+| `N` | New folder |
+| `r` | Rename |
+| `d` | Delete (always asks; there is no trash and no undo) |
+| `m` | Context menu: every file action |
+| `v` | View: preview pane, or an archive's contents |
+
+**Remote editing** fetches the file to a temporary path that keeps its name (so
+your editor's syntax highlighting still works), runs the editor, and writes it
+back. Files over 16 MB are refused with their size, because "download it, hold it
+in RAM, upload it" is not a favour.
+
+## Transfers
+
+Every copy, move, extraction and archive write registers a transfer:
+
+```
+TRANSFERS
+copy → contabo
+██████░░  75%
+assets/logo.svg
+```
+
+Reports arrive per item, and every 100 ms inside a large file. A finished job
+stays visible for ten seconds saying `done`. The first running job also appears in
+the status bar (`copy → contabo 30%`), so it is never invisible on a narrow
+terminal. Transfers run off the update loop; the interface keeps answering.
+
+## Connections
+
+`Ctrl+O` lists the hosts in `~/.ssh/config`. Nothing is copied into another file.
+
+| Key | Action |
+| --- | --- |
+| `Enter` | Browse the host (SFTP) |
+| `t` | Open a full terminal on it |
+| `f` | Pin/unpin — `★`, pinned hosts sort first |
+| `x` | Hide this host |
+| `H` | Show everything, including hidden and code hosts |
+| `Q` | Disconnect, keeping the tab |
+| `e` | Edit the host block |
+| `a` | Add a host |
+| `d` | Delete the host block (asks) |
+| `r` | Reload the file |
+| `o` | Open the file in `$EDITOR` |
+| `/` | Filter |
+
+**Ordering** is favourites first, then recently used hosts (newest first, ten
+remembered), then the rest in file order. Favourites, hidden hosts and recents are
+saved to your config.
+
+**Code hosts** — `github.com`, `gitlab.com`, `bitbucket.org`, `codeberg.org`,
+`git.sr.ht`, `ssh.dev.azure.com`, or any entry whose user is `git` — are hidden
+by default. They are in the file for `git push`, not for logging in. `H` shows
+them.
+
+**Authentication** uses your agent and keys, then stored passwords (OS keyring),
+then asks. A host key that has never been seen is a decision: `Remember`, `Once`
+or `Refuse`, with the fingerprint shown. A **changed** key is never a prompt — it
+is a hard stop, because that is what a changed key means.
+
+## Terminal
+
+`t` on the connections list, or `T` in a file pane, hands the terminal to `ssh -t
+<alias>`. It is the real thing: vim, top, tmux, colours and modes work because
+nothing stands in their way. When you exit, the interface takes the terminal back
+and refreshes the panes.
+
+The alias is passed as-is, so ports, keys, users and jump hosts come from
+`~/.ssh/config` rather than from a second, drifting implementation.
+
+## Deploy
+
+A deploy is a copy with an opinion: this local tree goes to that remote root.
+
+```yaml
+deploy:
+  profiles:
+    site:
+      host: contabo
+      local_root: ~/Projects/site
+      remote_root: /var/www/site
+      mode: sync            # sync (mirror) | update (overlay)
+      exclude:
+        - node_modules
+        - "*.log"
+        - .env
+      include_hidden: false
+```
+
+`Alt+D` lists profiles, `Enter` diffs the local tree against the remote one and
+shows what would happen:
+
+```
+Deploy site
+2 create · 1 update · 1 delete · 12.4 MB
++ index.html
++ css/site.css
+~ about.html
+- stale.html
+Enter deploys · Esc back
+```
+
+`Enter` on the plan writes it. In `sync` mode, files the local tree does not have
+are removed; an exclusion protects in both directions. A deploy with nothing
+changed does nothing, which is what makes it safe to press twice. Every file is
+re-checked at apply time rather than trusting the plan.
+
+## Command line
+
+```sh
+omssh                            # the interface, in this directory
+omssh <host>                     # the interface, connected on startup
+omssh exec <host> -- <command>   # one command, its exit status
+omssh keys                       # the effective keymap
+omssh config path                # where the config lives
+omssh config init                # write a commented example
+omssh config check               # validate it, with line numbers
+omssh version
+```
+
+`exec` wires stdin, stdout and stderr; `--tty` allocates a terminal on the remote
+side for commands that want one. It exits with the remote command's status, so it
+composes in a script. An unknown host key prints its fingerprint and asks before
+trusting it; passwords are read with echo off.
+
+## Configuration
+
+`$XDG_CONFIG_HOME/omssh/config.yaml`, or `--config <path>`. Unknown keys are an
+error, not a shrug.
+
+```yaml
+version: 1
+
+ui:
+  theme: amber          # amber | midnight | dawn | mist | ember | mono | contrast | auto
+  icons: unicode        # unicode | ascii | nerd
+  motion: full          # full | reduced
+  sidebar: true
+  preview: true
+  show_hidden: false
+  start: home           # home | files
+  width_margin: 0       # see Troubleshooting
+
+connections:
+  favorites: []         # pinned hosts, in order
+  hidden: []            # hosts left out of the list
+  recent: []            # filled in as you connect
+
+transfers:
+  workers: 4
+
+deploy:
+  profiles: {}
+```
+
+`omssh config init` writes this with comments.
+
+## Themes and icons
+
+`Ctrl+,` opens settings: the theme list, the current icons and motion, and the
+keymap. Themes adapt to light and dark terminals; `auto` follows the terminal's
+background on demand (`Ctrl+K` → *Follow terminal background*).
+
+Icons come in three sets: `unicode` (default, good on any font), `ascii`, and
+`nerd` (Nerd Font required — shows `?` without one). Nothing in the interface
+depends on a Nerd Font.
+
+## Troubleshooting
+
+**The layout shifts while typing, or a line looks wrapped.** Some terminals draw
+"ambiguous width" characters one cell wider than omssh counts them. Run
+`omssh --width-margin 2`, or set `ui.width_margin: 2`. The frame is otherwise
+always exactly the terminal's size.
+
+**`Ctrl+K`/`Ctrl+C` do nothing on macOS.** Use **Control**, not Command. ⌘K is
+"Clear to Start" in Terminal and iTerm2, and ⌘C is Copy; the terminal consumes
+both and the app never sees them.
+
+**Icons show `?`.** Your font is not a Nerd Font. Keep `icons: unicode` (the
+default) or set `ascii`.
+
+**A host key changed.** omssh refuses instead of asking. Check whether the server
+was reinstalled or rebuilt; if so, remove the old entry from `~/.ssh/known_hosts`
+and reconnect.
+
+**Passwords are asked every time.** There is no keyring available, or the stored
+password was refused and has been forgotten. `omssh` never prompts for a keyring
+at startup; it uses one if the OS provides it.
+
+**`~` in a path.** Inside the interface `~` always means the pane's home — yours
+locally, the session's remotely. In a deploy profile, `local_root` may use `~`,
+but `remote_root` must be absolute, because `~` over SFTP would resolve to
+something the interface cannot see.
+
+**A transfer seems to do nothing.** Watch the status bar or the sidebar's
+TRANSFERS section; a small copy finishes in milliseconds and stays as `done` for
+ten seconds. `Alt+J` reports the running job.
+
+## Keymap reference
+
+The full list is always available in the app with `?`, and on the command line
+with `omssh keys`. The grammar is small:
+
+- **plain letters** are commands;
+- **digits** switch session tabs;
+- **`Ctrl`+letter** opens a dialog or does an application action;
+- **`Alt`+letter** toggles a view;
+- **`Esc`** goes back one level — it never quits.
+
+### Files
+
+| Key | Action |
+| --- | --- |
+| `j` `k` / `↓` `↑` | Move |
+| `h` `l` | Parent / open |
+| `Space` | Select and advance |
+| `Shift+↑` `Shift+↓` | Extend selection |
+| `Ctrl+A` / `Alt+A` | Select all / invert |
+| `y` / `x` | Mark for copy / move |
+| `p` | Paste into the focused pane |
+| `A` | Paste options |
+| `C` / `M` | Copy to… / Move to… |
+| `v` / `e` | View / edit |
+| `r` / `d` | Rename / delete |
+| `n` / `N` | New file / folder |
+| `P` / `L` | Permissions / symlink |
+| `Ctrl+E` / `Ctrl+G` | Extract / compress |
+| `m` | Context menu |
+| `s` | Review marked files |
+| `.` | Hidden files |
+| `Alt+P` | Preview |
+| `Alt+C` | Compare panes |
+| `Y` | Sync browse |
+| `w` | Switch pane |
+| `o` | Reveal in next pane |
+| `V` | Choose panes |
+
+### Sessions
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+O` | Connections |
+| `Tab` / `Shift+Tab` | Next / previous session |
+| `1`…`9` | Jump to a session |
+| `[` / `]` | Previous / next session |
+| `w` | Switch pane |
+| `T` | Terminal on this host |
+| `Q` | Disconnect, keeping the tab |
+| `Ctrl+W` | Close the tab |
+| `Esc` | Tab strip (with several tabs), then the launcher |
+
+### Application
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+K` | Command palette — every action, searchable |
+| `?` / `F1` | Keymap and help |
+| `Ctrl+,` | Settings, theme and keys |
+| `Ctrl+Q` | Quit |
+| `Alt+B` | Sidebar |
+| `Alt+J` | Running transfers |
+| `Alt+D` | Deploy |
+| `Esc` | Back |

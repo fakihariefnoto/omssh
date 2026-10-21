@@ -1,94 +1,129 @@
 # omssh
 
-**Oh My SSH** — a modern SSH/SFTP client for the terminal. Built in Go with
-[Bubble Tea v2](https://github.com/charmbracelet/bubbletea) and
-[Lip Gloss v2](https://github.com/charmbracelet/lipgloss).
+**Oh My SSH** — a modern SSH and SFTP client for the terminal.
 
-`omssh` is a single binary that manages many SSH/SFTP connections at once and
-makes moving files between local and remote machines pleasant:
+Many machines, one window. `omssh` puts up to four hosts on screen as a 2×2
+grid, moves files between any two of them — local to remote, remote to remote,
+folder into archive, archive into folder — and keeps the whole thing one key
+away from a shell.
 
-- **Dual-pane file manager** built around a first-class directory-walking
-  experience: type-ahead navigation, incremental filter, recursive find,
-  bookmarks, clickable breadcrumbs, preview pane, and standard multi-select.
-- **Discoverable by design** — a contextual action bar, a command palette and a
-  context menu over one action registry, plus the shortcuts you already know
-  (`Ctrl+C`/`Ctrl+V`, `F2`–`F8`, `Alt+←/→`, `Ctrl+Z`). No manual required.
-- **Safe** — bulk and destructive operations confirm with the facts before
-  starting, and root-ish targets need the path typed out.
-- **Transfers that behave** — queue, parallel workers, pause/resume, retry,
-  conflict policies, server-side copy when both ends are the same host.
-- **Archives both directions** — extract an archive that lives on the remote
-  into a local directory, extract a local archive onto the remote, or
-  compress a selection into an archive on either side. Streamed, never
-  shelling out to `tar`/`unzip`.
-- **Deploy profiles** — rsync-like sync of a local tree to a remote target
-  with excludes, dry-run preview, pre/post hooks, and a run history.
-- **Interactive terminal tabs** — real PTY sessions with a built-in VT
-  emulator, scrollback, resize and clipboard.
-- **Manage `~/.ssh/config` in place** — list, add, edit and delete hosts from a
-  screen (`Ctrl+O`), including filtering and "open in `$EDITOR`". Writes are
-  surgical: comments and directives omssh does not manage survive untouched.
-  (Authenticating and connecting arrives with the SSH layer — see the roadmap.)
-- **Many hosts at once** — tabbed sessions, a connection pool with keepalive
-  and reconnect, shared with `~/.ssh/config`.
-- **Modern UI** — contextual action bar, command palette that shows every
-  shortcut, themes with light/dark adaptation, honest degradation to 256/16
-  colours, Nerd Font icons with ASCII fallback, full mouse support, and a
-  `contrast` theme plus reduced-motion mode.
+<p align="center">
+  <img src="omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
+</p>
 
-> Status: **M0 shipped** (`v0.1.0`) — the interface shell, action registry,
-> keymap, theme engine and strict config are in place. Files are browsable in
-> the local pane; connections arrive next. See
-> [`docs/ROADMAP.md`](docs/ROADMAP.md).
+## What it does
 
-## Documentation
+- **Four panes, one screen.** Local plus three hosts, or four hosts, each with
+  its own path, selection and history. `w` moves between them; `V` chooses
+  which sessions are on screen.
+- **Copying that respects you.** Mark files once, paste into any pane. Copy as
+  files, as an unpacked tree, or as an archive — with the conflict rule chosen
+  in one card instead of a soup of flags.
+- **Archive handling on both sides.** Extract a tarball that lives on the server
+  into a local folder; pack a local selection straight onto the server. No
+  `tar`/`unzip` on either end.
+- **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
+  diff, and a sync mode that mirrors. A second run with nothing changed does
+  nothing.
+- **A real terminal.** `t` hands the terminal to `ssh` for that host — vim, top,
+  tmux and colours work because nothing stands in their way.
+- **Honest about state.** Live transfers, marked files, pinned hosts and recent
+  connections are visible in the sidebar; every destructive action asks first.
+- **Keyboard-first, mouse-friendly.** Plain letters are commands, digits switch
+  sessions, `Ctrl+K` finds any action, and `Esc` always goes back — it never
+  quits.
 
-| Document | Contents |
-| --- | --- |
-| [`docs/PLAN.md`](docs/PLAN.md) | Product plan: goals, features, non-goals, risks, open questions |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Packages, the unified filesystem abstraction, concurrency, security |
-| [`docs/UX.md`](docs/UX.md) | Screen layouts, keybindings, themes, folder-walking UX |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Milestones with deliverables and acceptance criteria |
-| [`RELEASING.md`](RELEASING.md) | How a release is cut: tags, Homebrew tap, credentials |
-| [`docs/adr/`](docs/adr) | Architecture decision records |
+<p align="center">
+  <img src="omssh.png" alt="omssh launcher" width="70%">
+</p>
 
-## Building and running
-
-```sh
-make run              # build and launch the interface
-make build            # -> ./omssh
-make check            # gofmt, vet, golangci-lint, tests with -race
-make help             # every target
-```
-
-Requires Go 1.26+ (the Charm v2 stack needs it).
-
-Install a release:
+## Install
 
 ```sh
 brew tap fakihariefnoto/tap && brew install fakihariefnoto/tap/omssh
+```
+
+or
+
+```sh
 go install github.com/fakihariefnoto/omssh/cmd/omssh@latest
 ```
 
-Ships for macOS and Linux, amd64 and arm64. Windows is planned, not claimed:
-the terminal and credential paths have not been exercised there yet.
+Prebuilt archives for macOS and Linux (amd64 and arm64) are on the
+[releases page](https://github.com/fakihariefnoto/omssh/releases).
+
+From source: Go 1.26 or newer.
 
 ```sh
-omssh                 # the interface, in your current directory
-omssh prod            # the interface, connected to prod on startup
-omssh exec prod -- systemctl status api   # one command, its exit status
-omssh keys            # print the effective keymap, including anything dropped
-omssh config path     # where the configuration lives
-omssh config init     # write a commented example config
+git clone https://github.com/fakihariefnoto/omssh
+cd omssh
+make run
+```
+
+## First five minutes
+
+```sh
+omssh              # the launcher
+omssh prod         # the interface, already connected to prod
+```
+
+1. `Ctrl+O` lists the hosts in your `~/.ssh/config` — `Enter` browses one, `t`
+   opens a terminal on it.
+2. Each connection gets a pane. Open a second and a third; at four they lay out
+   2×2. `w` moves the focus, `Tab` cycles sessions.
+3. Mark a file with `y`, move to another pane, press `p`. `A` opens the paste
+   options if you want it unpacked or packed instead.
+4. `Ctrl+E` extracts an archive into either side, `Ctrl+G` compresses the
+   selection, `Alt+D` deploys a profile from your config.
+5. `Ctrl+K` finds every action; `?` shows the keymap; `Ctrl+Q` quits.
+
+The full guide — every key, every screen, configuration — is in
+**[DOCUMENTATION.md](DOCUMENTATION.md)**.
+
+## Configuration
+
+Config lives at `$XDG_CONFIG_HOME/omssh/config.yaml`. Start from the commented
+example:
+
+```sh
+omssh config init     # write it
 omssh config check    # validate it, with line numbers
+omssh config path     # where it is
+```
+
+Connections are not duplicated here: `omssh` reads and writes your
+`~/.ssh/config` in place, leaving comments and directives it does not manage
+untouched. The config file holds preferences — theme, keymap overrides,
+transfer behaviour, deploy profiles, pinned and hidden hosts.
+
+## Command line
+
+```sh
+omssh                            # the interface
+omssh <host>                     # the interface, connected on startup
+omssh exec <host> -- <command>   # one command, its exit status
+omssh keys                       # the effective keymap
+omssh config path|init|check
 omssh version
 ```
 
-`omssh` opens on a launcher: pick "Browse local files", or press `Esc` to skip
-straight into the file manager. While it is running, `Ctrl+K` finds every action,
-`F1` shows the keymap, `F9` opens the context menu for the selection, `Ctrl+Q`
-quits, and `Esc` goes back — never quits.
+`exec` allocates no terminal unless you ask with `--tty`, and answers what a
+connection asks: it prints an unknown host key's fingerprint before trusting it,
+and reads passwords without echoing.
+
+## Development
+
+```sh
+make run              # build and launch
+make build            # -> ./omssh
+make check            # gofmt, vet, golangci-lint, tests with -race
+make snapshot         # release archives, locally
+make help             # every target
+```
+
+Ships for macOS and Linux. Windows is not claimed: the terminal and credential
+paths have not been exercised there.
 
 ## Licence
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — see [LICENSE](LICENSE).
