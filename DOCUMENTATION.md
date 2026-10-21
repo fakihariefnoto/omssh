@@ -349,8 +349,10 @@ trusting it; passwords are read with echo off.
 
 ## Configuration
 
-`$XDG_CONFIG_HOME/omssh/config.yaml`, or `--config <path>`. Unknown keys are an
-error, not a shrug.
+`~/.config/omssh/config.yaml` — or `$XDG_CONFIG_HOME/omssh/config.yaml` when that
+variable is set. The same location is used on macOS and Linux, so one config
+works on both; `omssh config path` prints it. `--config <path>` overrides it.
+Unknown keys are an error, not a shrug.
 
 ```yaml
 version: 1

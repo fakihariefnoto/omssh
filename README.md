@@ -8,7 +8,7 @@ folder into archive, archive into folder — and keeps the whole thing one key
 away from a shell.
 
 <p align="center">
-  <img src="omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
+  <img src="omssh.png" alt="omssh launcher" width="70%">
 </p>
 
 ## What it does
@@ -34,7 +34,7 @@ away from a shell.
   quits.
 
 <p align="center">
-  <img src="omssh.png" alt="omssh launcher" width="70%">
+  <img src="omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
 </p>
 
 ## Install
@@ -82,13 +82,14 @@ The full guide — every key, every screen, configuration — is in
 
 ## Configuration
 
-Config lives at `$XDG_CONFIG_HOME/omssh/config.yaml`. Start from the commented
-example:
+Configuration lives in `~/.config/omssh/config.yaml` (`$XDG_CONFIG_HOME/omssh`
+when set — the same path on macOS and Linux, so one config works on both). Start
+from the commented example:
 
 ```sh
 omssh config init     # write it
 omssh config check    # validate it, with line numbers
-omssh config path     # where it is
+omssh config path     # print the exact path
 ```
 
 Connections are not duplicated here: `omssh` reads and writes your
