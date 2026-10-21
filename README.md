@@ -2,23 +2,33 @@
 
 **Oh My SSH** — a modern SSH and SFTP client for the terminal.
 
-Many machines, one window. `omssh` puts up to four hosts on screen as a 2×2
-grid, moves files between any two of them — local to remote, remote to remote,
-folder into archive, archive into folder — and keeps the whole thing one key
-away from a shell.
+Many machines, one window.
 
 <p align="center">
   <img src="omssh.png" alt="omssh launcher" width="70%">
 </p>
 
+It starts on a launcher, not a blank prompt: the hosts from your
+`~/.ssh/config`, your local files, a path to jump to, and the settings behind one
+key. Connections you already have are listed here too, so coming back is the same
+gesture as going in.
+
+<p align="center">
+  <img src="omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
+</p>
+
+The dashboard puts up to four sessions on screen as a 2×2 grid — local plus three
+hosts, or four hosts — each pane with its own path, selection and history. Files
+move between any two of them, and the card in the middle is where a copy becomes an
+unpacked tree or a single archive instead of a pile of files.
+
 ## What it does
 
-- **Four panes, one screen.** Local plus three hosts, or four hosts, each with
-  its own path, selection and history. `w` moves between them; `V` chooses
-  which sessions are on screen.
-- **Copying that respects you.** Mark files once, paste into any pane. Copy as
-  files, as an unpacked tree, or as an archive — with the conflict rule chosen
-  in one card instead of a soup of flags.
+- **Four panes, one screen.** Each keeps its own path and history. `w` moves
+  between them; `V` chooses which sessions are on screen.
+- **Copying that respects you.** Mark files once, paste into any pane — as files,
+  as an unpacked tree, or as an archive, with the conflict rule chosen in one
+  card instead of a soup of flags.
 - **Archive handling on both sides.** Extract a tarball that lives on the server
   into a local folder; pack a local selection straight onto the server. No
   `tar`/`unzip` on either end.
@@ -32,10 +42,6 @@ away from a shell.
 - **Keyboard-first, mouse-friendly.** Plain letters are commands, digits switch
   sessions, `Ctrl+K` finds any action, and `Esc` always goes back — it never
   quits.
-
-<p align="center">
-  <img src="omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
-</p>
 
 ## Install
 
