@@ -854,7 +854,10 @@ func (m *Model) overlayOn(body, card string, l layout) string {
 func spliceLine(base, replacement string, left, replacementWidth, width int) string {
 	head := padVisible(ansi.Truncate(base, left, ""), left)
 	tail := ansi.Cut(base, min(left+replacementWidth, width), width+1)
-	return head + replacement + tail
+	// A card's line is a slice of a styled block, and the block's reset comes only
+	// at the very end of the block. Without one here, the card's background keeps
+	// painting over the rest of the row — the smear that reads as a broken frame.
+	return head + replacement + ansi.ResetStyle + tail
 }
 
 // padVisible pads a styled string with spaces to a visible width.

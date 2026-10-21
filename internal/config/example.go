@@ -34,6 +34,10 @@ ui:
     files: 20
     bytes: 10485760
   onboarding_done: false
+  # Columns to keep free at the right edge. Some terminals draw a few glyphs one
+  # cell wider than the interface counts them, and the wrapped line scrolls the
+  # whole frame. Set 1 or 2 if the layout ever shifts while you type.
+  width_margin: 0
 
 keys:
   # Ctrl+Q quits. "esc" is rejected: Esc only ever dismisses or goes back.

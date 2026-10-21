@@ -50,7 +50,7 @@ type layout struct {
 
 // measure computes the layout for a terminal size.
 func (m *Model) measure() layout {
-	width := max(m.width, 20)
+	width := max(m.width-m.cfg.UI.WidthMargin, 20)
 	height := max(m.height, 4)
 
 	l := layout{Width: width, Height: height}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
@@ -75,6 +76,37 @@ func TestPaletteOverRealContentStaysInside(t *testing.T) {
 				t.Errorf("at %d wide, %q plus the palette overflowed the frame", width, name)
 			}
 			m.Overlay = OverlayNone
+		}
+	}
+}
+
+// A line must not end while a style is still open. Lip Gloss emits a block's reset
+// at the end of the block, and an overlay splices one line out of that block into
+// the middle of another row — so without an explicit reset the card's background
+// kept painting over the rest of the row.
+func TestSplicedLinesDoNotLeakStyle(t *testing.T) {
+	openers := map[string]func(t *testing.T, m *Model){
+		"palette":  func(t *testing.T, m *Model) { press(t, m, run('k', tea.ModCtrl, "")) },
+		"help":     func(t *testing.T, m *Model) { press(t, m, run('?', 0, "?")) },
+		"settings": func(t *testing.T, m *Model) { press(t, m, run(',', tea.ModCtrl, "")) },
+		"prompt":   func(t *testing.T, m *Model) { press(t, m, run('n', 0, "n")) },
+		"menu":     func(t *testing.T, m *Model) { press(t, m, run('m', 0, "m")) },
+	}
+	for name, open := range openers {
+		for _, width := range []int{160, 140, 120, 100, 80, 60} {
+			m := newTestModel(t)
+			resize(t, m, width, 32)
+			m.selectByName("README.md")
+			open(t, m)
+			for i, line := range strings.Split(render(m), "\n") {
+				last := strings.LastIndex(line, "\x1b[0m")
+				if last < 0 {
+					continue
+				}
+				if rest := ansi.Strip(line[last+len("\x1b[0m"):]); strings.TrimSpace(rest) != "" {
+					t.Errorf("%s at %d: row %d has visible text after its last reset: %q", name, width, i, ansi.Strip(line))
+				}
+			}
 		}
 	}
 }

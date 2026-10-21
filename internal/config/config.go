@@ -36,6 +36,12 @@ type UI struct {
 	Start string `yaml:"start"`
 	// Onboarding records that the first-run card has been dismissed.
 	Onboarding bool `yaml:"onboarding_done"`
+	// WidthMargin keeps this many columns free at the right edge. Terminals
+	// disagree about the width of a few glyphs (the "ambiguous width" ones), and
+	// a terminal that draws one wider than the interface counted wraps the line —
+	// which scrolls the whole frame. A margin of one or two makes that impossible
+	// at the cost of a blank edge column.
+	WidthMargin int `yaml:"width_margin"`
 }
 
 // ConfirmThreshold is the point at which a copy or move stops being silent.
@@ -139,6 +145,9 @@ func (c Config) Validate() error {
 	}
 	if err := oneOf("ui.motion", c.UI.Motion, Motions); err != nil {
 		return err
+	}
+	if c.UI.WidthMargin < 0 || c.UI.WidthMargin > 8 {
+		return fmt.Errorf("ui.width_margin: must be between 0 and 8")
 	}
 	if c.UI.ConfirmThreshold.Files < 0 {
 		return fmt.Errorf("ui.confirm_threshold.files: must not be negative")
