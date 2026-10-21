@@ -70,6 +70,9 @@ func (m *Model) startTransfer(label string) (id int, report func(done, total int
 	m.transferSeq++
 	id = m.transferSeq
 	m.transfers[id] = transfer{id: id, label: label, started: time.Now()}
+	// Say it out loud as well: the sidebar may be hidden on a narrow terminal, and
+	// a copy with no visible start reads as a copy that did not happen.
+	m.toastInfo(label + " started")
 	ch := m.progress
 	report = func(done, total int64, name string) {
 		select {
@@ -99,7 +102,7 @@ func (m *Model) finishTransfer(id int) time.Duration {
 // pruneTransfers forgets finished copies after they have been visible long
 // enough to read.
 func (m *Model) pruneTransfers(now time.Time) {
-	const linger = 3 * time.Second
+	const linger = 10 * time.Second
 	for id, job := range m.transfers {
 		if job.finished && now.Sub(job.finishedAt) > linger {
 			delete(m.transfers, id)

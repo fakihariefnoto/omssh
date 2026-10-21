@@ -102,8 +102,11 @@ func (m *Model) dumpFrame(body string, l layout) {
 		return
 	}
 	defer func() { _ = file.Close() }()
-	fmt.Fprintf(file, "=== %s size=%dx%d overlay=%s screen=%v focus=%d panes=%d\n",
-		time.Now().Format("15:04:05.000"), l.Width, l.Height, m.Overlay.Name(), m.screen, m.Focused, len(m.Panes))
+	fmt.Fprintf(file, "=== %s size=%dx%d overlay=%s screen=%v focus=%d panes=%d transfers=%d\n",
+		time.Now().Format("15:04:05.000"), l.Width, l.Height, m.Overlay.Name(), m.screen, m.Focused, len(m.Panes), m.Jobs())
+	for id, job := range m.transfers {
+		fmt.Fprintf(file, "--- transfer %d: %q %d/%d finished=%v\n", id, job.label, job.done, job.total, job.finished)
+	}
 	_, _ = file.WriteString(ansi.Strip(body) + "\n")
 }
 
@@ -511,9 +514,19 @@ func (m *Model) renderSidebar(l layout) string {
 			rows = append(rows, dot+" "+style.Render(name))
 		}
 	}
-	// The marked set, on the left: a copy is a state the interface is holding, and
-	// the sidebar is where state is said. The bar below the panes keeps the keys;
-	// this keeps the names.
+	// Transfers come next, before anything that can wait: when a copy is running
+	// it is the most important thing on this bar, and on a short terminal it must
+	// not be the section that falls below the fold.
+	rows = append(rows, "", m.st.SidebarTitle.Render("TRANSFERS"))
+	if m.Jobs() > 0 {
+		rows = append(rows, m.renderTransfers(width)...)
+	} else {
+		rows = append(rows, m.st.PaneEmpty.Render(truncate("Nothing running", width)))
+	}
+
+	// The marked set: a copy is a state the interface is holding, and the sidebar
+	// is where state is said. The bar below the panes keeps the keys; this keeps
+	// the names.
 	if m.stagedCount() > 0 {
 		rows = append(rows, "", m.st.SidebarTitle.Render("MARKED "+itoa(m.stagedCount())))
 		if _, to := m.stagedRoute(); to != "" {
@@ -532,22 +545,16 @@ func (m *Model) renderSidebar(l layout) string {
 			rows = append(rows, "  "+m.st.SidebarItem.Render(truncate(name, width-2)))
 		}
 	}
-	rows = append(rows,
-		"",
-		m.st.SidebarTitle.Render("BOOKMARKS"),
-		m.st.PaneEmpty.Render(truncate("Alt+B adds this folder", width)),
-		"",
-	)
-
-	jobs := m.st.SidebarTitle.Render("TRANSFERS")
+	// Bookmarks are the section that gives way when space is short: they are the
+	// least time-sensitive thing here.
 	if m.Jobs() == 0 {
-		rows = append(rows, jobs, m.st.PaneEmpty.Render("Nothing running"))
-	} else {
-		rows = append(rows, jobs)
-		rows = append(rows, m.renderTransfers(width)...)
+		rows = append(rows,
+			"",
+			m.st.SidebarTitle.Render("BOOKMARKS"),
+			m.st.PaneEmpty.Render(truncate("Alt+B adds this folder", width)),
+		)
 	}
-	rows = append(rows, "", m.st.SidebarTitle.Render("THEME"),
-		m.st.SidebarItem.Render(m.themeName))
+	rows = append(rows, "", m.st.SidebarTitle.Render("THEME"), m.st.SidebarItem.Render(m.themeName))
 
 	if len(m.dropped) > 0 {
 		rows = append(rows, "", m.st.Warning.Render("Keys unavailable"),
