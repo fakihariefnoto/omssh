@@ -313,3 +313,22 @@ func contractHomePath(path string) string {
 	}
 	return path
 }
+
+// deployCursor reviews the profile that targets the focused host: from a pane on a
+// server to "deploy this", with no list to walk through.
+func (m *Model) deployCursor() tea.Cmd {
+	host := m.Pane().Host
+	if host == "" {
+		m.quitHint = "This pane is local: deploy profiles target a host"
+		return nil
+	}
+	names := m.deployProfiles()
+	for _, name := range names {
+		if m.cfg.Deploy.Profiles[name].Host == host {
+			m.openDeploy()
+			return m.reviewDeploy(name, m.cfg.Deploy.Profiles[name], m.Pane().FS)
+		}
+	}
+	m.toastInfo("No deploy profile targets " + host)
+	return nil
+}

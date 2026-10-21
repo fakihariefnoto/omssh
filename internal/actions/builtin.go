@@ -188,12 +188,6 @@ func standardPreset() []Action {
 		{ID: "session.terminal", Label: "Open a terminal", Category: CatSession, Default: "t", Screen: connections,
 			Desc:    "Open a full SSH shell on the highlighted host",
 			Enabled: onScreenWithCursor(connections)},
-		{ID: "terminal.close", Label: "Close terminal", Category: CatSession, Default: "ctrl+space w",
-			Desc: "Close the focused terminal tab", Enabled: func(ctx Context) bool { return ctx.Terminal }},
-		{ID: "terminal.copy-mode", Label: "Terminal copy mode", Category: CatSession, Default: "ctrl+space [",
-			Desc: "Select and copy text from the terminal buffer", Enabled: func(ctx Context) bool { return ctx.Terminal }},
-		{ID: "terminal.leave", Label: "Leave terminal", Category: CatSession, Default: "ctrl+space q",
-			Desc: "Return to the file panes, leaving the session alive", Enabled: func(ctx Context) bool { return ctx.Terminal }},
 
 		// ---- Deploy ----------------------------------------------------------
 		{ID: "deploy.open", Label: "Deploy", Category: CatDeploy, Default: "alt+d",
@@ -204,9 +198,6 @@ func standardPreset() []Action {
 			Enabled: func(ctx Context) bool { return ctx.Connected }},
 		{ID: "deploy.run", Label: "Run deploy", Category: CatDeploy, Danger: true,
 			Desc:    "Run the selected deploy profile",
-			Enabled: func(ctx Context) bool { return ctx.Connected }},
-		{ID: "deploy.history", Label: "Deploy history", Category: CatDeploy,
-			Desc:    "Inspect and re-run past deploys",
 			Enabled: func(ctx Context) bool { return ctx.Connected }},
 
 		// ---- View toggles ----------------------------------------------------

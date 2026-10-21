@@ -527,6 +527,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toastError("Edit failed: " + msg.err.Error())
 		return m, nil
 
+	case findResultMsg:
+		cmd := m.showFindResult(msg)
+		return m, cmd
+
 	case previewReadyMsg:
 		m.applyPreview(msg)
 		return m, nil
@@ -1038,6 +1042,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.toastInfo("Reloaded ~/.ssh/config")
 	case "session.open-config":
 		return m.editConfigFile()
+	case "session.close-tab":
+		return m.closeTab(m.activeTab)
 	case "session.tab-next":
 		return m.switchTab(m.activeTab + 1)
 	case "session.tab-prev":
@@ -1075,6 +1081,24 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		return m.goLastDir()
 	case "nav.path":
 		m.openPrompt("prompt.path")
+	case "nav.jump":
+		m.openPrompt("prompt.jump")
+	case "nav.find":
+		return m.findBelow()
+	case "nav.send":
+		return m.copyCursorTo(m.nextPane(m.Focused), false)
+	case "nav.fetch":
+		return m.fetchFromOther()
+	case "file.copy-to":
+		m.openCopyTo(false)
+	case "file.move-to":
+		m.openCopyTo(true)
+	case "session.new-tab":
+		m.runAction("session.open")
+	case "deploy.preview":
+		m.openDeploy()
+	case "deploy.run":
+		return m.deployCursor()
 	case "nav.refresh":
 		if m.screen == screenConnections {
 			m.loadConnections()
@@ -1211,26 +1235,11 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "view.staged":
 		m.Overlay = OverlayStaged
 	default:
-		m.toastWarning(a.Label + " arrives with " + m.stageOf(id))
+		// Nothing should reach here: every action in the registry has a handler.
+		// Saying so plainly is better than naming a milestone that has shipped.
+		m.toastWarning(a.Label + " is not available in this build")
 	}
 	return nil
-}
-
-// stageOf names the milestone a not-yet-implemented action belongs to, so the
-// milestone builds stay honest about what they cannot do yet.
-func (m *Model) stageOf(id actions.ID) string {
-	switch {
-	case strings.HasPrefix(string(id), "deploy."):
-		return "deployments (M6)"
-	case strings.HasPrefix(string(id), "archive."):
-		return "the archive engine (M4)"
-	case strings.HasPrefix(string(id), "terminal."):
-		return "the terminal (M5)"
-	case strings.HasPrefix(string(id), "session."):
-		return "connections (M1)"
-	default:
-		return "the transfer engine (M3)"
-	}
 }
 
 // explainUnavailable replaces silence with the reason and the way out.
@@ -1310,13 +1319,30 @@ func (m *Model) openPrompt(action actions.ID) {
 		m.prompt = promptState{Title: "Rename", Hint: "New name for " + entry.Name, Action: action, open: true}
 		m.prompt.input.Set(entry.Name)
 	case "prompt.path":
-		m.prompt = promptState{Title: "Go to path", Hint: "Directory to open", Action: action, open: true}
-		m.prompt.input.Set(m.Pane().Path)
+		// The field starts empty with the current path in the hint: prefilling it
+		// meant typing "~/Documents" appended to the old path and produced
+		// "/Users/me/project~/Documents", which reads as a bug in the app.
+		m.prompt = promptState{
+			Title:  "Go to path",
+			Hint:   "Directory to open · Enter keeps " + m.Pane().Path,
+			Action: action,
+			open:   true,
+		}
+	case "prompt.jump":
+		m.prompt = promptState{
+			Title:  "Jump to path",
+			Hint:   "Type a path, ~ for home, or pick a folder below",
+			Action: action,
+			open:   true,
+		}
 	case "prompt.extract":
 		m.openExtractPrompt()
 		return
 	case "prompt.compress":
 		m.openCompressPrompt()
+		return
+	case "prompt.copy-to", "prompt.move-to":
+		m.openCopyTo(action == "prompt.move-to")
 		return
 	case "prompt.chmod":
 		m.prompt = promptState{Title: "Permissions", Hint: "Octal mode, like 644 or 755", Action: action, open: true}
@@ -1396,9 +1422,6 @@ func (m *Model) rebuildPathSuggestions() {
 // applyPrompt runs whatever the prompt was for.
 func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
 	switch action {
 	case "prompt.mkdir":
 		return m.createDir(value)
@@ -1406,8 +1429,25 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 		return m.createFile(value)
 	case "prompt.rename":
 		return m.renameCursor(value)
-	case "prompt.path":
-		return m.navigate(value)
+	case "prompt.path", "prompt.jump":
+		// Typed paths go through the resolver: ~ is the pane's home and a bare
+		// name is relative, instead of being glued onto the current path.
+		m.goToPath(value)
+		return nil
+	case "prompt.copy-to":
+		return m.copyToPath(value, false)
+	case "prompt.move-to":
+		return m.copyToPath(value, true)
+	case "prompt.find":
+		return m.searchBelow(value)
+	case "prompt.extract":
+		return m.extractCursor(value)
+	case "prompt.compress":
+		return m.compressTargets(value)
+	case "prompt.chmod":
+		return m.chmodTargets(value)
+	case "prompt.symlink":
+		return m.makeSymlink(value)
 	}
 	return nil
 }

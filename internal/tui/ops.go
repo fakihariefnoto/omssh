@@ -145,6 +145,15 @@ func resolveTypedPath(pane *Pane, value string) string {
 		}
 		return pane.FS.Join(home, rest)
 	}
+	// "/~/x" is what a prefilled "/" plus a typed "~/x" produces. Treat the tilde
+	// as home even behind that slash rather than opening a folder named "~".
+	if rest, ok := strings.CutPrefix(value, "/~/"); ok {
+		home := pane.Home
+		if home == "" {
+			home = "/"
+		}
+		return pane.FS.Join(home, rest)
+	}
 	if !strings.HasPrefix(value, "/") {
 		return pane.FS.Join(pane.Path, value)
 	}
@@ -463,8 +472,6 @@ func (m *Model) renameCursor(newName string) tea.Cmd {
 
 // chmodTargets applies a mode from the prompt to every target. The mode is octal
 // because that is what people type and what every manual lists.
-//
-//nolint:unparam // the command is the refresh; callers hand it to the runtime
 func (m *Model) chmodTargets(value string) tea.Cmd {
 	mode, err := strconv.ParseUint(strings.TrimSpace(value), 8, 32)
 	if err != nil || mode > 0o7777 {
