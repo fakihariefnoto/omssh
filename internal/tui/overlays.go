@@ -53,7 +53,10 @@ func (m *Model) renderOverlay(l layout) string {
 // cardWidth sizes a card to the terminal without letting it get too wide to
 // read.
 func cardWidth(l layout, minWidth, maxWidth int) int {
-	return clamp(l.Width-8, minWidth, maxWidth)
+	width := clamp(l.Width-8, minWidth, maxWidth)
+	// A card wider than the terminal wraps, and a wrapped card breaks every row
+	// after it. On a very narrow terminal the card gives way, not the frame.
+	return min(width, max(20, l.Width-2))
 }
 
 // cardContent is the space a card has for content: the border and the horizontal

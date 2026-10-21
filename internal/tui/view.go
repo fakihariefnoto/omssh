@@ -49,7 +49,31 @@ func (m *Model) render() string {
 	if len(m.toasts) > 0 {
 		content = m.toastOn(content, l)
 	}
-	return content
+	return m.fitFrame(content, l)
+}
+
+// fitFrame is the last line of defence: whatever the views computed, the frame
+// handed to the terminal is exactly the terminal's size. A single line one cell
+// too wide makes a terminal wrap it, and every row after that lands one line lower
+// — which reads as the whole interface breaking. Trimming here means a measurement
+// bug costs one clipped character instead of the screen.
+func (m *Model) fitFrame(body string, l layout) string {
+	lines := strings.Split(body, "\n")
+	out := make([]string, 0, l.Height)
+	for i := 0; i < l.Height; i++ {
+		line := ""
+		if i < len(lines) {
+			line = lines[i]
+		}
+		if lipgloss.Width(line) > l.Width {
+			// A view measured itself wrong. The frame stays whole, but the bug is
+			// recorded so tests can catch it instead of a user.
+			m.frameTrimmed = true
+			line = ansi.Truncate(line, l.Width, "")
+		}
+		out = append(out, padVisible(line, l.Width))
+	}
+	return strings.Join(out, "\n")
 }
 
 // blankScreen is a full screen of spaces, for an overlay that replaces the view.

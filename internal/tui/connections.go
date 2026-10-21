@@ -162,10 +162,15 @@ func (m *Model) renderConnections(l layout) string {
 
 	visible := m.visibleConnections()
 	switch {
-	case m.conn != nil && m.conn.err != "":
+	case m.conn == nil:
+		// The screen was reached before the file was read, or reading it failed.
+		// Drawing is not the place to find out: say so and stop.
+		list = append(list, "", m.st.PaneEmpty.Render(truncate("Reading ~/.ssh/config…", inner)),
+			m.st.PaneEmpty.Render(truncate("r reloads it", inner)))
+	case m.conn.err != "":
 		list = append(list, m.st.Danger.Render(truncate("Cannot read the SSH config", inner)),
 			m.st.PaneEmpty.Render(truncate(m.conn.err, inner)))
-	case len(visible) == 0 && m.conn != nil && len(m.conn.entries) == 0:
+	case len(visible) == 0 && len(m.conn.entries) == 0:
 		list = append(list,
 			"", m.st.PaneEmpty.Render("No hosts yet"),
 			m.st.PaneEmpty.Render("a adds one · o opens the file in $EDITOR"))
