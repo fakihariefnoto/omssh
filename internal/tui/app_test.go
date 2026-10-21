@@ -290,8 +290,9 @@ func TestEscNeverQuits(t *testing.T) {
 	if m.quit {
 		t.Fatal("Esc quit the application")
 	}
-	// The first Escape leaves the file manager for the launcher; the second
-	// explains how to quit. Neither quits.
+	// The first Escape leaves the file manager for the launcher; the second goes
+	// back to the files, which is what the launcher's footer promises. Neither
+	// quits: quitting has its own key.
 	if m.screen != screenHome {
 		t.Errorf("the first Escape should reach the launcher, screen is %v", m.screen)
 	}
@@ -299,8 +300,8 @@ func TestEscNeverQuits(t *testing.T) {
 	if m.quit {
 		t.Fatal("Esc quit the application")
 	}
-	if !strings.Contains(m.quitHint, "Ctrl+Q") {
-		t.Errorf("on the launcher, Esc should explain how to quit, got %q", m.quitHint)
+	if m.screen != screenFiles {
+		t.Errorf("on the launcher, Esc should open the files, screen is %v", m.screen)
 	}
 
 	// With a selection, Esc clears it instead.

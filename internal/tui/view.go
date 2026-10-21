@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -58,6 +60,7 @@ func (m *Model) render() string {
 // — which reads as the whole interface breaking. Trimming here means a measurement
 // bug costs one clipped character instead of the screen.
 func (m *Model) fitFrame(body string, l layout) string {
+	m.dumpFrame(body, l)
 	lines := strings.Split(body, "\n")
 	out := make([]string, 0, l.Height)
 	for i := 0; i < l.Height; i++ {
@@ -83,6 +86,25 @@ func blankScreen(l layout) string {
 		rows[i] = spaces(l.Width)
 	}
 	return strings.Join(rows, "\n")
+}
+
+// dumpFrame writes the frame to the file named by OMSSH_FRAME_DUMP when that is
+// set. It exists for the one class of bug that cannot be reproduced from tests:
+// the terminal drawing something other than what we rendered. The dump is the
+// frame as we sent it, with the size we believed, so the two can be compared.
+func (m *Model) dumpFrame(body string, l layout) {
+	path := os.Getenv("OMSSH_FRAME_DUMP")
+	if path == "" {
+		return
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // the user chose the path
+	if err != nil {
+		return
+	}
+	defer func() { _ = file.Close() }()
+	fmt.Fprintf(file, "=== %s size=%dx%d overlay=%s screen=%v focus=%d panes=%d\n",
+		time.Now().Format("15:04:05.000"), l.Width, l.Height, m.Overlay.Name(), m.screen, m.Focused, len(m.Panes))
+	_, _ = file.WriteString(ansi.Strip(body) + "\n")
 }
 
 // renderFiles draws the file manager: tab strip, panes, action bar, status bar.
