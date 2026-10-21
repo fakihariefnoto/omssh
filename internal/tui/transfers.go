@@ -31,6 +31,21 @@ type transferUpdate struct {
 	total int64
 }
 
+// armProgress makes sure exactly one reader is waiting for transfer reports. It is
+// called at startup and again when a paste begins, because the channel is created
+// lazily: without this, a copy's reports filled the buffer and nothing ever read
+// them, which is why the sidebar said "working…" forever.
+func (m *Model) armProgress() tea.Cmd {
+	if m.progress == nil {
+		m.progress = make(chan transferUpdate, 64)
+	}
+	if m.progressArmed {
+		return nil
+	}
+	m.progressArmed = true
+	return waitForTransfer(m.progress)
+}
+
 // waitForTransfer blocks until the next report, then delivers it as a message.
 // It is re-armed after every report, the same way the connection prompts are.
 func waitForTransfer(ch chan transferUpdate) tea.Cmd {

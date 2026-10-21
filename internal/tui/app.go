@@ -99,6 +99,9 @@ type Model struct {
 	transfers   map[int]transfer
 	transferSeq int
 	progress    chan transferUpdate
+	// progressArmed is true once a reader is waiting on that channel: exactly one
+	// is wanted, and it re-arms itself after every report.
+	progressArmed bool
 
 	// The preview is cached: it reads files, render runs on every keystroke, and a
 	// remote read per frame is what made the interface blink. previewGen is bumped
@@ -354,8 +357,8 @@ func (m *Model) Jobs() int { return len(m.transfers) }
 // is a startup delay at best and a blank screen at worst.
 func (m *Model) Init() tea.Cmd {
 	commands := []tea.Cmd{tea.RequestWindowSize, heartbeat()}
-	if m.progress != nil {
-		commands = append(commands, waitForTransfer(m.progress))
+	if cmd := m.armProgress(); cmd != nil {
+		commands = append(commands, cmd)
 	}
 	if m.sessions != nil {
 		// The connection goroutines ask through this channel while they wait.

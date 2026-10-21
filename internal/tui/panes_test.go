@@ -561,3 +561,42 @@ func TestTransfersShowProgressInTheSidebar(t *testing.T) {
 		t.Errorf("the sidebar should go back to saying nothing is running:\n%s", out)
 	}
 }
+
+// The copy's progress must reach the update loop. It did not: the channel was
+// created when the paste began, after Init had already decided there was nothing
+// to listen to, so the sidebar showed "working…" until the report arrived.
+func TestProgressReportsReachTheChannel(t *testing.T) {
+	m := newTestModel(t)
+	if cmd := m.armProgress(); cmd == nil {
+		t.Fatal("arming should start a reader")
+	}
+
+	m.selectByName("README.md")
+	press(t, m, run('y', 0, "y"))
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1] = Pane{Side: SideRemote, Host: "contabo", FS: destFS, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 1
+
+	cmd := m.pasteStaged()
+	if cmd == nil {
+		t.Fatalf("paste should start: %v", m.toasts)
+	}
+	if report, ok := cmd().(copyReport); !ok || report.err != nil {
+		t.Fatalf("copy failed: %+v", report)
+	}
+	if len(m.progress) == 0 {
+		t.Fatal("the copy should have reported progress")
+	}
+	update := <-m.progress
+	if update.done <= 0 || update.total <= 0 {
+		t.Errorf("progress should carry bytes: %+v", update)
+	}
+	if _, ok := m.transfers[update.id]; !ok {
+		t.Errorf("the report should belong to the running job, id %d", update.id)
+	}
+}
