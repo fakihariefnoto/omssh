@@ -84,7 +84,8 @@ omssh prod         # the interface, already connected to prod
 5. `Ctrl+K` finds every action; `?` shows the keymap; `Ctrl+Q` quits.
 
 The full guide — every key, every screen, configuration — is in
-**[DOCUMENTATION.md](DOCUMENTATION.md)**.
+**[DOCUMENTATION.md](DOCUMENTATION.md)**. What is still missing, and in what
+order: **[ROADMAP.md](ROADMAP.md)**.
 
 ## Configuration
 

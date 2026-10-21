@@ -23,6 +23,8 @@ If you are looking for installation, see the [README](README.md).
 - [Troubleshooting](#troubleshooting)
 - [Keymap reference](#keymap-reference)
 
+What is not here yet is in [ROADMAP.md](ROADMAP.md).
+
 ---
 
 ## Getting started
