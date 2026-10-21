@@ -376,24 +376,33 @@ func (m *Model) saveConfig() {
 // someone who came here to get a shell.
 func connKeyLegend(width int) string {
 	switch {
-	case width >= 118:
-		return "Enter browse · t terminal · f pin · x hide · H all · e edit · a add · d delete · / filter · Esc back"
-	case width >= 96:
-		return "Enter · t terminal · f pin · x hide · H all · a add · / filter · Esc back"
-	case width >= 74:
-		return "Enter · t terminal · f pin · x hide · H all · / filter · Esc"
+	case width >= 130:
+		return "Enter browse · t terminal · Q disconnect · f pin · x hide · H all · e edit · a add · d delete · / filter · Esc back"
+	case width >= 112:
+		return "Enter · t terminal · Q disconnect · f pin · x hide · H all · a add · / filter · Esc"
+	case width >= 92:
+		return "Enter · t terminal · Q disconnect · f pin · x hide · H all · / · Esc"
+	case width >= 70:
+		return "Enter · t · Q disconnect · f pin · x hide · H all · Esc"
 	default:
-		return "Enter · t · f · x · H · / · Esc"
+		return "Enter · t · Q · f · x · H · Esc"
 	}
 }
 
 // connHeaderRow labels the columns once, so the table explains itself.
 func (m *Model) connHeaderRow(inner int) string {
 	name, host, user, port := m.connColumns(inner)
-	header := padRight("NAME", name) + padRight("HOST", host) + padRight("USER", user) +
-		padLeft("PORT", port) + " " + padRight("STATE", connStateWidth-1)
+	// The rows start with two marker columns — the selection arrow and the
+	// pinned/recent mark — so the header is indented by the same four cells.
+	header := connMarkerPrefix + padRight("NAME", name) + padRight("HOST", host) +
+		padRight("USER", user) + padLeft("PORT", port) + " " +
+		padRight("STATE", connStateWidth-1)
 	return m.st.PaneHeader.Render(padVisible(header, inner))
 }
+
+// connMarkerPrefix is the width of the selection and pin/recent markers at the
+// start of every row: "▸ ★ " for the chosen pinned host, four cells.
+const connMarkerPrefix = "    "
 
 // connColumns decides the column widths for the current interface width: the
 // name is short, the address is what varies, and a narrow screen drops the
@@ -407,8 +416,9 @@ func (m *Model) connColumns(inner int) (name, host, user, port int) {
 	}
 	port = 6
 	user = clamp(inner/8, 6, 14)
+	// Four of the name column's cells go to the markers at the start of each row.
 	name = clamp(inner/6, 12, 24)
-	host = inner - connStateWidth - port - user - name - gaps
+	host = inner - connStateWidth - port - user - name - gaps - len(connMarkerPrefix)
 	if host < 16 {
 		host = 16
 	}

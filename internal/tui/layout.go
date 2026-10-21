@@ -41,6 +41,10 @@ type layout struct {
 	// the bottom pair gets the leftover row when the pane area is even.
 	PaneRows       int
 	PaneRowsBottom int
+	// BodyHeight is the height of the pane area: one block in the two-pane
+	// layout, two blocks and the gap between them in the grid. The sidebar spans
+	// it, so its sections are never half a screen tall.
+	BodyHeight int
 	// PreviewWidth is the width of the preview half of the focused pane, zero
 	// when there is no room.
 	PreviewWidth int
@@ -93,6 +97,7 @@ func (m *Model) measure() layout {
 	}
 
 	body := max(availableRows, 1)
+	l.BodyHeight = body
 	paneArea := width
 	if l.Sidebar {
 		paneArea -= l.SidebarWidth + 1 // the gap between the sidebar and the panes

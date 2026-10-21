@@ -137,11 +137,14 @@ func (m *Model) renderBody(l layout) string {
 	if !l.Sidebar {
 		return panes
 	}
+	// The sidebar is as tall as the pane area, not as tall as one pane: in the grid
+	// it spans both rows, or its lower sections (bookmarks, transfers, theme) end
+	// up cut in half.
 	column := lipgloss.JoinVertical(lipgloss.Left,
 		m.renderSidebarHeader(l.SidebarWidth),
 		m.st.PaneBorderBlur.
 			Width(l.SidebarWidth).
-			Height(l.PaneRows+2).
+			Height(max(1, l.BodyHeight-1)).
 			Render(m.renderSidebar(l)),
 	)
 	return lipgloss.JoinHorizontal(lipgloss.Top, column, " ", panes)
@@ -551,16 +554,19 @@ func (m *Model) renderSidebar(l layout) string {
 			m.st.PaneEmpty.Render(truncate("Ctrl+K for alternatives", width)))
 	}
 
+	// The sidebar's interior is the body height minus the header row and its own
+	// two border rows — in the grid that is two pane blocks tall.
+	interior := max(1, l.BodyHeight-3)
 	// Every line measures exactly the interior width: a sidebar that wraps would
 	// break the border the same way an overflowing row breaks a pane.
 	out := make([]string, 0, len(rows))
 	for i, row := range rows {
-		if i >= l.PaneRows {
+		if i >= interior {
 			break
 		}
 		out = append(out, padVisible(" "+ansi.Truncate(row, width, "…"), content))
 	}
-	for len(out) < l.PaneRows {
+	for len(out) < interior {
 		out = append(out, strings.Repeat(" ", content))
 	}
 	return strings.Join(out, "\n")

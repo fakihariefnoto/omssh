@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
+	"github.com/fakihariefnoto/omssh/internal/session"
+	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
 )
 
 // selectConnection puts the cursor on an alias.
@@ -127,4 +129,23 @@ func TestHidingAHost(t *testing.T) {
 		t.Error("H should bring a hidden host back into view")
 	}
 	_ = tea.KeyEnter
+}
+
+// Disconnecting from the host list leaves the tab in place, as Q does in a pane.
+func TestDisconnectFromTheHostList(t *testing.T) {
+	m, _ := newConnectionsModel(t, codeHostFixture)
+	m.addSessionTab(&session.Session{
+		ID: "s1", Target: omssh.Target{Alias: "prod"}, FS: m.Panes[0].FS, Root: "/", Base: "/",
+	})
+	m.selectConnection("prod")
+	press(t, m, run('Q', 0, "Q"))
+	if _, live := m.live["prod"]; live {
+		t.Error("Q should end the connection")
+	}
+	if m.screen != screenConnections {
+		t.Error("disconnecting should not leave the host list")
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "Q disconnect") {
+		t.Errorf("the footer should name the disconnect key:\n%s", out)
+	}
 }

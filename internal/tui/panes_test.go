@@ -658,3 +658,34 @@ func TestTransferReportsTravelThroughTheChannel(t *testing.T) {
 	// And the copy finishes.
 	<-done
 }
+
+// The sidebar spans the whole pane area in the grid. Sized for one block it showed
+// HOSTS and BOOKMARKS but cut TRANSFERS and THEME in half.
+func TestSidebarSpansTheGridHeight(t *testing.T) {
+	m, _ := fourPanes(t)
+	m.Panes = m.Panes[:3]
+	resize(t, m, 150, 40)
+
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"HOSTS", "BOOKMARKS", "TRANSFERS", "THEME"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the sidebar should show %q:\n%s", want, out)
+		}
+	}
+
+	lines := strings.Split(out, "\n")
+	bottom := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "╰") {
+			bottom = i
+		}
+	}
+	if bottom < 0 {
+		t.Fatal("the sidebar has no bottom border")
+	}
+	// The panes' bottom borders are on the same row: one body, one bottom edge.
+	if count := strings.Count(lines[bottom], "╰"); count < 3 {
+		t.Errorf("the sidebar and the panes should end together, row %d has %d corners:\n%s",
+			bottom, count, lines[bottom])
+	}
+}

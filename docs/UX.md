@@ -364,6 +364,12 @@ ten, and the entry is asked about directly so a directory is still a directory.
 
 ---
 
+**Code hosts** — `github.com`, `gitlab.com`, `bitbucket.org`, `codeberg.org`,
+`git.sr.ht`, `ssh.dev.azure.com`, and any entry whose user is `git` — are hidden
+from the list by default. They exist in `~/.ssh/config` for `git push`, not for
+logging in, and they made the list longer than the machines you actually visit.
+`H` shows them; `x` hides any host by hand; `f` pins one to the top with `★`.
+
 ### Choosing sessions
 
 With more than four sessions, `V` opens a wall of cards — one per host plus the
