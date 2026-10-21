@@ -24,6 +24,9 @@ type Options struct {
 	Icons      string
 	NoColor    bool
 	ASCII      bool
+	// WidthMargin is -1 unless the flag was given, so the config's value wins by
+	// default and a flag always beats a file.
+	WidthMargin int
 }
 
 // Execute runs the command line and returns the process exit code.
@@ -70,6 +73,7 @@ func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.Icons, "icons", "", "icon set override: "+join(config.IconSets))
 	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "disable colour entirely")
 	root.PersistentFlags().BoolVar(&opts.ASCII, "no-icons", false, "use plain ASCII glyphs instead of Nerd Font icons")
+	root.PersistentFlags().IntVar(&opts.WidthMargin, "width-margin", -1, "columns to keep free at the right edge (0-8); try 1 if the layout shifts while typing")
 
 	root.SetOut(stdout)
 	root.SetErr(stderr)
@@ -104,6 +108,9 @@ func loadConfig(opts *Options) (config.Config, string, error) {
 	}
 	if opts.ASCII {
 		cfg.UI.Icons = "ascii"
+	}
+	if opts.WidthMargin >= 0 {
+		cfg.UI.WidthMargin = opts.WidthMargin
 	}
 	if err := cfg.Validate(); err != nil {
 		return config.Config{}, path, err
