@@ -121,8 +121,9 @@ func (m *Model) renderPasteOptions(l layout) string {
 		lines = append(lines, m.rowChoice("e", "", "unpacked into "+archive.Stem(m.staged.Paths[0])+"/",
 			m.staged.After == pasteExtract, content))
 	} else {
-		lines = append(lines, m.st.CardMuted.Render(truncate(
-			"e           unpack an archive (mark one archive)", content)))
+		// Still a row, with a disabled tick: a missing mark reads as a missing
+		// option, which is exactly how this looked before.
+		lines = append(lines, m.rowDisabled("e", "", "unpack an archive", m.unpackReason(), content))
 	}
 	lines = append(lines,
 		m.rowChoice("c", "", "packed into "+m.packName(), m.staged.After == pastePack, content),
@@ -135,6 +136,21 @@ func (m *Model) renderPasteOptions(l layout) string {
 func (m *Model) optionRow(key, label, value string, width int) string {
 	text := fmt.Sprintf("%s  %-10s %s", key, label, value)
 	return m.st.CardText.Render(truncate(text, width))
+}
+
+// unpackReason says why the unpack row cannot be chosen.
+func (m *Model) unpackReason() string {
+	count := m.stagedCount()
+	if count != 1 {
+		return "mark one archive"
+	}
+	return "not an archive"
+}
+
+// rowDisabled is an option that exists but cannot be chosen right now.
+func (m *Model) rowDisabled(key, label, value, reason string, width int) string {
+	text := fmt.Sprintf("%s  %-10s [-] %s · %s", key, label, value, reason)
+	return m.st.CardMuted.Render(truncate(text, width))
 }
 
 // rowChoice marks the chosen value. The marks are ASCII on purpose: the round

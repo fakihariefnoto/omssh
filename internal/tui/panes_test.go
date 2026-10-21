@@ -689,3 +689,32 @@ func TestSidebarSpansTheGridHeight(t *testing.T) {
 			bottom, count, lines[bottom])
 	}
 }
+
+// Every row of the "after" group carries a mark, including the one that cannot be
+// chosen: a row without one looked like an option whose icon had gone missing.
+func TestPasteOptionsEveryRowHasAMark(t *testing.T) {
+	m := newTestModel(t)
+	m.selectByName("notes.txt") // not an archive
+	press(t, m, run('y', 0, "y"))
+	resize(t, m, 120, 40)
+	press(t, m, run('A', 0, "A"))
+
+	card := ansi.Strip(m.renderPasteOptions(m.measure()))
+	rows := 0
+	for _, line := range strings.Split(card, "\n") {
+		if !strings.Contains(line, "after") && !strings.HasPrefix(strings.TrimPrefix(line, "│"), "  e") &&
+			!strings.HasPrefix(strings.TrimPrefix(line, "│"), "  c") {
+			continue
+		}
+		rows++
+		if !strings.Contains(line, "[x]") && !strings.Contains(line, "[ ]") && !strings.Contains(line, "[-]") {
+			t.Errorf("an option row has no mark: %q", line)
+		}
+	}
+	if rows != 3 {
+		t.Errorf("expected three rows in the after group, found %d:\n%s", rows, card)
+	}
+	if !strings.Contains(card, "not an archive") {
+		t.Errorf("the unavailable unpack should say why:\n%s", card)
+	}
+}
