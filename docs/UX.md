@@ -226,6 +226,11 @@ Learn this once and the rest of the app is guessable:
 | **Arrows / Shift+arrows** | Move, extend selection, `←` up a level, `→` open | `Shift+↓` selects a run |
 | **Alt + letter** | A *view* toggle or a named place | `Alt+B` sidebar, `Alt+J` jobs, `Alt+S` marked files, `Alt+D` deploy |
 | **Ctrl + letter** | An *action* or a *dialog* | `Ctrl+K` palette, `Ctrl+E` extract, `Ctrl+L` path, `Ctrl+Q` quit |
+
+**On macOS, use Control, not Command.** ⌘K is "Clear to Start" in Terminal and
+iTerm2 — the terminal wipes the screen and the app never sees the key, which
+looks like the interface going blank. ⌘C is Copy for the same reason. Every
+shortcut here is a Control chord, or a plain letter.
 | **Esc** | Back one level: pane → tab strip → launcher | never quits |
 
 There is **no type-ahead**. A letter that sometimes navigates and sometimes types
