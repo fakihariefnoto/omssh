@@ -66,7 +66,10 @@ release:
     owner: fakihariefnoto
     name: omssh
   draft: false
-  prerelease: auto
+  # Not `auto`: a 0.x version is a real release here, and goreleaser skips the
+  # Homebrew formula for prereleases — which would ship a release the tap cannot
+  # install.
+  prerelease: false
 
 brews:
   - name: omssh
@@ -87,7 +90,10 @@ brews:
       assert_match "omssh", shell_output("#{bin}/omssh version")
 
 changelog:
-  use: github
+  # Git, not GitHub: the changelog is built from local history, so a release does
+  # not depend on the previous tag being on the remote. It is not: this repository
+  # was private until the first release, and GitHub's compare API answered 404.
+  use: git
   groups:
     - title: Features
       regexp: '^.*?feat(\(.+\))??!?:.+$'
