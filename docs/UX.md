@@ -271,14 +271,13 @@ Paste options
 3 items · copy → contabo  /var/www
 
 m  mode       copy
-u  conflicts  ● update if newer
-o             ○ overwrite
-s             ○ keep what is there
+u  conflicts  [x] update if newer
+o             [ ] overwrite
+s             [ ] keep what is there
 
-   after      what arrives
-n             ● the files themselves
-e             ○ unpacked into site/
-c             ○ packed into assets.tar.gz
+n  after      [x] the files themselves
+e             [ ] unpacked into site/
+c             [ ] packed into assets.tar.gz
 Enter pastes · Esc cancels
 ```
 

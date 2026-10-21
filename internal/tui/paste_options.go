@@ -115,8 +115,7 @@ func (m *Model) renderPasteOptions(l layout) string {
 		"",
 	}
 	lines = append(lines,
-		m.optionRow("", "after", "what arrives", content),
-		m.rowChoice("n", "", "the files themselves", m.staged.After == pastePlain, content),
+		m.rowChoice("n", "after", "the files themselves", m.staged.After == pastePlain, content),
 	)
 	if m.canExtractOnPaste() {
 		lines = append(lines, m.rowChoice("e", "", "unpacked into "+archive.Stem(m.staged.Paths[0])+"/",
@@ -138,11 +137,13 @@ func (m *Model) optionRow(key, label, value string, width int) string {
 	return m.st.CardText.Render(truncate(text, width))
 }
 
-// rowChoice marks the chosen value with a filled dot.
+// rowChoice marks the chosen value. The marks are ASCII on purpose: the round
+// glyphs some terminals draw one cell wider — or not at all — turned a clear
+// choice into a row of blanks.
 func (m *Model) rowChoice(key, label, value string, chosen bool, width int) string {
-	mark := "○"
+	mark := "[ ]"
 	if chosen {
-		mark = "●"
+		mark = "[x]"
 	}
 	text := fmt.Sprintf("%s  %-10s %s %s", key, label, mark, value)
 	if chosen {
