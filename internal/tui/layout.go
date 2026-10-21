@@ -37,8 +37,10 @@ type layout struct {
 	Grid bool
 	// PaneWidth is the width of one pane, borders included.
 	PaneWidth int
-	// PaneRows is how many listing rows fit inside a bordered pane.
-	PaneRows int
+	// PaneRows is how many listing rows fit inside a bordered pane. In the grid,
+	// the bottom pair gets the leftover row when the pane area is even.
+	PaneRows       int
+	PaneRowsBottom int
 	// PreviewWidth is the width of the preview half of the focused pane, zero
 	// when there is no room.
 	PreviewWidth int
@@ -103,8 +105,14 @@ func (m *Model) measure() layout {
 	l.PaneWidth = max(l.PaneWidth, 12)
 	if l.Grid {
 		// Each block is a breadcrumb, a top border, the rows, a bottom border:
-		// rows+3. Two of them plus one row of air is the body.
+		// rows+3. Two of them plus one row of air is the body. When the body is
+		// even the division leaves a row over; the bottom pair takes it, so the
+		// frame is exact at every height.
 		l.PaneRows = max(3, (body-7)/2)
+		l.PaneRowsBottom = l.PaneRows
+		if 2*(l.PaneRows+3)+1 < body {
+			l.PaneRowsBottom++
+		}
 		// The preview still sits to the right of the focused listing; four panes
 		// are about seeing four listings at once, not about losing the preview.
 		l.PreviewWidth = previewWidthFor(l.PaneWidth, m.preview)

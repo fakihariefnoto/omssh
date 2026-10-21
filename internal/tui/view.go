@@ -195,10 +195,14 @@ func (m *Model) renderPanes(l layout) string {
 // never depends on how many hosts happen to be open.
 func (m *Model) renderGrid(l layout) string {
 	cell := func(index int) string {
-		if index < len(m.Panes) {
-			return m.renderPane(index, l.PaneWidth, l.PaneRows, l)
+		rows := l.PaneRows
+		if index >= 2 {
+			rows = l.PaneRowsBottom
 		}
-		return m.renderEmptySlot(l.PaneWidth, l.PaneRows)
+		if index < len(m.Panes) {
+			return m.renderPane(index, l.PaneWidth, rows, l)
+		}
+		return m.renderEmptySlot(l.PaneWidth, rows)
 	}
 	top := lipgloss.JoinHorizontal(lipgloss.Top, cell(0), " ", cell(1))
 	bottom := lipgloss.JoinHorizontal(lipgloss.Top, cell(2), " ", cell(3))
