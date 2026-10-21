@@ -36,7 +36,11 @@ func (m *Model) renderPreview(width, rows int) string {
 		return ""
 	}
 	if m.previewBody == "" {
-		return m.previewLines([]string{m.st.PaneEmpty.Render("…")}, width, rows)
+		message := "…"
+		if _, ok := m.Pane().CursorEntry(); !ok {
+			message = "Nothing under the cursor"
+		}
+		return m.previewLines([]string{m.st.PaneEmpty.Render(message)}, width, rows)
 	}
 	return m.previewBody
 }

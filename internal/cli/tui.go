@@ -13,7 +13,7 @@ import (
 // runTUI starts the interface. It is the default action when omssh is run with
 // no subcommand; a host argument opens that session once the interface is up.
 func runTUI(opts *Options, connect string) error {
-	cfg, _, err := loadConfig(opts)
+	cfg, configPath, err := loadConfig(opts)
 	if err != nil {
 		return err
 	}
@@ -36,13 +36,14 @@ func runTUI(opts *Options, connect string) error {
 	// palette performs that query on demand.
 	dark, _ := tui.BackgroundFromEnv(os.Environ())
 	model, err := tui.New(tui.Options{
-		Config:   cfg,
-		Profile:  profile,
-		HasDark:  dark,
-		Registry: reg,
-		Keys:     keys,
-		Dir:      dir,
-		Connect:  connect,
+		Config:     cfg,
+		Profile:    profile,
+		HasDark:    dark,
+		Registry:   reg,
+		Keys:       keys,
+		Dir:        dir,
+		Connect:    connect,
+		ConfigPath: configPath,
 	})
 	if err != nil {
 		return err

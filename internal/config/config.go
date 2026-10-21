@@ -15,7 +15,25 @@ type Config struct {
 	Keys      Keys      `yaml:"keys"`
 	Transfers Transfers `yaml:"transfers"`
 	Deploy    Deploy    `yaml:"deploy"`
+	// Connections remembers what makes the host list quick to use: the ones kept
+	// close, the ones not worth showing, and the ones used last.
+	Connections Connections `yaml:"connections"`
 }
+
+// Connections is the interface's memory about hosts. The hosts themselves live in
+// ~/.ssh/config; this is only ordering and preference.
+type Connections struct {
+	// Favorites are pinned to the top, in this order.
+	Favorites []string `yaml:"favorites"`
+	// Hidden are left out of the list. Code hosts like github.com belong here:
+	// they are in the ssh config for git, not for browsing.
+	Hidden []string `yaml:"hidden"`
+	// Recent is most-recent-first and capped at RecentLimit.
+	Recent []string `yaml:"recent"`
+}
+
+// RecentLimit is how many recently used hosts are remembered.
+const RecentLimit = 10
 
 // UI covers everything the interface does before you touch a file.
 type UI struct {
@@ -145,6 +163,11 @@ func (c Config) Validate() error {
 	}
 	if err := oneOf("ui.motion", c.UI.Motion, Motions); err != nil {
 		return err
+	}
+	for _, name := range c.Connections.Recent {
+		if name == "" {
+			return fmt.Errorf("connections.recent: empty host name")
+		}
 	}
 	if c.UI.WidthMargin < 0 || c.UI.WidthMargin > 8 {
 		return fmt.Errorf("ui.width_margin: must be between 0 and 8")

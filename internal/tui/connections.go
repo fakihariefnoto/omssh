@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/sshconfig"
 )
 
@@ -24,6 +26,8 @@ type connEntry struct {
 // connectionsState is the SSH host manager. It edits ~/.ssh/config directly, so
 // what it shows is exactly what `ssh` will use.
 type connectionsState struct {
+	// showAll includes hidden and code hosts, for the moment you need one.
+	showAll bool
 	path    string
 	main    *sshconfig.File
 	files   []*sshconfig.File
@@ -96,24 +100,99 @@ func (m *Model) loadConnections() {
 	m.conn.cursor = clamp(m.conn.cursor, 0, max(0, len(entries)-1))
 }
 
+// codeHosts are the forges people keep in ~/.ssh/config for git, not for logins.
+// They are hidden by default so the list is the machines you actually visit;
+// H brings everything back.
+var codeHosts = map[string]bool{
+	"github.com": true, "gitlab.com": true, "bitbucket.org": true,
+	"codeberg.org": true, "ssh.dev.azure.com": true, "git.sr.ht": true,
+}
+
+// isCodeHost reports whether a host exists for git rather than for a session.
+func isCodeHost(e connEntry) bool {
+	if e.User == "git" {
+		return true
+	}
+	return codeHosts[strings.ToLower(e.Alias)] || codeHosts[strings.ToLower(e.HostName)]
+}
+
+// favourite reports whether the host is pinned.
+func (m *Model) favourite(alias string) bool {
+	for _, name := range m.cfg.Connections.Favorites {
+		if name == alias {
+			return true
+		}
+	}
+	return false
+}
+
+// recentRank is the host's position in the recent list, or -1.
+func (m *Model) recentRank(alias string) int {
+	for i, name := range m.cfg.Connections.Recent {
+		if name == alias {
+			return i
+		}
+	}
+	return -1
+}
+
+// hiddenByChoice reports whether the person hid the host.
+func (m *Model) hiddenByChoice(alias string) bool {
+	for _, name := range m.cfg.Connections.Hidden {
+		if name == alias {
+			return true
+		}
+	}
+	return false
+}
+
 // visibleConnections applies the filter.
 func (m *Model) visibleConnections() []connEntry {
 	if m.conn == nil {
 		return nil
 	}
 	query := strings.TrimSpace(m.conn.filter.Value)
-	if query == "" {
-		return m.conn.entries
-	}
 	out := make([]connEntry, 0, len(m.conn.entries))
 	for _, e := range m.conn.entries {
-		for _, field := range []string{e.Alias, e.HostName, e.User} {
-			if _, ok := fuzzyMatch(field, query); ok {
-				out = append(out, e)
-				break
+		if !m.conn.showAll {
+			if m.hiddenByChoice(e.Alias) {
+				continue
+			}
+			if isCodeHost(e) {
+				continue
 			}
 		}
+		if query != "" {
+			matched := false
+			for _, field := range []string{e.Alias, e.HostName, e.User} {
+				if _, ok := fuzzyMatch(field, query); ok {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		out = append(out, e)
 	}
+
+	// Favourites, then recently used, then the rest. A stable sort by rank keeps
+	// the ssh config's own order inside each group.
+	rank := func(e connEntry) int {
+		if m.favourite(e.Alias) {
+			for i, name := range m.cfg.Connections.Favorites {
+				if name == e.Alias {
+					return i
+				}
+			}
+		}
+		if r := m.recentRank(e.Alias); r >= 0 {
+			return 100 + r
+		}
+		return 1000
+	}
+	sort.SliceStable(out, func(i, j int) bool { return rank(out[i]) < rank(out[j]) })
 	return out
 }
 
@@ -213,17 +292,98 @@ func (m *Model) renderConnections(l layout) string {
 	return strings.Join(out, "\n")
 }
 
+// toggleFavourite pins or unpins the host under the cursor.
+func (m *Model) toggleFavourite() {
+	entry, ok := m.currentConnection()
+	if !ok {
+		return
+	}
+	favourites := m.cfg.Connections.Favorites
+	kept := make([]string, 0, len(favourites)+1)
+	exists := false
+	for _, name := range favourites {
+		if name == entry.Alias {
+			exists = true
+			continue
+		}
+		kept = append(kept, name)
+	}
+	if exists {
+		m.cfg.Connections.Favorites = kept
+		m.toastInfo(entry.Alias + " is no longer pinned")
+	} else {
+		// New favourites go on top: the last one pinned is the one wanted next.
+		m.cfg.Connections.Favorites = append([]string{entry.Alias}, kept...)
+		m.toastInfo("Pinned " + entry.Alias)
+	}
+	m.saveConfig()
+}
+
+// toggleHidden hides or shows the host under the cursor.
+func (m *Model) toggleHidden() {
+	entry, ok := m.currentConnection()
+	if !ok {
+		return
+	}
+	hidden := m.cfg.Connections.Hidden
+	kept := make([]string, 0, len(hidden)+1)
+	exists := false
+	for _, name := range hidden {
+		if name == entry.Alias {
+			exists = true
+			continue
+		}
+		kept = append(kept, name)
+	}
+	if exists {
+		m.cfg.Connections.Hidden = kept
+		m.toastInfo(entry.Alias + " is back in the list")
+	} else {
+		kept = append(kept, entry.Alias)
+		m.cfg.Connections.Hidden = kept
+		m.toastInfo("Hid " + entry.Alias + " · H shows everything")
+	}
+	m.conn.cursor = clamp(m.conn.cursor, 0, max(0, len(m.visibleConnections())-1))
+	m.saveConfig()
+}
+
+// noteRecent records a successful connection, newest first.
+func (m *Model) noteRecent(alias string) {
+	recent := make([]string, 0, len(m.cfg.Connections.Recent)+1)
+	recent = append(recent, alias)
+	for _, name := range m.cfg.Connections.Recent {
+		if name != alias && len(recent) < config.RecentLimit {
+			recent = append(recent, name)
+		}
+	}
+	m.cfg.Connections.Recent = recent
+	m.saveConfig()
+}
+
+// saveConfig writes preferences back. Failing to save is not worth interrupting a
+// connection for: the session still works, the ordering is just not remembered.
+func (m *Model) saveConfig() {
+	if m.configPath == "" {
+		return
+	}
+	if err := config.Save(m.configPath, m.cfg); err != nil {
+		m.toastWarning("Could not save preferences: " + err.Error())
+	}
+}
+
 // connKeyLegend is the key line, in as much detail as the width allows. The
 // terminal key is never the one dropped: it is the whole point of the screen for
 // someone who came here to get a shell.
 func connKeyLegend(width int) string {
 	switch {
-	case width >= 104:
-		return "Enter browse · t terminal · e edit · a add · d delete · r reload · o edit file · / filter · Esc back"
-	case width >= 82:
-		return "Enter browse · t terminal · e edit · a add · d delete · / filter · Esc back"
+	case width >= 118:
+		return "Enter browse · t terminal · f pin · x hide · H all · e edit · a add · d delete · / filter · Esc back"
+	case width >= 96:
+		return "Enter · t terminal · f pin · x hide · H all · a add · / filter · Esc back"
+	case width >= 74:
+		return "Enter · t terminal · f pin · x hide · H all · / filter · Esc"
 	default:
-		return "Enter browse · t terminal · a add · / filter · Esc"
+		return "Enter · t · f · x · H · / · Esc"
 	}
 }
 
@@ -264,6 +424,15 @@ func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
 	marker := "  "
 	if selected {
 		marker = "▸ "
+	}
+	// A marker column says why a host is where it is: pinned, or used lately.
+	switch {
+	case m.favourite(e.Alias):
+		marker += "★ "
+	case m.recentRank(e.Alias) >= 0:
+		marker += "◷ "
+	default:
+		marker += "  "
 	}
 	host := e.HostName
 	if host == "" {
@@ -403,6 +572,20 @@ func (m *Model) handleConnectionsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.conn.cursor = max(0, len(m.visibleConnections())-1)
 	case "enter":
 		return m.runAction("session.connect"), true
+	case "f":
+		m.toggleFavourite()
+	case "x":
+		m.toggleHidden()
+	case "H":
+		if m.conn != nil {
+			m.conn.showAll = !m.conn.showAll
+			m.conn.cursor = 0
+			if m.conn.showAll {
+				m.toastInfo("Showing every host, including code hosts and hidden ones")
+			} else {
+				m.toastInfo("Showing the hosts you visit")
+			}
+		}
 	case "esc":
 		// Leave the manager: filtering is handled above, so this is "back".
 		m.screen = m.connReturn

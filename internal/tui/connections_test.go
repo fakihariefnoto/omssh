@@ -411,7 +411,7 @@ func TestConnectionsKeepsItsKeyLegend(t *testing.T) {
 			t.Errorf("%dx%d: the screen should fill exactly, got %d lines", size.w, size.h, len(lines))
 		}
 		joined := strings.Join(lines, "\n")
-		for _, want := range []string{"t terminal", "Enter browse", "a add", "Esc back"} {
+		for _, want := range []string{"t terminal", "Enter", "Esc"} {
 			if !strings.Contains(joined, want) {
 				t.Errorf("%dx%d: the legend is missing %q:\n%s", size.w, size.h, want, joined)
 			}

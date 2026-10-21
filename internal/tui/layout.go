@@ -138,7 +138,20 @@ func previewWidthFor(paneWidth int, wanted bool) int {
 	if !wanted || paneWidth < 52 {
 		return 0
 	}
-	return max(18, paneWidth*2/5)
+	// A third in a grid-sized pane, two fifths in a wide one, and never so much
+	// that the listing drops below 34 cells: a preview is not worth unreadable
+	// file names.
+	const listMinimum = 34
+	width := max(16, paneWidth/3)
+	if wide := max(18, paneWidth*2/5); paneWidth-width < listMinimum {
+		width = paneWidth - listMinimum
+	} else if paneWidth >= 80 {
+		width = wide
+	}
+	if paneWidth-width < listMinimum {
+		return 0
+	}
+	return width
 }
 
 // paneRows is how many listing rows are visible, used for paging.

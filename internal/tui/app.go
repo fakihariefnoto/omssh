@@ -52,6 +52,9 @@ type Options struct {
 	// SSHConfigPath overrides ~/.ssh/config. Tests use it; the CLI leaves it
 	// empty so the real file is used.
 	SSHConfigPath string
+	// ConfigPath is where preferences are written back: favourites, hidden hosts
+	// and recents. Empty means "do not persist" (tests, and a config-less run).
+	ConfigPath string
 	// Sessions is the connection manager. When nil the interface builds its own,
 	// asking through dialogs; a test supplies one with its own prompter.
 	Sessions *session.Manager
@@ -70,6 +73,7 @@ type Model struct {
 	profile    colorprofile.Profile
 	hasDark    bool
 	sshPath    string
+	configPath string
 	themeName  string
 	themeNames []string
 	dropped    []keymap.Dropped
@@ -1210,7 +1214,11 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "view.sidebar":
 		m.sidebar = !m.sidebar
 	case "view.jobs":
-		m.toastInfo("No transfers are running")
+		if m.Jobs() == 0 {
+			m.toastInfo("No transfers are running")
+			break
+		}
+		m.toastInfo(m.transferSummary())
 	case "view.sync":
 		m.syncBrowse = !m.syncBrowse
 		m.toastInfo(syncMessage(m.syncBrowse))

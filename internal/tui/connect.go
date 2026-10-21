@@ -156,6 +156,7 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 	index := m.paneForSession(msg.session)
 	m.Focused = index
 	m.tabState(msg.target.Alias, StateReady)
+	m.noteRecent(msg.target.Alias)
 	m.mode = "NORMAL"
 	// Four panes is the dashboard's limit; the fifth host gets a tab and waits.
 	if m.paneCount() >= maxPanes && !m.paneShows(index, msg.session.Target.Alias) {

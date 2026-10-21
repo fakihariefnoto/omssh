@@ -373,7 +373,13 @@ func (m *Model) renderRows(pane *Pane, width, rows int, focused bool) string {
 	case pane.Loading:
 		lines = append(lines, empty("Loading…"), empty("This can take a moment on a slow link"))
 	case len(pane.Entries) == 0:
-		lines = append(lines, empty("Empty directory"), empty("Ctrl+N for a file, Ctrl+Shift+N for a folder"))
+		// Narrow panes get the short version: a wrapped hint breaks the frame, and
+		// a truncated one teaches half a key.
+		hint := "Ctrl+N for a file, Ctrl+Shift+N for a folder"
+		if width < 42 {
+			hint = "n file · N folder"
+		}
+		lines = append(lines, empty("Empty directory"), empty(hint))
 	case len(pane.Visible()) == 0:
 		lines = append(lines, empty("Nothing matches "+pane.Filter), empty("Esc to clear the filter"))
 	default:

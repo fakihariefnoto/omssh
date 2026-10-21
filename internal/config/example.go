@@ -39,6 +39,15 @@ ui:
   # whole frame. Set 1 or 2 if the layout ever shifts while you type.
   width_margin: 0
 
+connections:
+  # Hosts pinned to the top of the list, in this order.
+  favorites: []
+  # Hosts left out of the list. Code hosts (github.com, bitbucket.org) are hidden
+  # automatically; H shows everything.
+  hidden: []
+  # Filled in as you connect, newest first.
+  recent: []
+
 keys:
   # Ctrl+Q quits. "esc" is rejected: Esc only ever dismisses or goes back.
   quit: ctrl+q
