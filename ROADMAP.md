@@ -44,9 +44,9 @@ is three servers and a bucket.
 
 ## M8 — Object storage: the `vfs` implementation
 
-S3, GCS, R2 and OSS are the same shape at the level omssh uses them: a bucket of
-keys, listing by prefix, GET and PUT, multipart for large objects. So there is one
-implementation, not four.
+S3, GCS, R2, OSS and B2 are the same shape at the level omssh uses them: a bucket
+of keys, listing by prefix, GET and PUT, multipart for large objects. So there is
+one implementation, not five.
 
 **Deliverables**
 
@@ -83,8 +83,8 @@ implementation, not four.
 
 ## M9 — The compatible providers
 
-R2, OSS and GCS speak S3-compatible APIs, with differences that are configuration,
-not code.
+R2, OSS, GCS and B2 speak S3-compatible APIs, with differences that are
+configuration, not code.
 
 **Deliverables**
 
@@ -95,30 +95,83 @@ not code.
   - **Google Cloud Storage** — the S3-compatible XML API with HMAC keys, and
     service-account credentials via the native API as a second path if the
     compatibility layer proves limiting.
+  - **Backblaze B2** — `https://s3.<region>.backblazeb2.com`; application keys are
+    scoped to one bucket, so the key and the bucket in the profile must agree.
 - A connection form that asks for provider first, then only the fields that
   provider needs.
-- A `omssh exec`-style check: `omssh cloud check <name>` lists the bucket root and
-  reports what the credentials can actually do.
+- A check that costs nothing to run: `omssh cloud check <name>` lists the bucket
+  root and reports what the credentials can actually do.
 
 **Acceptance criteria**
 
 - The same bucket operations (list, upload, download, copy, delete, extract) pass
-  against R2, OSS and GCS test buckets, not only MinIO.
+  against R2, OSS, GCS and B2 test buckets, not only MinIO.
 - Path-style and virtual-hosted style both work; a wrong combination fails with a
   message that names the setting, not an XML error.
-- Large-object uploads above the multipart threshold resume nothing but do retry
-  a failed part, and report which part failed.
+- Large-object uploads above the multipart threshold retry a failed part and
+  report which part failed, instead of starting over.
 
 **Risks**
 
 - GCS's S3 compatibility needs HMAC keys; a user with only a service account will
   not have them. The native path is the answer if that becomes the common case.
-- Signing differences between providers surface as opaque 403s. The check command
-  exists for that reason.
+- B2 keys are bucket-scoped and its S3 endpoint is region-specific; a mismatched
+  profile fails as a 403 that says nothing useful, which is what the check command
+  is for.
+- Signing differences between providers surface as opaque 403s. Same answer.
 
 ---
 
-## M10 — Storage polish
+## M10 — Providers with their own protocol
+
+Two of the services people ask for are not S3-shaped, and pretending otherwise
+would be the wrong kind of reuse.
+
+**Azure Blob Storage** — the native REST API:
+
+- Containers behave as buckets, blobs as objects, `/` in a name is a virtual
+  folder, and the listing is by prefix with XML paging.
+- Authentication: account key, SAS token, or Entra ID. All three end up in the
+  config as *a credential reference*, never a secret in plain text.
+- Large uploads use block lists (stage blocks, commit); a failed block retries
+  without restarting the object.
+- Azure Data Lake Storage Gen2 (hierarchical namespace) has real directories and
+  atomic rename; it is a separate capability, not an assumption.
+
+**WebDAV** — a protocol, not an API:
+
+- `PROPFIND` with Depth 1 lists a directory; `MKCOL` makes one; `GET`/`PUT` move
+  bytes; `MOVE` renames — a **real** rename, unlike every object store here — and
+  `COPY` duplicates.
+- Servers differ: Nextcloud, ownCloud, Box, SharePoint and generic Apache
+  implementations disagree about properties, locking and `If-Match`. The
+  implementation targets the common subset and reports what a server refuses
+  rather than failing silently.
+- ETags and `If-Match` are used for conflict-safe overwrite, so "keep what is
+  there" and "overwrite" mean the same thing they do for SSH.
+- Authentication: basic and bearer; digest only if a server demands it.
+- No permissions and no symlinks; capabilities say so.
+
+**Acceptance criteria**
+
+- Copy between WebDAV and SSH, WebDAV and Azure, and either and the local disk,
+  with progress and cancellation, through the same `xfer` engine as everything
+  else.
+- A rename on WebDAV is one `MOVE`, not a copy and a delete.
+- Azure block upload above the multipart threshold survives one failed block.
+- Delete and overwrite ask the same questions they ask on a server.
+
+**Risks**
+
+- Two new protocol stacks is real surface area. They are separate packages with
+  the `vfstest` suite against them, and neither is allowed to leak into the copy
+  engine.
+- WebDAV quality varies more than SSH does; the acceptance tests use Nextcloud and
+  one generic server, and the roadmap does not claim the rest.
+
+---
+
+## M11 — Storage polish
 
 Only after M8 and M9 are honest.
 
