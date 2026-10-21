@@ -15,12 +15,14 @@ import (
 
 // transfer is one copy in flight.
 type transfer struct {
-	id      int
-	label   string
-	name    string
-	done    int64
-	total   int64
-	started time.Time
+	id         int
+	label      string
+	name       string
+	done       int64
+	total      int64
+	started    time.Time
+	finished   bool
+	finishedAt time.Time
 }
 
 // transferUpdate is one progress report from a running copy.
@@ -78,14 +80,31 @@ func (m *Model) startTransfer(label string) (id int, report func(done, total int
 	return id, report
 }
 
-// finishTransfer forgets a copy and says how long it took.
+// finishTransfer marks a copy finished and says how long it took. It stays in the
+// sidebar for a moment: a copy of a few small files is over before the next frame,
+// and a job that never appears reads as a job that never ran.
 func (m *Model) finishTransfer(id int) time.Duration {
 	job, ok := m.transfers[id]
 	if !ok {
 		return 0
 	}
-	delete(m.transfers, id)
-	return time.Since(job.started)
+	took := time.Since(job.started)
+	job.finished = true
+	job.finishedAt = time.Now()
+	job.done = job.total
+	m.transfers[id] = job
+	return took
+}
+
+// pruneTransfers forgets finished copies after they have been visible long
+// enough to read.
+func (m *Model) pruneTransfers(now time.Time) {
+	const linger = 3 * time.Second
+	for id, job := range m.transfers {
+		if job.finished && now.Sub(job.finishedAt) > linger {
+			delete(m.transfers, id)
+		}
+	}
 }
 
 // transferPercent is the copy's progress, or -1 when it cannot be known yet (a
@@ -121,6 +140,10 @@ func (m *Model) renderTransfers(width int) []string {
 	for _, id := range ids {
 		job := m.transfers[id]
 		rows = append(rows, m.st.SidebarItem.Render(truncate(job.label, width)))
+		if job.finished {
+			rows = append(rows, m.st.Success.Render(truncate("done", width)))
+			continue
+		}
 		percent := job.percent()
 		if percent < 0 {
 			rows = append(rows, m.st.StatusMuted.Render(truncate("working…", width)))

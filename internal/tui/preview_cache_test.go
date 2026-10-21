@@ -38,10 +38,25 @@ func TestPreviewIsReadOncePerChange(t *testing.T) {
 	m.preview = true
 	m.selectByName("notes.txt")
 
+	// Rendering never reads: it draws what is already known.
 	render(m)
+	if counted.opens != 0 {
+		t.Fatalf("render must not read the network, reads=%d", counted.opens)
+	}
+
+	// The fetch is a command, off the update loop.
+	fetch := m.previewCmd()
+	if fetch == nil {
+		t.Fatal("the preview should need fetching")
+	}
+	body, ok := fetch().(previewReadyMsg)
+	if !ok {
+		t.Fatal("the fetch should produce a preview")
+	}
+	m.applyPreview(body)
 	after := counted.opens
-	if after == 0 {
-		t.Fatal("the first frame should read the file once")
+	if after != 1 {
+		t.Fatalf("the fetch should read the file once, reads=%d", after)
 	}
 
 	// Ten more frames, including opening the palette and typing in it.
@@ -57,10 +72,19 @@ func TestPreviewIsReadOncePerChange(t *testing.T) {
 			after, counted.opens)
 	}
 
-	// A different file is a different question, and is read.
+	// A different file is a different question: the frame still does not read, and
+	// the fetch reads exactly once.
 	m.Overlay = OverlayNone
 	m.selectByName("README.md")
 	render(m)
+	if counted.opens != after {
+		t.Errorf("render after a cursor move must not read, reads went from %d to %d", after, counted.opens)
+	}
+	if fetch := m.previewCmd(); fetch == nil {
+		t.Error("the new entry should need fetching")
+	} else {
+		m.applyPreview(fetch().(previewReadyMsg))
+	}
 	if counted.opens != after+1 {
 		t.Errorf("changing the cursor entry should read once, reads went from %d to %d", after, counted.opens)
 	}

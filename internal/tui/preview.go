@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/fakihariefnoto/omssh/internal/archive"
@@ -26,21 +27,30 @@ const hexBytes = 256
 // renderPreview draws the right half of the focused pane: the contents of the
 // entry under the cursor, or an explanation of why it cannot be shown.
 //
-// Reading a remote file is a network round trip, and render runs on every
-// keystroke and every heartbeat. Uncached, that turned typing in the palette into
-// a stream of SFTP reads: the screen blinked while each one came back. The cache
-// is keyed by everything the answer depends on, and a remote preview is allowed
-// to be two seconds stale rather than blocking the keyboard.
+// It never reads anything. Rendering happens on every keystroke and every
+// heartbeat, and on a remote pane a read is a network round trip: doing it here
+// made every cursor move wait for the server. The body is fetched by a command
+// (previewCmd) and cached; render only ever hands back what is already known.
 func (m *Model) renderPreview(width, rows int) string {
 	if width <= 0 || rows <= 0 {
 		return ""
 	}
+	if m.previewBody == "" {
+		return m.previewLines([]string{m.st.PaneEmpty.Render("…")}, width, rows)
+	}
+	return m.previewBody
+}
+
+// previewKeyFor names everything the preview's answer depends on. A remote
+// preview is allowed to be two seconds stale, which is cheaper than a read per
+// frame and invisible in practice; refresh() bumps previewGen, so a listing
+// change is never stale.
+func (m *Model) previewKeyFor(width, rows int) (string, *Pane, Entry, bool) {
 	pane := m.Pane()
 	entry, ok := pane.CursorEntry()
 	if !ok {
-		return m.previewLines([]string{m.st.PaneEmpty.Render("Nothing under the cursor")}, width, rows)
+		return "", pane, Entry{}, false
 	}
-
 	bucket := int64(0)
 	if pane.Side == SideRemote {
 		bucket = time.Now().Unix() / 2
@@ -48,12 +58,47 @@ func (m *Model) renderPreview(width, rows int) string {
 	key := fmt.Sprintf("%d|%d|%s|%s|%d|%d|%d|%s|%d|%t",
 		m.previewGen, m.Focused, pane.Path, entry.Name, entry.Size,
 		width, rows, m.themeName, bucket, entry.Dir)
-	if m.previewKey == key {
-		return m.previewBody
+	return key, pane, entry, true
+}
+
+// previewCmd fetches the focused entry's preview off the update loop. It returns
+// nil when what is cached is already what the cursor needs.
+func (m *Model) previewCmd() tea.Cmd {
+	if !m.preview {
+		return nil
 	}
-	body := m.renderPreviewNow(pane, entry, width, rows)
-	m.previewKey, m.previewBody = key, body
-	return body
+	width, rows := m.measure().PreviewWidth, m.measure().PaneRows
+	if width <= 0 || rows <= 0 {
+		return nil
+	}
+	key, pane, entry, ok := m.previewKeyFor(width, rows)
+	if !ok || key == m.previewKey {
+		return nil
+	}
+	index := m.Focused
+	return func() tea.Msg {
+		body := m.renderPreviewNow(pane, entry, width, rows)
+		return previewReadyMsg{key: key, index: index, body: body}
+	}
+}
+
+// previewReadyMsg carries a fetched preview back to the interface.
+type previewReadyMsg struct {
+	key   string
+	index int
+	body  string
+}
+
+// applyPreview stores a fetched body, unless the cursor moved on while it was in
+// flight.
+func (m *Model) applyPreview(msg previewReadyMsg) {
+	width, rows := m.measure().PreviewWidth, m.measure().PaneRows
+	key, _, _, ok := m.previewKeyFor(width, rows)
+	if !ok || key != msg.key {
+		// Stale: the cursor is somewhere else now. Ask again for the new place.
+		return
+	}
+	m.previewKey, m.previewBody = msg.key, msg.body
 }
 
 // renderPreviewNow does the reading that renderPreview caches.

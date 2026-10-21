@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -554,8 +555,20 @@ func TestTransfersShowProgressInTheSidebar(t *testing.T) {
 		t.Fatalf("the copy should finish: %+v", report)
 	}
 	m.Update(report)
+	// It stays visible for a moment, saying it finished: a copy of small files is
+	// over before the next frame, and a job that never appears reads as a job that
+	// never ran.
+	if m.Jobs() != 1 {
+		t.Errorf("a finished copy should stay visible briefly, jobs=%d", m.Jobs())
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "done") {
+		t.Errorf("the sidebar should say the copy finished:\n%s", out)
+	}
+
+	// And then it goes.
+	m.pruneTransfers(time.Now().Add(time.Minute))
 	if m.Jobs() != 0 {
-		t.Errorf("a finished copy should leave the sidebar, jobs=%d", m.Jobs())
+		t.Errorf("a finished copy should be forgotten, jobs=%d", m.Jobs())
 	}
 	if out := ansi.Strip(render(m)); !strings.Contains(out, "Nothing running") {
 		t.Errorf("the sidebar should go back to saying nothing is running:\n%s", out)
@@ -599,4 +612,49 @@ func TestProgressReportsReachTheChannel(t *testing.T) {
 	if _, ok := m.transfers[update.id]; !ok {
 		t.Errorf("the report should belong to the running job, id %d", update.id)
 	}
+}
+
+// The whole loop, the way the runtime runs it: a real copy command in a
+// goroutine, a real reader on the channel, and the report folded through Update.
+// If any link is missing, this is where it shows.
+func TestTransferReportsTravelThroughTheChannel(t *testing.T) {
+	m := newTestModel(t)
+	if cmd := m.armProgress(); cmd == nil {
+		t.Fatal("startup should arm a reader")
+	}
+	m.selectByName("README.md")
+	press(t, m, run('y', 0, "y"))
+
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1] = Pane{Side: SideRemote, Host: "contabo", FS: destFS, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 1
+
+	copyCmd := m.pasteStaged()
+	if copyCmd == nil {
+		t.Fatalf("paste should start: %v", m.toasts)
+	}
+	done := make(chan tea.Msg, 1)
+	go func() { done <- copyCmd() }()
+
+	// The reader blocks until a report arrives; that is what the runtime does.
+	update, ok := waitForTransfer(m.progress)().(transferUpdate)
+	if !ok {
+		t.Fatal("the reader should deliver a transfer update")
+	}
+	m.Update(update)
+	job := m.transfers[update.id]
+	if job.done <= 0 {
+		t.Errorf("the update should carry bytes, got %+v", job)
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "copy → contabo") {
+		t.Errorf("the sidebar should name the running copy:\n%s", out)
+	}
+
+	// And the copy finishes.
+	<-done
 }

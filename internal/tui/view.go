@@ -604,6 +604,28 @@ func (m *Model) renderActionBar(l layout) string {
 	return ansi.Truncate(b.String(), l.Width, "…")
 }
 
+// transferSummary is the shortest useful description of running work.
+func (m *Model) transferSummary() string {
+	ids := make([]int, 0, len(m.transfers))
+	for id := range m.transfers {
+		ids = append(ids, id)
+	}
+	for i := 1; i < len(ids); i++ {
+		for j := i; j > 0 && ids[j] < ids[j-1]; j-- {
+			ids[j], ids[j-1] = ids[j-1], ids[j]
+		}
+	}
+	job := m.transfers[ids[0]]
+	switch {
+	case job.finished:
+		return job.label + " done"
+	case job.percent() >= 0:
+		return fmt.Sprintf("%s %d%%", job.label, job.percent())
+	default:
+		return job.label + "…"
+	}
+}
+
 // renderStagedBar is the one-line summary of the marked set: how many, where they
 // go, and the three keys that matter. It only appears while something is marked,
 // so it costs nothing when there is nothing to do.
@@ -683,7 +705,9 @@ func (m *Model) renderStatusBar(l layout) string {
 		parts = append(parts, fmt.Sprintf("%d selected · %s", ctx.Selection, humanSize(m.Pane().SelectionBytes())))
 	}
 	if m.Jobs() > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s running", m.Jobs(), plural(m.Jobs(), "job", "jobs")))
+		// The status bar says what is running even when the sidebar is hidden by a
+		// narrow terminal: a transfer is never invisible.
+		parts = append(parts, m.transferSummary())
 	}
 	if pending := m.resolver.Pending(); pending != "" {
 		parts = append(parts, "…"+pending)

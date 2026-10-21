@@ -63,6 +63,11 @@ func TestPreviewInTheGridIsBesideTheListing(t *testing.T) {
 	m.selectByName("hello.txt")
 	m.preview = true
 	m.Focused = 0
+	if fetch := m.previewCmd(); fetch == nil {
+		t.Fatal("the preview should be fetched")
+	} else {
+		m.applyPreview(fetch().(previewReadyMsg))
+	}
 
 	out := ansi.Strip(render(m))
 	if !strings.Contains(out, "the quick brown fox") {

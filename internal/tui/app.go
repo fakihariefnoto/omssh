@@ -400,12 +400,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.started = true
 		}
 		m.ensureVisible()
-		return m, nil
+		// The preview needs a width before it can be fetched, and this is the
+		// first message that has one.
+		cmd := m.previewCmd()
+		return m, cmd
 
 	case heartbeatMsg:
 		m.expireToasts()
+		m.pruneTransfers(time.Now())
 		m.quitHint = ""
-		return m, heartbeat()
+		// Anything that changed the cursor or a listing without going through the
+		// keyboard lands here within half a second; the keyboard path asks at once.
+		cmd := m.previewCmd()
+		return m, tea.Batch(heartbeat(), cmd)
 
 	case tea.KeyboardEnhancementsMsg:
 		m.applyCapabilities(msg)
@@ -518,6 +525,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toastError("Edit failed: " + msg.err.Error())
 		return m, nil
 
+	case previewReadyMsg:
+		m.applyPreview(msg)
+		return m, nil
+
 	case transferUpdate:
 		if job, ok := m.transfers[msg.id]; ok {
 			job.done, job.total, job.name = msg.done, msg.total, msg.name
@@ -568,7 +579,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKey routes a key press to the overlay, the filter, or the key map.
+// handleKey wraps the keymap handler and asks for the preview the new cursor
+// needs. Rendering cannot ask, and asking here means a moved cursor does not wait
+// for the heartbeat to fetch its preview.
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	model, cmd := m.handleKeyNow(msg)
+	if fetch := m.previewCmd(); fetch != nil {
+		cmd = tea.Batch(cmd, fetch)
+	}
+	return model, cmd
+}
+
+func (m *Model) handleKeyNow(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	// Ctrl+V pastes into a text field when one has focus. In the file manager no
