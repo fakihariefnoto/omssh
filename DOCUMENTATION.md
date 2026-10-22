@@ -15,6 +15,7 @@ If you are looking for installation, see the [README](README.md).
 - [Editing, permissions and links](#editing-permissions-and-links)
 - [Transfers](#transfers)
 - [Connections](#connections)
+- [Object storage](#object-storage)
 - [Terminal](#terminal)
 - [Deploy](#deploy)
 - [Command line](#command-line)
@@ -283,6 +284,54 @@ them.
 then asks. A host key that has never been seen is a decision: `Remember`, `Once`
 or `Refuse`, with the fingerprint shown. A **changed** key is never a prompt — it
 is a hard stop, because that is what a changed key means.
+
+## Object storage
+
+AWS S3 and Cloudflare R2 are places like hosts: they get a pane, a tab and the
+same copy, archive and deploy behaviour as a server.
+
+```yaml
+cloud:
+  profiles:
+    backups:                       # AWS S3
+      provider: s3
+      bucket: my-backups
+      region: eu-central-1
+      prefix: omssh                # optional: root the pane inside the bucket
+    r2-assets:                     # Cloudflare R2
+      provider: r2
+      bucket: assets
+      endpoint: https://<account>.r2.cloudflarestorage.com
+      region: auto
+```
+
+**Credentials** come from the standard AWS chain: `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`, `~/.aws/credentials`, SSO, or an instance role. Nothing
+secret belongs in the config file. For R2, create an R2 API token and export its
+key pair the same way.
+
+The profiles appear in the connections screen (`Ctrl+O`) after your hosts.
+`Enter` opens one; `t` says there is no shell, because there is not.
+
+**What object storage cannot do**, and the interface says so instead of failing
+halfway:
+
+- no permissions and no symlinks (`P` and `L` report "not supported");
+- no atomic rename: a rename is copy-then-delete, and a failure between the two
+  leaves both copies;
+- no append or partial write: a write is buffered locally and put on close;
+- directories are prefixes. An empty folder exists only as a marker object.
+
+From the shell, without the interface:
+
+```sh
+omssh cloud list
+omssh cloud check backups      # lists the root, and explains a 403 vs a 404
+omssh cloud ls backups logs/
+```
+
+`check` exists because "wrong bucket", "wrong region" and "this key cannot see
+it" look identical from the outside: it separates them.
 
 ## Terminal
 

@@ -57,5 +57,9 @@ func (m *Model) openTerminalForPane() tea.Cmd {
 		m.quitHint = "This pane is not connected"
 		return nil
 	}
+	if isCloudHost(pane.Host) {
+		m.toastInfo("Object storage has no shell · t on a host opens one")
+		return nil
+	}
 	return m.openTerminal(pane.Host)
 }

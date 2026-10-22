@@ -18,6 +18,29 @@ type Config struct {
 	// Connections remembers what makes the host list quick to use: the ones kept
 	// close, the ones not worth showing, and the ones used last.
 	Connections Connections `yaml:"connections"`
+	// Cloud holds object-storage profiles. They are not hosts and do not belong in
+	// ~/.ssh/config; each one becomes a pane like a session does.
+	Cloud Cloud `yaml:"cloud"`
+}
+
+// Cloud is the object-storage configuration.
+type Cloud struct {
+	Profiles map[string]CloudProfile `yaml:"profiles"`
+}
+
+// CloudProfile is one bucket.
+type CloudProfile struct {
+	// Provider is "s3" or "r2".
+	Provider string `yaml:"provider"`
+	Bucket   string `yaml:"bucket"`
+	// Region is empty for R2 (it uses "auto") and required for S3.
+	Region string `yaml:"region"`
+	// Endpoint is required for R2 and optional for S3 (MinIO, local tests).
+	Endpoint string `yaml:"endpoint"`
+	// Prefix roots the pane inside the bucket.
+	Prefix string `yaml:"prefix"`
+	// PathStyle forces path-style addressing; R2 always uses it.
+	PathStyle bool `yaml:"path_style"`
 }
 
 // Connections is the interface's memory about hosts. The hosts themselves live in
@@ -167,6 +190,22 @@ func (c Config) Validate() error {
 	for _, name := range c.Connections.Recent {
 		if name == "" {
 			return fmt.Errorf("connections.recent: empty host name")
+		}
+	}
+	for name, profile := range c.Cloud.Profiles {
+		switch profile.Provider {
+		case "s3", "r2":
+		default:
+			return fmt.Errorf("cloud.profiles.%s.provider: got %q, want s3 or r2", name, profile.Provider)
+		}
+		if strings.TrimSpace(profile.Bucket) == "" {
+			return fmt.Errorf("cloud.profiles.%s.bucket: cannot be empty", name)
+		}
+		if profile.Provider == "r2" && strings.TrimSpace(profile.Endpoint) == "" {
+			return fmt.Errorf("cloud.profiles.%s.endpoint: R2 needs https://<account>.r2.cloudflarestorage.com", name)
+		}
+		if profile.Provider == "s3" && strings.TrimSpace(profile.Region) == "" {
+			return fmt.Errorf("cloud.profiles.%s.region: S3 needs a region, like us-east-1", name)
 		}
 	}
 	if c.UI.WidthMargin < 0 || c.UI.WidthMargin > 8 {

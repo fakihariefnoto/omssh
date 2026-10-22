@@ -18,9 +18,12 @@ import (
 // connEntry is one host in the connections screen.
 type connEntry struct {
 	Alias, HostName, User, Identity, ProxyJump, Source string
-	Port                                               int
-	Extra                                              []string // additional patterns on the Host line
-	Editable                                           bool     // lives in the main file, not an include
+	// Cloud marks a bucket. It is not a host and has no shell: the same list, a
+	// different kind of place.
+	Cloud    bool
+	Port     int
+	Extra    []string // additional patterns on the Host line
+	Editable bool     // lives in the main file, not an include
 }
 
 // connectionsState is the SSH host manager. It edits ~/.ssh/config directly, so
@@ -95,6 +98,18 @@ func (m *Model) loadConnections() {
 				Editable:  file == files[0],
 			})
 		}
+	}
+	// Cloud profiles are places too, and the same list is the right place to pick
+	// one. They are appended rather than merged, so the sort above keeps hosts
+	// first and buckets after them.
+	for name, profile := range m.cfg.Cloud.Profiles {
+		entries = append(entries, connEntry{
+			Alias:    name,
+			HostName: "s3://" + profile.Bucket + "/" + strings.Trim(profile.Prefix, "/"),
+			User:     profile.Provider,
+			Source:   "cloud profile",
+			Cloud:    true,
+		})
 	}
 	m.conn.entries = entries
 	m.conn.cursor = clamp(m.conn.cursor, 0, max(0, len(entries)-1))

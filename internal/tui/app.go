@@ -452,6 +452,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handlePromptMsg(msg)
 		return m, nil
 
+	case cloudReadyMsg:
+		cmd := m.handleCloudReady(msg)
+		return m, cmd
+
 	case connectedMsg:
 		cmd := m.handleConnected(msg)
 		return m, cmd

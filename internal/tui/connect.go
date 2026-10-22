@@ -304,6 +304,9 @@ func (m *Model) connectToHighlighted() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	if entry.Cloud {
+		return m.openCloudPane(entry.Alias)
+	}
 	spec := sshconfig.Spec{
 		Alias:        entry.Alias,
 		HostName:     entry.HostName,

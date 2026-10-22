@@ -60,7 +60,12 @@ Everything above the client is one interface (`vfs.FS`), so the copy engine,
 archive engine, deploy, preview and the four-pane dashboard do not know or care
 which of these a pane is showing.
 
-## M8 — Object storage: the `vfs` implementation
+## M8 — Object storage: the `vfs` implementation  (shipped for S3 and R2)
+
+Done: `internal/vfs/object` passes the conformance suite, opens in a pane, and is
+reachable from `omssh cloud check|ls`. AWS S3 and Cloudflare R2 are configured;
+any other S3-compatible endpoint works by hand with `endpoint` and `path_style`.
+The remaining providers are M9 and M10.
 
 S3, GCS, R2, OSS and B2 are the same shape at the level omssh uses them: a bucket
 of keys, listing by prefix, GET and PUT, multipart for large objects. So there is
@@ -99,7 +104,7 @@ one implementation, not five.
 
 ---
 
-## M9 — The compatible providers
+## M9 — The compatible providers  (partly done: R2 preset exists)
 
 R2, OSS, GCS and B2 speak S3-compatible APIs, with differences that are
 configuration, not code.

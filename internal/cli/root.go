@@ -79,6 +79,7 @@ func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 	root.SetErr(stderr)
 
 	root.AddCommand(newExecCmd(opts, stdout, stderr))
+	root.AddCommand(newCloudCmd(opts, stdout))
 	root.AddCommand(newConfigCmd(opts, stdout))
 	root.AddCommand(newKeysCmd(opts, stdout))
 	root.AddCommand(newVersionCmd(stdout))

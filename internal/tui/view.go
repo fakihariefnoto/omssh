@@ -341,6 +341,9 @@ func (m *Model) renderBreadcrumb(pane *Pane, width int, focused bool) string {
 	label := "LOCAL"
 	if pane.Side == SideRemote {
 		label = pane.Host
+		if isCloudHost(label) {
+			label = cloudLabel(label)
+		}
 		if label == "" {
 			label = "REMOTE"
 		}

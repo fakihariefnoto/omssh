@@ -48,6 +48,29 @@ connections:
   # Filled in as you connect, newest first.
   recent: []
 
+cloud:
+  # Buckets are places like hosts: Enter opens one in a pane, with the same copy,
+  # archive and deploy behaviour.
+  #
+  # Credentials come from the standard AWS chain: AWS_ACCESS_KEY_ID and
+  # AWS_SECRET_ACCESS_KEY, ~/.aws/credentials, SSO, or an instance role. Nothing
+  # secret belongs in this file.
+  profiles: {}
+  # Example:
+  #
+  # profiles:
+  #   backups:                          # AWS S3
+  #     provider: s3
+  #     bucket: my-backups
+  #     region: eu-central-1
+  #     prefix: omssh                   # optional: root the pane inside the bucket
+  #
+  #   r2-assets:                        # Cloudflare R2
+  #     provider: r2
+  #     bucket: assets
+  #     endpoint: https://<account>.r2.cloudflarestorage.com
+  #     region: auto
+
 keys:
   # Ctrl+Q quits. "esc" is rejected: Esc only ever dismisses or goes back.
   quit: ctrl+q

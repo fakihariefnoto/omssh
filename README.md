@@ -32,6 +32,9 @@ unpacked tree or a single archive instead of a pile of files.
 - **Archive handling on both sides.** Extract a tarball that lives on the server
   into a local folder; pack a local selection straight onto the server. No
   `tar`/`unzip` on either end.
+- **Buckets as places.** AWS S3 and Cloudflare R2 open in a pane like a host:
+  copy between a bucket and a server, extract an archive from a bucket, deploy
+  into one. Credentials come from the standard AWS chain, never from the config.
 - **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
   diff, and a sync mode that mirrors. A second run with nothing changed does
   nothing.
@@ -110,6 +113,9 @@ transfer behaviour, deploy profiles, pinned and hidden hosts.
 omssh                            # the interface
 omssh <host>                     # the interface, connected on startup
 omssh exec <host> -- <command>   # one command, its exit status
+omssh cloud list                 # object-storage profiles
+omssh cloud check <profile>      # list a bucket root, and say what a 403 means
+omssh cloud ls <profile> [path]
 omssh keys                       # the effective keymap
 omssh config path|init|check
 omssh version
