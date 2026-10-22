@@ -42,6 +42,24 @@ is three servers and a bucket.
 
 ---
 
+## How many clients this needs
+
+Seven services, **three clients**:
+
+| Service | Protocol | Client | Notes |
+| --- | --- | --- | --- |
+| AWS S3 | S3 | S3 | the reference implementation |
+| Cloudflare R2 | S3-compatible | S3 | per-account endpoint, path-style |
+| Backblaze B2 | S3-compatible | S3 | per-region endpoint; keys are bucket-scoped |
+| Alibaba Cloud OSS | S3-compatible | S3 | **virtual-hosted style only**; per-region endpoint |
+| Google Cloud Storage | S3-compatible XML API | S3 | needs **HMAC keys**; service accounts need the native API |
+| Azure Blob Storage | native REST | Azure Blob | no S3 compatibility at all |
+| WebDAV | HTTP/WebDAV | WebDAV | real `MOVE`, ETags, no S3 in sight |
+
+Everything above the client is one interface (`vfs.FS`), so the copy engine,
+archive engine, deploy, preview and the four-pane dashboard do not know or care
+which of these a pane is showing.
+
 ## M8 — Object storage: the `vfs` implementation
 
 S3, GCS, R2, OSS and B2 are the same shape at the level omssh uses them: a bucket
@@ -91,7 +109,10 @@ configuration, not code.
 - Provider presets that fill the endpoint, region and path-style settings:
   - **Cloudflare R2** — `https://<account>.r2.cloudflarestorage.com`, path-style.
   - **AWS S3** — regional endpoints, virtual-hosted style by default.
-  - **Alibaba Cloud OSS** — `https://<region>.aliyuncs.com`, path-style.
+  - **Alibaba Cloud OSS** — `https://s3.oss-<region>.aliyuncs.com`, **virtual-hosted
+    style only** (OSS rejects path-style). New accounts in Chinese mainland regions
+    must use a bound custom domain for data operations, so the profile needs a
+    field for one.
   - **Google Cloud Storage** — the S3-compatible XML API with HMAC keys, and
     service-account credentials via the native API as a second path if the
     compatibility layer proves limiting.
@@ -106,8 +127,8 @@ configuration, not code.
 
 - The same bucket operations (list, upload, download, copy, delete, extract) pass
   against R2, OSS, GCS and B2 test buckets, not only MinIO.
-- Path-style and virtual-hosted style both work; a wrong combination fails with a
-  message that names the setting, not an XML error.
+- Path-style and virtual-hosted style both work where the provider allows them; a
+  wrong combination fails with a message that names the setting, not an XML error.
 - Large-object uploads above the multipart threshold retry a failed part and
   report which part failed, instead of starting over.
 
