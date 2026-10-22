@@ -332,10 +332,15 @@ cloud:
       region: auto
 ```
 
-**Credentials** come from the standard AWS chain: `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY`, `~/.aws/credentials`, SSO, or an instance role. Nothing
-secret belongs in the config file. For R2, create an R2 API token and export its
-key pair the same way.
+**Credentials** are either entered in the form or taken from the standard AWS
+chain: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, `~/.aws/credentials`, SSO,
+or an instance role. Nothing secret belongs in the config file.
+
+A pair entered in the form goes to the **OS keyring**: service `omssh`, account
+`password:cloud:<profile>`, the value being the id and the secret. On macOS that is
+Keychain Access (search "omssh"); on Linux it is the Secret Service. If the machine
+has no keyring, nothing is stored and the chain is used — the form says so instead
+of pretending it saved. `omssh cloud forget <profile>` removes the pair.
 
 **Adding one from the interface:** `Ctrl+O`, then `a` (or `a` on the S3 screen,
 which fills the type in for you). The form asks for a name, the type (`s3` or

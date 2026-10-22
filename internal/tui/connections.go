@@ -360,8 +360,26 @@ func (m *Model) renderConnections(l layout) string {
 		list = append(list,
 			"", m.st.PaneEmpty.Render("No hosts yet"),
 			m.st.PaneEmpty.Render("a adds one · o opens the file in $EDITOR"))
-	case len(visible) == 0:
+	case len(visible) == 0 && strings.TrimSpace(m.conn.filter.Value) != "":
 		list = append(list, "", m.st.PaneEmpty.Render(truncate("Nothing matches "+m.conn.filter.Value, inner)))
+	case len(visible) == 0:
+		// Entries exist but are filtered out — code hosts and hidden ones are the
+		// usual reason. An empty list with no explanation reads as "my hosts are
+		// gone".
+		hidden := 0
+		for _, e := range m.conn.entries {
+			if m.conn.section == secSSH && e.Cloud {
+				continue
+			}
+			if m.conn.section == secS3 && !e.Cloud {
+				continue
+			}
+			hidden++
+		}
+		list = append(list,
+			"",
+			m.st.PaneEmpty.Render(fmt.Sprintf("%d hidden", hidden)),
+			m.st.PaneEmpty.Render("H shows everything · x unhides one at a time"))
 	default:
 		start := clamp(m.conn.cursor-max(1, listRows-3)/2, 0, max(0, len(visible)-(listRows-2)))
 		for i := start; i < len(visible) && len(list) < listRows; i++ {

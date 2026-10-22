@@ -226,3 +226,20 @@ func TestLauncherNamesBucketsWithoutThePrefix(t *testing.T) {
 		t.Errorf("the row should say it is a bucket:\n%s", out)
 	}
 }
+
+// A config with only code hosts used to look like an empty connection list. It
+// says what is hidden, and H is the answer.
+func TestHiddenHostsAreExplained(t *testing.T) {
+	m, _ := newConnectionsModel(t, "Host github.com\n  HostName github.com\n  User git\n\nHost bitbucket.org\n  HostName bitbucket.org\n  User git\n")
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "hidden") {
+		t.Fatalf("the screen should say hosts are hidden:\n%s", out)
+	}
+	if !strings.Contains(out, "H shows everything") {
+		t.Errorf("it should name the key that reveals them:\n%s", out)
+	}
+	press(t, m, run('H', 0, "H"))
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "github.com") {
+		t.Errorf("H should show the code hosts:\n%s", out)
+	}
+}
