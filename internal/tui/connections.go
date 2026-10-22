@@ -28,7 +28,54 @@ type connEntry struct {
 
 // connectionsState is the SSH host manager. It edits ~/.ssh/config directly, so
 // what it shows is exactly what `ssh` will use.
+// connSection is which management screen is showing. They share one list, one
+// filter and one form; only the kind of place and the tab differ.
+type connSection int
+
+const (
+	secOverview connSection = iota
+	secSSH
+	secS3
+	secWebDAV
+	secAzure
+	secGCP
+)
+
+func (s connSection) title() string {
+	switch s {
+	case secSSH:
+		return "SSH connections"
+	case secS3:
+		return "S3-compatible storage"
+	case secWebDAV:
+		return "WebDAV"
+	case secAzure:
+		return "Azure Blob"
+	case secGCP:
+		return "Google Cloud Storage"
+	default:
+		return "Connections"
+	}
+}
+
+// planned is true for a section whose driver has not shipped. The tab exists so
+// the plan is visible, and it says so instead of pretending to be empty.
+func (s connSection) planned() bool { return s >= secWebDAV }
+
+func (s connSection) plannedNote() string {
+	switch s {
+	case secWebDAV:
+		return "WebDAV (Nextcloud, Box, SharePoint) arrives with M10: PROPFIND, MOVE, ETags."
+	case secAzure:
+		return "Azure Blob arrives with M10: native REST, block uploads, SAS or Entra ID."
+	default:
+		return "Google Cloud Storage's native API arrives only if its S3-compatible XML API is not enough."
+	}
+}
+
 type connectionsState struct {
+	// section is the tab the screen is showing.
+	section connSection
 	// showAll includes hidden and code hosts, for the moment you need one.
 	showAll bool
 	path    string
@@ -171,6 +218,21 @@ func (m *Model) visibleConnections() []connEntry {
 	query := strings.TrimSpace(m.conn.filter.Value)
 	out := make([]connEntry, 0, len(m.conn.entries))
 	for _, e := range m.conn.entries {
+		// The tabs are the same list seen three ways: hosts, buckets, everything.
+		switch m.conn.section {
+		case secSSH:
+			if e.Cloud {
+				continue
+			}
+		case secS3:
+			if !e.Cloud {
+				continue
+			}
+		case secOverview:
+			// everything
+		case secWebDAV, secAzure, secGCP:
+			continue
+		}
 		if !m.conn.showAll {
 			if m.hiddenByChoice(e.Alias) {
 				continue
@@ -226,6 +288,9 @@ func (m *Model) currentConnection() (connEntry, bool) {
 // highlighted one's details. It is a table, so it looks like one — header row,
 // aligned columns, and a selected row you can see at a glance.
 func (m *Model) renderConnections(l layout) string {
+	if m.connSectionNow().planned() {
+		return m.renderPlanned(l)
+	}
 	width, height := l.Width, l.Height
 	rows := make([]string, 0, height)
 
@@ -234,14 +299,37 @@ func (m *Model) renderConnections(l layout) string {
 	path := "~/.ssh/config"
 	count := 0
 	if m.conn != nil {
-		count = len(m.conn.entries)
+		for _, entry := range m.conn.entries {
+			switch m.connSectionNow() {
+			case secSSH:
+				if entry.Cloud {
+					continue
+				}
+			case secS3:
+				if !entry.Cloud {
+					continue
+				}
+			case secOverview, secWebDAV, secAzure, secGCP:
+			}
+			count++
+		}
 		if home, err := userHome(); err == nil && m.conn.path != "" {
 			path = strings.Replace(m.conn.path, home, "~", 1)
 		}
 	}
-	title := m.st.PaneTitle.Render("SSH connections")
-	right := m.st.StatusMuted.Render(fmt.Sprintf("%s · %d %s", path, count, plural(count, "host", "hosts")))
-	rows = append(rows, spread(title, right, width), "")
+	// The count and the noun belong to the tab: the S3 screen has buckets, the
+	// SSH screen has hosts, the overview has both.
+	place, noun := path, plural(count, "host", "hosts")
+	switch m.connSectionNow() {
+	case secS3:
+		place, noun = "config.yaml", plural(count, "bucket", "buckets")
+	case secOverview:
+		noun = plural(count, "connection", "connections")
+	case secSSH, secWebDAV, secAzure, secGCP:
+	}
+	title := m.st.PaneTitle.Render(m.connSectionNow().title())
+	right := m.st.StatusMuted.Render(fmt.Sprintf("%s · %d %s", place, count, noun))
+	rows = append(rows, spread(title, right, width), m.renderConnectionTabs(width), "")
 
 	// The details box is exactly as tall as its content, so it never looks like an
 	// empty panel; the list takes the rest of the screen, which is where a person
@@ -394,9 +482,9 @@ func (m *Model) saveConfig() {
 func connKeyLegend(width int) string {
 	switch {
 	case width >= 136:
-		return "Enter browse · t terminal · Q disconnect · f pin · x hide · H all · b bucket · e edit · a add · d delete · / filter · Esc back"
+		return "Enter browse · t terminal · Q disconnect · Tab screen · a add · f pin · x hide · H all · e edit · d delete · / filter · Esc back"
 	case width >= 130:
-		return "Enter browse · t terminal · Q disconnect · f pin · x hide · H all · b bucket · a add · / filter · Esc back"
+		return "Enter · t terminal · Q disconnect · Tab screen · a add · f pin · x hide · H all · / filter"
 	case width >= 112:
 		return "Enter · t terminal · Q disconnect · f pin · x hide · H all · a add · / filter · Esc"
 	case width >= 92:
@@ -406,6 +494,87 @@ func connKeyLegend(width int) string {
 	default:
 		return "Enter · t · Q · f · x · H · Esc"
 	}
+}
+
+// renderConnectionTabs is the row of management screens. The planned ones are
+// muted and marked, so the plan is visible without pretending they work.
+func (m *Model) renderConnectionTabs(width int) string {
+	type tab struct {
+		section connSection
+		label   string
+	}
+	tabs := []tab{
+		{secOverview, "1 Overview"},
+		{secSSH, "2 SSH"},
+		{secS3, "3 S3"},
+		{secWebDAV, "4 WebDAV"},
+		{secAzure, "5 Azure"},
+		{secGCP, "6 GCP"},
+	}
+	parts := make([]string, 0, len(tabs))
+	for _, t := range tabs {
+		label := t.label
+		if t.section.planned() {
+			label += "·soon"
+		}
+		switch {
+		case t.section == m.connSectionNow():
+			parts = append(parts, m.st.Accent.Bold(true).Render("["+label+"]"))
+		case t.section.planned():
+			parts = append(parts, m.st.StatusMuted.Render(label))
+		default:
+			parts = append(parts, m.st.CardText.Render(label))
+		}
+	}
+	return padVisible(truncate(strings.Join(parts, "  "), width), width)
+}
+
+// cycleSection moves between management screens; planned tabs are included so the
+// plan is reachable and explained.
+func (m *Model) cycleSection(delta int) {
+	if m.conn == nil {
+		return
+	}
+	section := int(m.conn.section) + delta
+	if section < 0 {
+		section = int(secGCP)
+	}
+	if section > int(secGCP) {
+		section = 0
+	}
+	m.conn.section = connSection(section)
+	m.conn.cursor = 0
+	m.conn.filtering = false
+	m.conn.filter.Set("")
+}
+
+// connSectionNow is the current section, or the overview before anything loaded.
+func (m *Model) connSectionNow() connSection {
+	if m.conn == nil {
+		return secOverview
+	}
+	return m.conn.section
+}
+
+// renderPlanned is the whole screen for a section whose driver is not here yet.
+func (m *Model) renderPlanned(l layout) string {
+	width, height := l.Width, l.Height
+	rows := []string{
+		m.st.PaneTitle.Render(m.connSectionNow().title()),
+		m.renderConnectionTabs(width),
+		"",
+		m.st.PaneEmpty.Render(truncate(m.connSectionNow().plannedNote(), width-2)),
+		"",
+		m.st.StatusMuted.Render("Nothing to configure here yet · Tab to another screen · Esc back"),
+	}
+	out := make([]string, 0, height)
+	for _, row := range rows {
+		out = append(out, padVisible(truncate(row, width), width))
+	}
+	for len(out) < height {
+		out = append(out, spaces(width))
+	}
+	return strings.Join(out[:height], "\n")
 }
 
 // connHeaderRow labels the columns once, so the table explains itself.
@@ -467,6 +636,11 @@ func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
 	if host == "" {
 		host = e.Alias
 	}
+	if !e.Editable && !e.Cloud {
+		// The row has to say "from include" as well as everything else; the host
+		// column is the one with room to give.
+		hostWidth = max(12, hostWidth-len(" from include"))
+	}
 	state := m.connState(e)
 	port := "—"
 	if e.Port != 0 {
@@ -480,17 +654,19 @@ func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
 		cols += padLeft(port, portWidth)
 	}
 	cols += padRight(" "+state.label, connStateWidth)
-	if !e.Editable {
+	if !e.Editable && !e.Cloud {
 		// It lives in an Include, so the main file cannot change it: say so here
 		// rather than failing when the edit is attempted.
 		cols += " from include"
 	}
+	// Exactly the interior width: a row that overflows wraps and breaks the frame.
+	cols = ansi.Truncate(cols, inner, "…")
 
 	if selected {
 		// A filled row, so the choice is unmistakable rather than a tint.
 		return m.st.PaletteItemActive.Width(inner).Render(padVisible(cols, inner))
 	}
-	if !e.Editable {
+	if !e.Editable && !e.Cloud {
 		return m.st.CardMuted.Render(padVisible(cols, inner))
 	}
 	return padVisible(cols, inner)
@@ -605,6 +781,10 @@ func (m *Model) handleConnectionsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.toggleFavourite()
 	case "x":
 		m.toggleHidden()
+	case "tab", "right", "l":
+		m.cycleSection(1)
+	case "shift+tab", "left", "h":
+		m.cycleSection(-1)
 	case "H":
 		if m.conn != nil {
 			m.conn.showAll = !m.conn.showAll
@@ -646,7 +826,10 @@ func (m *Model) openConnectionForm(original string, spec sshconfig.Spec) {
 
 // openCloudForm asks for the six things a bucket profile needs. It is the same
 // form machinery as a host block: one place to type into, one place to save.
-func (m *Model) openCloudForm() {
+func (m *Model) openCloudForm(provider string) {
+	if provider == "" {
+		provider = "s3"
+	}
 	form := connForm{kind: "cloud"}
 	add := func(key, label, hint, value string) {
 		field := connField{key: key, label: label, hint: hint}
@@ -654,7 +837,7 @@ func (m *Model) openCloudForm() {
 		form.fields = append(form.fields, field)
 	}
 	add("Name", "name", "profile name, shown in this list", "")
-	add("Provider", "type", "s3 or r2", "s3")
+	add("Provider", "type", "s3 or r2", provider)
 	add("Bucket", "bucket", "the bucket name", "")
 	add("Region", "region", "us-east-1 for AWS · auto for R2", "")
 	add("Endpoint", "endpoint", "R2: https://<account>.r2.cloudflarestorage.com", "")

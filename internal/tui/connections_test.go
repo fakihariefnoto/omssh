@@ -84,8 +84,10 @@ func TestConnectionsUsesOnlyTheConfiguredPath(t *testing.T) {
 		}
 	}
 
-	// Adding writes to the configured file and nowhere else.
+	// Adding writes to the configured file and nowhere else. `a` asks what kind
+	// of place; the first choice is an SSH host.
 	press(t, m, run('a', 0, "a"))
+	press(t, m, keyNamed(tea.KeyEnter))
 	for _, ch := range "isolated" {
 		press(t, m, run(ch, 0, string(ch)))
 	}
@@ -162,6 +164,7 @@ func TestConnectionsFilter(t *testing.T) {
 func TestConnectionsAddHost(t *testing.T) {
 	m, path := newConnectionsModel(t, connFixture)
 	press(t, m, run('a', 0, "a"))
+	press(t, m, keyNamed(tea.KeyEnter)) // SSH host is the first choice
 	if m.Overlay != OverlayForm {
 		t.Fatal("a should open the form")
 	}
@@ -213,6 +216,7 @@ func TestConnectionsAddHost(t *testing.T) {
 func TestConnectionsFormIsRendered(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
 	press(t, m, run('a', 0, "a"))
+	press(t, m, keyNamed(tea.KeyEnter))
 	out := ansi.Strip(render(m))
 	for _, want := range []string{"Add connection", "name", "host", "user", "port", "key", "jump", "Enter save"} {
 		if !strings.Contains(out, want) {
@@ -232,6 +236,7 @@ func TestConnectionsFormIsRendered(t *testing.T) {
 func TestConnectionsFormValidation(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
 	press(t, m, run('a', 0, "a"))
+	press(t, m, keyNamed(tea.KeyEnter)) // choose SSH host
 	// An empty name is rejected.
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayForm {

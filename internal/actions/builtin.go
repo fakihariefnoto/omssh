@@ -155,9 +155,6 @@ func standardPreset() []Action {
 			Desc: "Open a session to the highlighted host", Enabled: onScreenWithCursor(connections)},
 		{ID: "session.add", Label: "Add connection", Category: CatSession, Default: "a", Screen: connections,
 			Desc: "Add a host block to ~/.ssh/config", Enabled: onScreen(connections)},
-		{ID: "session.add-cloud", Label: "Add bucket", Category: CatSession, Default: "b", Screen: connections,
-			Desc:    "Add an S3 or R2 profile to the config",
-			Enabled: onScreen(connections)},
 		{ID: "session.edit", Label: "Edit connection", Category: CatSession, Default: "e", Screen: connections,
 			Desc: "Edit the highlighted host", Enabled: onScreenWithCursor(connections)},
 		{ID: "session.delete", Label: "Delete connection", Category: CatSession, Default: "d", Screen: connections, Danger: true,
@@ -253,7 +250,7 @@ func fileSelected(ctx Context) bool { return ctx.Cursor || ctx.Selection > 0 }
 func always(Context) bool { return true }
 
 // onScreen scopes an action to one top-level screen.
-func onScreen(name string) func(Context) bool { //nolint:unparam // named for symmetry with onScreenWithCursor
+func onScreen(name string) func(Context) bool {
 	return func(ctx Context) bool { return ctx.Screen == name }
 }
 

@@ -14,7 +14,10 @@ import (
 // no field has focus, it keeps its documented meaning: stage the selection.
 func TestCtrlVPastesIntoTheFocusedField(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
-	press(t, m, run('a', 0, "a")) // the form has focus on "name"
+	press(t, m, run('a', 0, "a"))
+	press(t, m, keyNamed(tea.KeyEnter)) // what kind of place?
+	press(t, m, keyNamed(tea.KeyEnter)) // SSH host
+	// The form has focus on "name".
 
 	_, cmd := m.Update(run('v', tea.ModCtrl, ""))
 	if cmd == nil {
@@ -58,6 +61,7 @@ func TestCtrlVInTheFileManagerIsNotAClipboardRead(t *testing.T) {
 func TestBracketedPasteGoesToTheFocusedField(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
 	press(t, m, run('a', 0, "a"))
+	press(t, m, keyNamed(tea.KeyEnter))
 	press(t, m, tea.KeyPressMsg{Code: tea.KeyTab}) // to "host"
 	_, _ = m.Update(tea.PasteMsg{Content: "203.0.113.10"})
 	if got := m.form.fields[1].in.Value; got != "203.0.113.10" {
@@ -172,6 +176,7 @@ func TestPasteIsSanitised(t *testing.T) {
 func TestClipboardFailureIsReported(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
 	press(t, m, run('a', 0, "a"))
+	press(t, m, keyNamed(tea.KeyEnter))
 	_, _ = m.Update(clipboardMsg{err: clipboardError{}})
 	if len(m.toasts) == 0 {
 		t.Fatal("a clipboard failure should be reported")

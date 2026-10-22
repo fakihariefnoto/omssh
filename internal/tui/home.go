@@ -89,7 +89,7 @@ func (m *Model) homeItems() []homeItem {
 		items = append(items, homeItem{ID: "app.files", Icon: "~", Label: "Back to the files", Hint: "Enter"})
 	}
 	return append(items,
-		homeItem{ID: "session.open", Icon: ">", Label: "SSH connections", Hint: "Ctrl+O"},
+		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},
 		homeItem{ID: "app.files", Icon: "~", Label: "Browse local files", Hint: "Enter"},
 		homeItem{ID: "nav.path", Icon: "/", Label: "Go to a folder", Hint: "Ctrl+L"},
 		// Keys and help live inside settings: one card for "how do I change how

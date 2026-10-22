@@ -37,7 +37,7 @@ omssh prod       # the interface, connected to prod on startup
 
 `omssh` starts on a launcher, not in a menu-less void. From there:
 
-- **SSH connections** (`Ctrl+O`) — the hosts in `~/.ssh/config`.
+- **Manage connections** (`Ctrl+O`) — hosts and buckets, one screen per kind.
 - **Browse local files** (`Esc` or `Enter`) — the file manager at the directory
   you started in.
 - **Settings, theme and keys** (`Ctrl+,`) — themes, icons, motion, and the keymap.
@@ -51,7 +51,7 @@ connections screen from anywhere, and `Esc` always takes you one step back.
     OMSHH
     Oh My SSH — SSH/SFTP with terminal UI
 
- ▸ [>] SSH connections           Ctrl+O
+ ▸ [>] Manage connections        Ctrl+O
    [~] Browse local files        Enter
    [/] Go to a folder            Ctrl+L
    [+] Settings, theme and keys  Ctrl+,
@@ -254,6 +254,28 @@ terminal. Transfers run off the update loop; the interface keeps answering.
 
 ## Connections
 
+`Ctrl+O` opens the connection manager. It has one screen per kind of place, and
+`Tab` / `Shift+Tab` moves between them:
+
+```
+[1 Overview]  2 SSH  3 S3  4 WebDAV·soon  5 Azure·soon  6 GCP·soon
+```
+
+The **Overview** lists everything, hosts and buckets together. **SSH** and **S3**
+each list their own. The last three tabs say when they arrive instead of showing a
+convincing empty list.
+
+`a` adds whatever the current screen is about — directly on SSH and S3, and with a
+chooser on the overview:
+
+```
+Add
+What kind of place?
+▸ SSH host               a machine in ~/.ssh/config
+  AWS S3 bucket          region, bucket, optional prefix
+  Cloudflare R2 bucket   account endpoint, bucket
+```
+
 `Ctrl+O` lists the hosts in `~/.ssh/config`. Nothing is copied into another file.
 
 | Key | Action |
@@ -310,9 +332,10 @@ cloud:
 secret belongs in the config file. For R2, create an R2 API token and export its
 key pair the same way.
 
-**Adding one from the interface:** `Ctrl+O`, then `b`. The form asks for a name,
-the type (`s3` or `r2`), the bucket, the region, the endpoint (R2 only) and an
-optional prefix; `Enter` writes it to the config. The profiles appear in the list
+**Adding one from the interface:** `Ctrl+O`, then `a` (or `a` on the S3 screen,
+which fills the type in for you). The form asks for a name, the type (`s3` or
+`r2`), the bucket, the region, the endpoint (R2 only) and an optional prefix;
+`Enter` writes it to the config. The profiles appear in the list
 after your hosts and `Enter` opens one. `t` says there is no shell, because there
 is not.
 

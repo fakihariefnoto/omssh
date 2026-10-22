@@ -153,6 +153,7 @@ type Model struct {
 	cancelConnect context.CancelFunc
 	Overlay       Overlay
 	palette       paletteState
+	add           addState
 	menu          menuState
 	help          helpState
 	settings      settingsState
@@ -821,6 +822,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.overlayCmd = m.handlePasteOptionsKey(msg)
 		return true
 
+	case OverlayAdd:
+		m.handleAddKey(msg)
+		return true
+
 	case OverlayStaged:
 		switch msg.String() {
 		case "esc":
@@ -1041,9 +1046,17 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.screen = screenConnections
 		m.mode = "CONNECTIONS"
 	case "session.add":
-		m.openConnectionForm("", sshconfig.Spec{})
-	case "session.add-cloud":
-		m.openCloudForm()
+		switch m.connSectionNow() {
+		case secSSH:
+			m.openConnectionForm("", sshconfig.Spec{})
+		case secS3:
+			m.openCloudForm("s3")
+		case secOverview:
+			m.openAddChooser()
+		default:
+			m.toastInfo(m.connSectionNow().title() + " is planned · see ROADMAP.md")
+		}
+
 	case "session.edit":
 		if entry, ok := m.currentConnection(); ok {
 			if !entry.Editable {
@@ -1401,6 +1414,8 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
+	case OverlayAdd:
+		// The kind chooser has no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
 		// the only field outside an overlay.

@@ -53,10 +53,18 @@ func TestAddBucketForm(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
 	m.configPath = t.TempDir() + "/config.yaml"
 
-	cmd := m.runAction("session.add-cloud")
-	_ = cmd
+	// a opens the kind chooser; the third entry is an R2 bucket.
+	m.runAction("session.add")
+	if m.Overlay != OverlayAdd {
+		t.Fatalf("a should ask what to add, overlay=%v", m.Overlay)
+	}
+	m.add.cursor = 2
+	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayForm || m.form.kind != "cloud" {
-		t.Fatalf("b should open the bucket form, overlay=%v kind=%q", m.Overlay, m.form.kind)
+		t.Fatalf("choosing R2 should open the bucket form, overlay=%v kind=%q", m.Overlay, m.form.kind)
+	}
+	if got := m.form.fields[1].in.Value; got != "r2" {
+		t.Errorf("the type should be prefilled with r2, got %q", got)
 	}
 	values := map[string]string{
 		"Name": "photos", "Provider": "r2", "Bucket": "my-photos",
@@ -98,7 +106,9 @@ func TestAddBucketForm(t *testing.T) {
 // A bucket profile that cannot work is refused with a reason, not saved.
 func TestAddBucketValidates(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
-	m.runAction("session.add-cloud")
+	m.runAction("session.add")
+	m.add.cursor = 1
+	press(t, m, keyNamed(tea.KeyEnter))
 	m.form.fields[0].in.Set("broken")
 	m.form.fields[1].in.Set("s3")
 	m.form.fields[2].in.Set("")
@@ -108,5 +118,83 @@ func TestAddBucketValidates(t *testing.T) {
 	}
 	if m.form.err == "" {
 		t.Error("the form should say what is wrong")
+	}
+}
+
+// The manager has one screen per kind of place, and Tab moves between them.
+func TestConnectionSections(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.cfg.Cloud.Profiles = map[string]config.CloudProfile{
+		"backups": {Provider: "s3", Bucket: "my-backups", Region: "eu-central-1"},
+	}
+	m.loadConnections()
+
+	// Overview shows both kinds.
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "prod") || !strings.Contains(out, "backups") {
+		t.Fatalf("the overview should list both:\n%s", out)
+	}
+	if !strings.Contains(out, "Overview") || !strings.Contains(out, "SSH") || !strings.Contains(out, "S3") {
+		t.Errorf("the tabs should be visible:\n%s", out)
+	}
+
+	// SSH shows hosts only.
+	press(t, m, run('\t', 0, ""))
+	if m.conn.section != secSSH {
+		t.Fatalf("Tab should reach SSH, section is %v", m.conn.section)
+	}
+	out = ansi.Strip(render(m))
+	if strings.Contains(out, "backups") {
+		t.Errorf("the SSH screen should not list buckets:\n%s", out)
+	}
+
+	// S3 shows buckets only.
+	press(t, m, keyNamed(tea.KeyTab))
+	if m.conn.section != secS3 {
+		t.Fatalf("Tab should reach S3, section is %v", m.conn.section)
+	}
+	out = ansi.Strip(render(m))
+	if strings.Contains(out, "prod") {
+		t.Errorf("the S3 screen should not list SSH hosts:\n%s", out)
+	}
+	if !strings.Contains(out, "backups") {
+		t.Errorf("the S3 screen should list the bucket:\n%s", out)
+	}
+
+	// A planned section says so instead of looking empty.
+	press(t, m, keyNamed(tea.KeyTab))
+	if m.conn.section != secWebDAV {
+		t.Fatalf("Tab should reach WebDAV, section is %v", m.conn.section)
+	}
+	out = ansi.Strip(render(m))
+	if !strings.Contains(out, "M10") {
+		t.Errorf("a planned screen should say when it arrives:\n%s", out)
+	}
+	if _, ok := m.currentConnection(); ok {
+		t.Error("a planned screen has nothing to choose")
+	}
+}
+
+// Adding from a section skips the kind chooser: the section already answered it.
+func TestAddFromASectionSkipsTheChooser(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.conn.section = secS3
+	m.runAction("session.add")
+	if m.Overlay != OverlayForm || m.form.kind != "cloud" {
+		t.Fatalf("a in S3 should open the bucket form directly, overlay=%v kind=%q", m.Overlay, m.form.kind)
+	}
+
+	m.Overlay = OverlayNone
+	m.conn.section = secSSH
+	m.runAction("session.add")
+	if m.Overlay != OverlayForm || m.form.kind == "cloud" {
+		t.Fatalf("a in SSH should open the host form, overlay=%v kind=%q", m.Overlay, m.form.kind)
+	}
+
+	m.Overlay = OverlayNone
+	m.conn.section = secWebDAV
+	m.runAction("session.add")
+	if m.Overlay == OverlayForm {
+		t.Error("a planned section should not open a form it cannot save")
 	}
 }
