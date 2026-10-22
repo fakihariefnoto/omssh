@@ -286,8 +286,11 @@ func TestTabStripReadsAsATabBar(t *testing.T) {
 	if !strings.Contains(plain, "localhost") {
 		t.Errorf("the tab strip should name the tab: %q", plain)
 	}
-	if strings.Contains(row, "48;") {
-		t.Errorf("the tab strip should not paint a background chip: %q", row)
+	// The frame paints the theme's background behind every line; the tab itself
+	// must not add a chip on top of it.
+	tab := strings.ReplaceAll(row, "\x1b[48;2;14;17;22m", "")
+	if strings.Contains(tab, "48;") {
+		t.Errorf("the tab strip should not paint a background chip: %q", tab)
 	}
 	if !strings.Contains(row, "\x1b[4m") && !strings.Contains(row, ";4m") && !strings.Contains(row, ";4;") {
 		t.Errorf("the active tab should be underlined: %q", row)

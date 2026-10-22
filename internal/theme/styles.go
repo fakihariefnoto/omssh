@@ -92,6 +92,9 @@ type Styles struct {
 
 // NewStyles derives the styles for a theme.
 func NewStyles(t Theme) Styles {
+	if t.Mono {
+		return monoStyles(t)
+	}
 	c := t.Colors
 	fg := lipgloss.NewStyle().Foreground(c.FG)
 	accent := lipgloss.NewStyle().Foreground(c.Accent)
@@ -176,6 +179,88 @@ func NewStyles(t Theme) Styles {
 		ToastWarning: lipgloss.NewStyle().Foreground(c.BG).Background(c.Warning).Padding(0, 1),
 		ToastError:   lipgloss.NewStyle().Foreground(c.BG).Background(c.Danger).Bold(true).Padding(0, 1),
 	}
+}
+
+// monoStyles is the monochrome theme: selection and emphasis are carried by
+// attributes, not colour. A theme that sets every colour to "inherit" would
+// otherwise render a highlighted row exactly like an unhighlighted one — which is
+// what "the cursor does not work" looked like.
+func monoStyles(t Theme) Styles {
+	plain := lipgloss.NewStyle()
+	selected := plain.Reverse(true).Bold(true)
+	emphasis := plain.Bold(true).Underline(true)
+	muted := plain.Faint(true)
+	danger := plain.Bold(true)
+
+	s := Styles{
+		Theme: t,
+
+		Accent:  emphasis,
+		Muted:   muted,
+		Success: plain,
+		Warning: emphasis,
+		Danger:  danger,
+
+		PaneTitle:        emphasis,
+		PaneTitleBlurred: muted,
+		PaneBorder:       plain,
+		PaneBorderBlur:   plain.Faint(true),
+		PaneHeader:       plain.Underline(true),
+		PaneRow:          plain,
+		PaneRowCursor:    selected,
+		PaneRowSelected:  emphasis,
+		PaneDir:          plain.Bold(true),
+		PaneSymlink:      plain.Underline(true),
+		PaneEmpty:        muted.Italic(true),
+
+		Breadcrumb:       muted,
+		BreadcrumbActive: emphasis,
+		PathInput:        plain.Reverse(true),
+
+		TabActive:   emphasis,
+		TabInactive: muted,
+		TabReady:    plain,
+		TabBusy:     emphasis,
+		TabIdle:     muted,
+		TabError:    plain.Bold(true),
+
+		ActionBar:      muted,
+		ActionVerb:     plain.Bold(true),
+		ActionKey:      plain.Reverse(true),
+		ActionHint:     muted,
+		ActionSelected: selected,
+		StagedBar:      plain.Reverse(true),
+
+		Sidebar:           plain,
+		SidebarTitle:      emphasis,
+		SidebarItem:       plain,
+		SidebarItemActive: selected,
+
+		StatusBar:   muted,
+		StatusText:  plain,
+		StatusKey:   plain.Bold(true),
+		StatusMuted: muted,
+		StatusMode:  plain.Reverse(true).Bold(true),
+
+		Card:              plain.Border(lipgloss.RoundedBorder()),
+		CardTitle:         emphasis,
+		CardText:          plain,
+		CardMuted:         muted,
+		Button:            plain,
+		ButtonActive:      selected,
+		ButtonDanger:      selected,
+		PaletteItem:       plain,
+		PaletteItemActive: selected,
+		PaletteKey:        muted,
+		PaletteGroup:      emphasis,
+		Menu:              plain.Border(lipgloss.RoundedBorder()).Padding(0, 1),
+
+		ToastInfo:    plain.Reverse(true),
+		ToastSuccess: plain.Reverse(true),
+		ToastWarning: plain.Reverse(true).Bold(true),
+		ToastError:   plain.Reverse(true).Bold(true),
+	}
+	return s
 }
 
 // Icons holds the glyphs used for the interface, in two flavours: Nerd Font

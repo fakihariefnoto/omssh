@@ -56,8 +56,12 @@ type Colors struct {
 
 // Theme is a resolved theme: its name, whether it is dark, and its colours.
 type Theme struct {
-	Name   string
-	Dark   bool
+	Name string
+	Dark bool
+	// Mono is true for a theme that deliberately uses no colour. Selection then
+	// has to be carried by attributes — reverse, bold, underline — because colour
+	// is not available to carry it.
+	Mono   bool
 	Colors Colors
 }
 
@@ -82,7 +86,7 @@ func Resolve(name string, profile colorprofile.Profile, hasDark bool) (Theme, er
 	}
 	complete := lipgloss.Complete(profile)
 	if p.noColor {
-		return Theme{Name: name, Dark: p.dark, Colors: Colors{
+		return Theme{Name: name, Dark: p.dark, Mono: true, Colors: Colors{
 			BG: noColor, FG: noColor, Subtle: noColor, Selection: noColor,
 			Accent: noColor, AccentEmphasis: noColor,
 			Success: noColor, Warning: noColor, Danger: noColor, Muted: noColor,

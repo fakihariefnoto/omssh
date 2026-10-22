@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/actions"
+	"github.com/fakihariefnoto/omssh/internal/theme"
 	"github.com/fakihariefnoto/omssh/internal/version"
 )
 
@@ -74,9 +75,33 @@ func (m *Model) fitFrame(body string, l layout) string {
 			m.frameTrimmed = true
 			line = ansi.Truncate(line, l.Width, "")
 		}
-		out = append(out, padVisible(line, l.Width))
+		out = append(out, m.paintBackground(padVisible(line, l.Width)))
 	}
 	return strings.Join(out, "\n")
+}
+
+// paintBackground gives the line the theme's background, re-applying it after
+// every reset so a styled span does not leave the rest of the line unpainted.
+// Mono has no background of its own: the terminal is the theme.
+func (m *Model) paintBackground(line string) string {
+	if m.bgSeq == "" {
+		return line
+	}
+	line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+m.bgSeq)
+	return m.bgSeq + line + "\x1b[0m"
+}
+
+// backgroundSeq is the escape that sets a theme's background, or "" when the
+// theme has none (mono, or a terminal without colour).
+func backgroundSeq(t theme.Theme) string {
+	if t.Mono {
+		return ""
+	}
+	styled := lipgloss.NewStyle().Background(t.Colors.BG).Render("x")
+	if i := strings.Index(styled, "x"); i > 0 {
+		return styled[:i]
+	}
+	return ""
 }
 
 // blankScreen is a full screen of spaces, for an overlay that replaces the view.

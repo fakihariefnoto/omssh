@@ -76,7 +76,11 @@ type Model struct {
 	configPath string
 	themeName  string
 	themeNames []string
-	dropped    []keymap.Dropped
+	// bgSeq paints the theme's own background behind every line. Without it a
+	// light theme on a dark terminal draws dark text on a dark screen — the menu
+	// that "overlaps the background".
+	bgSeq   string
+	dropped []keymap.Dropped
 
 	width, height int
 	started       bool
@@ -318,6 +322,7 @@ func New(opts Options) (*Model, error) {
 		sshPath:     opts.SSHConfigPath,
 		themeName:   resolved.Name,
 		themeNames:  theme.Names(),
+		bgSeq:       backgroundSeq(resolved),
 		dropped:     paneKeys.Dropped(),
 		tabs:        []Tab{{Title: "localhost", State: StateReady}},
 		Panes:       []Pane{NewPane(localFS, dir, home), NewRemotePane()},
@@ -1545,6 +1550,7 @@ func (m *Model) applyTheme(name string) {
 	}
 	m.st = theme.NewStyles(resolved)
 	m.themeName = resolved.Name
+	m.bgSeq = backgroundSeq(resolved)
 	m.cfg.UI.Theme = name
 	m.settings.cursor = indexOf(m.themeNames, resolved.Name)
 	m.toastSuccess("Theme: " + resolved.Name)
