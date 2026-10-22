@@ -8,24 +8,27 @@ Many machines, one window.
   <img src="omssh.png" alt="omssh launcher" width="70%">
 </p>
 
-It starts on a launcher, not a blank prompt: the hosts from your
-`~/.ssh/config`, your local files, a path to jump to, and the settings behind one
-key. Connections you already have are listed here too, so coming back is the same
+It starts on a launcher, not a blank prompt: **Manage connections** (hosts from
+`~/.ssh/config` and buckets, one screen per kind), **Dashboard** (which places to
+show), your local files, a path to jump to, and the settings behind one key.
+Connections you already have are listed here too, so coming back is the same
 gesture as going in.
 
 <p align="center">
   <img src="omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
 </p>
 
-The dashboard puts up to four sessions on screen as a 2×2 grid — local plus three
-hosts, or four hosts — each pane with its own path, selection and history. Files
-move between any two of them, and the card in the middle is where a copy becomes an
+The dashboard puts up to four places on screen as a 2×2 grid — local plus three
+hosts, four hosts, or a bucket in the mix — each pane with its own path, selection
+and history. Which four is a choice, asked before the dashboard opens. Files move
+between any two of them, and the card in the middle is where a copy becomes an
 unpacked tree or a single archive instead of a pile of files.
 
 ## What it does
 
-- **Four panes, one screen.** Each keeps its own path and history. `w` moves
-  between them; `V` chooses which sessions are on screen.
+- **Four panes, one screen — or one.** Each keeps its own path and history.
+  `w` moves between them; `V` chooses which places are on screen, and the local
+  folder is optional, so four servers is a legitimate dashboard.
 - **Copying that respects you.** Mark files once, paste into any pane — as files,
   as an unpacked tree, or as an archive, with the conflict rule chosen in one
   card instead of a soup of flags.
@@ -34,7 +37,9 @@ unpacked tree or a single archive instead of a pile of files.
   `tar`/`unzip` on either end.
 - **Buckets as places.** AWS S3 and Cloudflare R2 open in a pane like a host:
   copy between a bucket and a server, extract an archive from a bucket, deploy
-  into one. Credentials come from the standard AWS chain, never from the config.
+  into one. Credentials come from the form (stored in the OS keyring) or the
+  standard AWS chain — never from the config file. B2, OSS, GCS, WebDAV and Azure
+  are on the [roadmap](ROADMAP.md).
 - **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
   diff, and a sync mode that mirrors. A second run with nothing changed does
   nothing.
@@ -42,6 +47,9 @@ unpacked tree or a single archive instead of a pile of files.
   tmux and colours work because nothing stands in their way.
 - **Dotfiles visible by default.** Hidden files are shown until you press `.`,
   because hiding a file by default makes you wonder where it went.
+- **One manager for every place.** `Ctrl+O` has a screen per kind — Overview, SSH,
+  S3 — with `a` adding whichever the screen is about, and `Tab` moving between
+  them.
 - **Honest about state.** Live transfers, marked files, pinned hosts and recent
   connections are visible in the sidebar; every destructive action asks first.
 - **Keyboard-first, mouse-friendly.** Plain letters are commands, digits switch
@@ -79,7 +87,8 @@ omssh prod         # the interface, already connected to prod
 ```
 
 1. `Ctrl+O` opens **Manage connections** — hosts and buckets, one screen per kind.
-   `Enter` browses one, `t` opens a terminal on it. `Esc` returns to the launcher.
+   `Enter` browses one, `t` opens a terminal on it, `a` adds one (the form asks
+   whether you mean a host or a bucket). `Esc` returns to the launcher.
 2. **Dashboard** on the launcher asks which places it should show — local is
    optional, and buckets need no session. Up to four panes, 2×2. `w` moves the
    focus, `Tab` cycles sessions.
@@ -107,8 +116,12 @@ omssh config path     # print the exact path
 
 Connections are not duplicated here: `omssh` reads and writes your
 `~/.ssh/config` in place, leaving comments and directives it does not manage
-untouched. The config file holds preferences — theme, keymap overrides,
-transfer behaviour, deploy profiles, pinned and hidden hosts.
+untouched. The config file holds preferences — theme, keymap overrides, transfer
+behaviour, deploy profiles, pinned and hidden hosts, and cloud *profiles* (bucket,
+region, endpoint — no secrets).
+
+Bucket credentials entered in the form are kept in the **OS keyring**. Leave them
+blank and the standard AWS chain is used instead.
 
 ## Command line
 
@@ -119,6 +132,7 @@ omssh exec <host> -- <command>   # one command, its exit status
 omssh cloud list                 # object-storage profiles
 omssh cloud check <profile>      # list a bucket root, and say what a 403 means
 omssh cloud ls <profile> [path]
+omssh cloud forget <profile>     # drop the stored access key
 omssh keys                       # the effective keymap
 omssh config path|init|check
 omssh version
