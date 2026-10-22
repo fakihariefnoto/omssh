@@ -211,12 +211,107 @@ Only after M8 and M9 are honest.
 
 ---
 
+## M12 — Sessions that can be read back
+
+Today the terminal is `ssh` handed the real terminal (`T`). That is the right
+default: vim, top and tmux work because nothing stands in their way. It also means
+nothing is recorded, because the app never sees a byte after the handoff.
+
+This milestone makes a *recorded* session an option rather than the only way.
+
+**Deliverables**
+
+- An embedded session: a PTY over the existing SSH connection, a VT screen for
+  drawing, and the keyboard forwarded to it. `T` keeps the external `ssh`; a new
+  action opens the embedded one, and the connections screen says which is which.
+- Recording, in `asciinema`'s `.cast` format: one JSON header, then timestamped
+  output frames. It replays with timing, colour and window size — a plain `.txt`
+  transcript cannot, and a recording nobody can replay is a log, not a session.
+  A `.txt` transcript is exported beside it for grep and for people who want text.
+- Replay: play, pause, scrub, speed, and a text search that seeks. Recordings are
+  listed from the launcher ("Recordings") and from the session's own menu.
+- After connecting, the launcher gains a section for the live session: files,
+  terminal, recordings, tunnels, disconnect.
+- Input is recorded too, with one exception that matters: anything the SSH layer
+  knows is a secret (a password or passphrase prompt) is not written. The recorder
+  is told when a prompt is a secret, not left to guess from the text.
+
+**Acceptance criteria**
+
+- A recorded session replays in `asciinema play` and in omssh, with the same
+  screen at the same timestamps.
+- A session that runs vim and top replays both, including alternate-screen
+  switches and resizes.
+- Recordings live under the state directory, mode 0600, with a configured
+  retention (default: keep, with a size cap).
+- The external terminal still works and records nothing, and the interface says
+  which mode is which.
+
+**Risks**
+
+- An embedded terminal is a large surface: escape sequences, resizes, mouse,
+  paste. It is opt-in for that reason, and the external `ssh` stays the default
+  until the emulator has earned it.
+- Recordings contain everything typed and printed. Secrets are excluded at the
+  source, the files are 0600, and the UI says plainly that a recording is a log of
+  the session, not a private one.
+
+---
+
+## M13 — Tunnels, and a proxy that can be audited
+
+Tunnelling is the other half of "this app is the intermediary": forwarding ports,
+and — when someone deliberately asks for it — terminating the SSH connection so
+the traffic can be recorded.
+
+**Deliverables**
+
+- Port forwarding over the existing pool: local (`-L`), remote (`-R`) and dynamic
+  SOCKS (`-D`). Profiles in the config, a launcher screen listing running tunnels
+  with bytes and uptime, start/stop, and `omssh tunnel list|start|stop`.
+- A recorded bastion mode: omssh listens on a port, the user's client connects to
+  it, omssh authenticates the client, opens the real session to the target, and
+  records both directions as an M12 `.cast` plus a metadata log (who, when, from,
+  to, bytes, exit). This is how a jump host is normally used, with the recording
+  turned on.
+- Tunnel traffic capture is **metadata only** by default: connection events, byte
+  counts, destinations. Payload capture for a forwarded port happens only with an
+  explicit flag per tunnel and a visible banner, because a port tunnel has no
+  session boundary to make "recording" honest about what it contains.
+- The session recording of a bastion is the plaintext omssh itself handles — the
+  same thing the embedded terminal sees.
+
+**Acceptance criteria**
+
+- `-L` and `-D` survive a dropped connection with the pool's reconnect, and the
+  tunnel screen says when a tunnel is reconnecting rather than silently dead.
+- A bastion session records to `.cast`, replays, and its metadata names the client
+  key or password identity that was used.
+- Starting a tunnel on a busy port fails with the port and the conflicting process
+  named where the OS allows it.
+- Nothing is captured unless the tunnel or the bastion was created with capture
+  on, and that state is visible from the launcher at all times.
+
+**Risks and non-goals**
+
+- **No silent interception.** omssh never proxies someone else's SSH connection
+  without their client connecting to omssh's own host key, and it never records a
+  connection it was not asked to record. A tool that quietly decrypts traffic is a
+  different product with different consent.
+- No transparent MITM of a connection that was pointed at the real server: the
+  host key would not match, and making it match is an attack, not a feature.
+- Recordings are evidence only if the machine and the files are trustworthy; the
+  roadmap claims capture, not chain of custody.
+
+---
+
 ## Not planned
 
 Written down so the list stays honest:
 
 - A built-in editor. `$EDITOR` is the editor.
-- A built-in terminal emulator. `ssh` is the terminal (see DOCUMENTATION.md).
+- A built-in terminal as the *only* terminal. `ssh` stays the default; the embedded
+  one exists to be recorded (M12), not to replace it.
 - Windows. The terminal and credential paths have never been exercised there.
 - Full POSIX semantics for object storage: no permissions, no symlinks, no
   atomic rename, and the interface says so rather than faking them.
