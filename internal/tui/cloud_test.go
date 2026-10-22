@@ -198,3 +198,31 @@ func TestAddFromASectionSkipsTheChooser(t *testing.T) {
 		t.Error("a planned section should not open a form it cannot save")
 	}
 }
+
+// A bucket on the launcher is called by its profile name, not its internal tab
+// key: "anofac", not "cloud:anofac".
+func TestLauncherNamesBucketsWithoutThePrefix(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.cfg.Cloud.Profiles = map[string]config.CloudProfile{
+		"anofac": {Provider: "s3", Bucket: "anofac", Region: "eu-central-1"},
+	}
+	m.loadConnections()
+	m.selectConnection("anofac")
+	cmd := m.connectToHighlighted()
+	if cmd == nil {
+		t.Fatalf("opening the bucket should start: %v", m.toasts)
+	}
+	m.handleCloudReady(cmd().(cloudReadyMsg))
+	m.screen = screenHome
+
+	out := ansi.Strip(render(m))
+	if strings.Contains(out, "cloud:anofac") {
+		t.Errorf("the launcher should not leak the tab key:\n%s", out)
+	}
+	if !strings.Contains(out, "anofac") {
+		t.Errorf("the launcher should name the bucket:\n%s", out)
+	}
+	if !strings.Contains(out, "bucket") {
+		t.Errorf("the row should say it is a bucket:\n%s", out)
+	}
+}

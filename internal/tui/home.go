@@ -79,11 +79,20 @@ func (m *Model) homeItems() []homeItem {
 		if tab.Host == "" {
 			continue
 		}
+		label := tab.Host
 		hint := tab.State.Label()
 		if tab.State == StateReady {
 			hint = "connected"
 		}
-		items = append(items, homeItem{ID: "session.focus", Icon: "●", Label: tab.Host, Hint: hint, Host: tab.Host})
+		if isCloudHost(tab.Host) {
+			// A bucket's tab is keyed "cloud:<profile>"; the prefix is an
+			// implementation detail, and it is not what the place is called.
+			label = cloudLabel(tab.Host)
+			if tab.State == StateReady {
+				hint = "bucket"
+			}
+		}
+		items = append(items, homeItem{ID: "session.focus", Icon: "●", Label: label, Hint: hint, Host: tab.Host})
 	}
 	if len(items) > 0 {
 		items = append(items, homeItem{ID: "app.files", Icon: "~", Label: "Back to the files", Hint: "Enter"})
