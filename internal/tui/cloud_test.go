@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -241,5 +242,28 @@ func TestHiddenHostsAreExplained(t *testing.T) {
 	press(t, m, run('H', 0, "H"))
 	if out := ansi.Strip(render(m)); !strings.Contains(out, "github.com") {
 		t.Errorf("H should show the code hosts:\n%s", out)
+	}
+}
+
+// Labels sit in one column with a blank cell before their field, and no label is
+// long enough to push the value off the card.
+func TestFormLayout(t *testing.T) {
+	fields := []connField{
+		{label: "name"}, {label: "host"}, {label: "user"}, {label: "port"},
+		{label: "key"}, {label: "jump"}, {label: "endpoint"}, {label: "secret"},
+	}
+	for _, content := range []int{46, 60, 70} {
+		labelWidth, valueWidth := formLayout(content, fields)
+		if valueWidth < 8 {
+			t.Errorf("content %d leaves %d cells for the value", content, valueWidth)
+		}
+		for _, field := range fields {
+			if lipgloss.Width(field.label) > labelWidth {
+				t.Errorf("label %q is wider than the %d-cell column", field.label, labelWidth)
+			}
+		}
+		if labelWidth+valueWidth > content {
+			t.Errorf("content %d: columns are %d wide together", content, labelWidth+valueWidth)
+		}
 	}
 }

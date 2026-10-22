@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/cloudcred"
@@ -1063,6 +1064,19 @@ func (m *Model) saveCloudForm() tea.Cmd {
 	return nil
 }
 
+// formLayout is the label and value columns for a form: one label column sized to
+// the longest label, a blank cell, then the field. A label hugging its input reads
+// as a rendering accident, and a ragged column reads as two forms.
+func formLayout(content int, fields []connField) (labelWidth, valueWidth int) {
+	labelWidth = 9 // "endpoint"
+	for _, field := range fields {
+		labelWidth = max(labelWidth, lipgloss.Width(field.label))
+	}
+	const marker = 2 // "▸ "
+	const gap = 1
+	return labelWidth, max(8, content-marker-labelWidth-gap)
+}
+
 // saveConnectionForm writes the form to ~/.ssh/config.
 func (m *Model) saveConnectionForm() tea.Cmd {
 	spec := sshconfig.Spec{}
@@ -1207,16 +1221,25 @@ func (m *Model) renderConnectionForm(l layout) string {
 	}
 	lines := []string{m.st.CardTitle.Render(title), ""}
 
+	labelWidth, valueWidth := formLayout(content, m.form.fields)
+	indent := 2 + labelWidth + 1 // marker, label column, one blank cell
+
 	for i, field := range m.form.fields {
-		label := m.st.StatusMuted.Render(padRight(field.label, 6))
-		value := m.st.CardText.Render(truncate(field.in.Display(), content-12))
+		label := m.st.StatusMuted.Render(padRight(field.label, labelWidth))
+		// Every field is a box, empty or not: a field you cannot see is a field
+		// you cannot find, and the focused one shows the cursor.
+		shown := field.in.Display()
 		if i == m.form.focus {
-			value = m.st.PathInput.Width(content - 12).Render(truncate(field.in.Rendered(), content-12))
-			lines = append(lines, m.st.Accent.Bold(true).Render("▸ ")+label+value)
-		} else {
-			lines = append(lines, "  "+label+value)
+			shown = field.in.Rendered()
 		}
-		lines = append(lines, "        "+m.st.CardMuted.Render(field.hint))
+		value := m.st.PathInput.Width(valueWidth).Render(truncate(shown, valueWidth))
+		switch {
+		case i == m.form.focus:
+			lines = append(lines, m.st.Accent.Bold(true).Render("▸ ")+label+" "+value)
+		default:
+			lines = append(lines, "  "+label+" "+value)
+		}
+		lines = append(lines, spaces(indent)+m.st.CardMuted.Render(truncate(field.hint, valueWidth)))
 	}
 
 	if m.form.err != "" {
