@@ -40,6 +40,8 @@ unpacked tree or a single archive instead of a pile of files.
   nothing.
 - **A real terminal.** `t` hands the terminal to `ssh` for that host — vim, top,
   tmux and colours work because nothing stands in their way.
+- **Dotfiles visible by default.** Hidden files are shown until you press `.`,
+  because hiding a file by default makes you wonder where it went.
 - **Honest about state.** Live transfers, marked files, pinned hosts and recent
   connections are visible in the sidebar; every destructive action asks first.
 - **Keyboard-first, mouse-friendly.** Plain letters are commands, digits switch

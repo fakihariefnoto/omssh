@@ -26,7 +26,7 @@ ui:
   motion: full
   sidebar: true
   preview: true
-  show_hidden: false
+  show_hidden: true      # dotfiles are visible; "." toggles them anywhere
   # home | files — the launcher, or straight into the file manager
   start: home
   # Bulk operations above these thresholds ask before starting.

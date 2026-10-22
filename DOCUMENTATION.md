@@ -116,7 +116,7 @@ These keys work in whichever pane has the focus.
 | `Ctrl+P` | Jump to a path, with suggestions |
 | `Alt+F` | Find part of a name below the cursor |
 | `/` / `Ctrl+F` | Filter this listing as you type; `Esc` clears |
-| `.` | Show hidden files |
+| `.` | Hide or show dotfiles (visible by default) |
 | `Alt+P` | Preview on the right of the focused pane |
 | `o` | Reveal the cursor entry in the next pane |
 | `Alt+C` | Compare the two panes (counts: only here, only there, both) |
@@ -426,6 +426,9 @@ trusting it; passwords are read with echo off.
 
 ## Configuration
 
+Dotfiles are visible by default. `show_hidden: false` starts with them hidden, and
+`.` toggles them at any time in the focused pane.
+
 `~/.config/omssh/config.yaml` — or `$XDG_CONFIG_HOME/omssh/config.yaml` when that
 variable is set. The same location is used on macOS and Linux, so one config
 works on both; `omssh config path` prints it. `--config <path>` overrides it.
@@ -440,7 +443,7 @@ ui:
   motion: full          # full | reduced
   sidebar: true
   preview: true
-  show_hidden: false
+  show_hidden: true     # dotfiles visible; "." toggles them
   start: home           # home | files
   width_margin: 0       # see Troubleshooting
 

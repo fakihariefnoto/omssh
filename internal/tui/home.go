@@ -276,9 +276,12 @@ func (m *Model) activateHome(item homeItem) tea.Cmd {
 func (m *Model) openFiles() {
 	m.screen = screenFiles
 	m.mode = "NORMAL"
-	// More sessions than panes: which four are on screen is the person's choice,
-	// and it is asked once rather than silently deciding for them.
-	if !m.panesAsked && 1+len(m.live) > maxPanes {
+	// Before the dashboard, which places it shows is a choice: the local folder,
+	// the connected hosts, and every bucket (a bucket needs no session and can be
+	// opened at any time). Asked once per run, and skipped when there is nothing
+	// to choose between.
+	candidates := 1 + len(m.live) + len(m.cfg.Cloud.Profiles)
+	if !m.panesAsked && candidates > 1 {
 		m.openPanes()
 	}
 }

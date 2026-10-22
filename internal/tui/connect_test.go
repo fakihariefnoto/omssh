@@ -379,7 +379,12 @@ func TestRemoteListingIsAsynchronous(t *testing.T) {
 	if m.Panes[1].Loading {
 		t.Error("applying the listing should clear the loading state")
 	}
-	if len(m.Panes[1].Entries) != 1 || m.Panes[1].Entries[0].Name != "visible.txt" {
+	// Dotfiles are visible by default now, so both files arrive.
+	names := map[string]bool{}
+	for _, e := range m.Panes[1].Entries {
+		names[e.Name] = true
+	}
+	if !names["visible.txt"] || !names[".hidden"] {
 		t.Errorf("entries = %+v", m.Panes[1].Entries)
 	}
 

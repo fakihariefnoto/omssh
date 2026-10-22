@@ -69,7 +69,9 @@ type UI struct {
 	// Sidebar and Preview are the initial visibility of those two views.
 	Sidebar bool `yaml:"sidebar"`
 	Preview bool `yaml:"preview"`
-	// ShowHidden starts with dotfiles visible.
+	// ShowHidden starts with dotfiles visible. Visible is the default: a file
+	// manager that hides things by default makes the user wonder where a file
+	// went, and `.` is one keystroke for the other preference.
 	ShowHidden bool `yaml:"show_hidden"`
 	// ConfirmThreshold decides when a bulk operation asks before starting.
 	ConfirmThreshold ConfirmThreshold `yaml:"confirm_threshold"`
@@ -155,7 +157,7 @@ func Default() Config {
 			Motion:     "full",
 			Sidebar:    true,
 			Preview:    true,
-			ShowHidden: false,
+			ShowHidden: true,
 			Start:      "home",
 			ConfirmThreshold: ConfirmThreshold{
 				Files: 20,

@@ -578,52 +578,171 @@ func (m *Model) renderPlanned(l layout) string {
 }
 
 // connHeaderRow labels the columns once, so the table explains itself.
-func (m *Model) connHeaderRow(inner int) string {
-	name, host, user, port := m.connColumns(inner)
-	// The rows start with two marker columns — the selection arrow and the
-	// pinned/recent mark — so the header is indented by the same four cells.
-	header := connMarkerPrefix + padRight("NAME", name) + padRight("HOST", host) +
-		padRight("USER", user) + padLeft("PORT", port) + " " +
-		padRight("STATE", connStateWidth-1)
-	return m.st.PaneHeader.Render(padVisible(header, inner))
-}
-
 // connMarkerPrefix is the width of the selection and pin/recent markers at the
 // start of every row: "▸ ★ " for the chosen pinned host, four cells.
 const connMarkerPrefix = "    "
 
-// connColumns decides the column widths for the current interface width: the
-// name is short, the address is what varies, and a narrow screen drops the
-// right-hand columns rather than squeezing every one of them.
-func (m *Model) connColumns(inner int) (name, host, user, port int) {
-	const gaps = 4 // one space between the five columns
-	if inner < 56 {
-		// Name and address only: they are what a person chooses between.
-		avail := inner - connStateWidth - 2
-		return max(8, avail/3), max(8, avail-avail/3), 0, 0
-	}
-	port = 6
-	user = clamp(inner/8, 6, 14)
-	// Four of the name column's cells go to the markers at the start of each row.
-	name = clamp(inner/6, 12, 24)
-	host = inner - connStateWidth - port - user - name - gaps - len(connMarkerPrefix)
-	if host < 16 {
-		host = 16
-	}
-	return name, host, user, port
-}
-
 // connStateWidth is the width of the state column: enough for "not connected".
 const connStateWidth = 14
 
-// renderConnRow draws one host in the table, highlighted when chosen.
+// connRowState is a place's state as the table shows it.
+type connRowState struct{ label string }
+
+// connState reports whether a host or bucket is open. A bucket has no handshake,
+// so "idle" is the honest word for one that is not on screen.
+func (m *Model) connState(e connEntry) connRowState {
+	host := e.Alias
+	if e.Cloud {
+		host = cloudPrefix + e.Alias
+	}
+	for _, s := range m.liveSessions() {
+		if s.alias == host {
+			return connRowState{label: s.state.Label()}
+		}
+	}
+	if e.Cloud {
+		return connRowState{label: "idle"}
+	}
+	return connRowState{label: "not connected"}
+}
+
+// connCol is one column of the manager's table: a title, a width, and how to read
+// the value out of an entry. The columns belong to the tab — a bucket has a
+// provider, a host has a port — so the table is built per section rather than
+// pretending every kind of place has the same fields.
+type connCol struct {
+	title string
+	width int
+	right bool
+	value func(connEntry) string
+}
+
+// connCols is the column set for the current tab.
+func (m *Model) connCols(inner int) []connCol {
+	avail := inner - len(connMarkerPrefix)
+	state := func(e connEntry) string { return m.connState(e).label }
+
+	if m.connSectionNow() == secS3 {
+		// NAME · BUCKET · PREFIX · TYPE · STATE
+		gaps := 4
+		provW, stateW := 8, connStateWidth
+		rest := avail - provW - stateW - gaps
+		nameW := clamp(rest/4, 10, 20)
+		rest -= nameW
+		bucketW := rest * 3 / 5
+		prefixW := rest - bucketW
+		if prefixW < 10 {
+			prefixW = 10
+			bucketW = max(10, rest-prefixW)
+		}
+		return []connCol{
+			{title: "NAME", width: nameW, value: func(e connEntry) string { return e.Alias }},
+			{title: "BUCKET", width: bucketW, value: m.bucketOf},
+			{title: "PREFIX", width: prefixW, value: m.prefixOf},
+			{title: "TYPE", width: provW, value: func(e connEntry) string { return e.User }},
+			{title: "STATE", width: stateW, value: state},
+		}
+	}
+
+	// NAME · HOST · USER · PORT · STATE — the SSH table, and the overview, where a
+	// bucket fills HOST with its address and USER with its provider.
+	if avail < 56 {
+		gaps := 2
+		rest := avail - connStateWidth - gaps
+		nameW := max(8, rest/3)
+		return []connCol{
+			{title: "NAME", width: nameW, value: func(e connEntry) string { return e.Alias }},
+			{title: "HOST", width: max(8, rest-nameW), value: m.hostOf},
+			{title: "STATE", width: connStateWidth, value: state},
+		}
+	}
+	gaps := 4
+	portW := 6
+	userW := clamp(inner/8, 6, 14)
+	nameW := clamp(inner/6, 12, 24)
+	hostW := avail - connStateWidth - portW - userW - nameW - gaps
+	if m.hasInclude() {
+		// The row has to say "· from include" as well as everything else; the host
+		// column is the one with room to give.
+		hostW -= len(" · from include")
+	}
+	if hostW < 14 {
+		hostW = 14
+	}
+	return []connCol{
+		{title: "NAME", width: nameW, value: func(e connEntry) string { return e.Alias }},
+		{title: "HOST", width: hostW, value: m.hostOf},
+		{title: "USER", width: userW, value: func(e connEntry) string { return e.User }},
+		{title: "PORT", width: portW, right: true, value: func(e connEntry) string {
+			if e.Port == 0 {
+				return "—"
+			}
+			return itoa(e.Port)
+		}},
+		{title: "STATE", width: connStateWidth, value: state},
+	}
+}
+
+// hasInclude reports whether any visible entry comes from an Include, which is
+// what reserves room for the marker on every row of the table.
+func (m *Model) hasInclude() bool {
+	for _, e := range m.visibleConnections() {
+		if !e.Editable && !e.Cloud {
+			return true
+		}
+	}
+	return false
+}
+
+// hostOf is the address column: a DNS name for a host, s3://bucket/prefix for a
+// bucket, and the alias when neither is set.
+func (m *Model) hostOf(e connEntry) string {
+	if e.HostName != "" {
+		return e.HostName
+	}
+	return e.Alias
+}
+
+// bucketOf and prefixOf read the profile, which is where a bucket's parts live.
+func (m *Model) bucketOf(e connEntry) string {
+	if profile, ok := m.cfg.Cloud.Profiles[e.Alias]; ok {
+		return profile.Bucket
+	}
+	return strings.TrimPrefix(strings.TrimSuffix(e.HostName, "/"), "s3://")
+}
+
+func (m *Model) prefixOf(e connEntry) string {
+	profile, ok := m.cfg.Cloud.Profiles[e.Alias]
+	if !ok || strings.Trim(profile.Prefix, "/") == "" {
+		return "—"
+	}
+	return strings.Trim(profile.Prefix, "/")
+}
+
+// connHeaderRow labels the columns once, so the table explains itself.
+func (m *Model) connHeaderRow(inner int) string {
+	cols := m.connCols(inner)
+	header := connMarkerPrefix
+	for i, c := range cols {
+		if i > 0 {
+			header += " "
+		}
+		if c.right {
+			header += padLeft(c.title, c.width)
+			continue
+		}
+		header += padRight(c.title, c.width)
+	}
+	return m.st.PaneHeader.Render(padVisible(ansi.Truncate(header, inner, "…"), inner))
+}
+
 func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
-	name, hostWidth, userWidth, portWidth := m.connColumns(inner)
+	cols := m.connCols(inner)
 	marker := "  "
 	if selected {
 		marker = "▸ "
 	}
-	// A marker column says why a host is where it is: pinned, or used lately.
+	// A marker column says why a place is where it is: pinned, or used lately.
 	switch {
 	case m.favourite(e.Alias):
 		marker += "★ "
@@ -632,56 +751,34 @@ func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
 	default:
 		marker += "  "
 	}
-	host := e.HostName
-	if host == "" {
-		host = e.Alias
+
+	row := marker
+	for i, c := range cols {
+		if i > 0 {
+			row += " "
+		}
+		value := truncate(c.value(e), c.width)
+		if c.right {
+			row += padLeft(value, c.width)
+			continue
+		}
+		row += padRight(value, c.width)
 	}
 	if !e.Editable && !e.Cloud {
-		// The row has to say "from include" as well as everything else; the host
-		// column is the one with room to give.
-		hostWidth = max(12, hostWidth-len(" from include"))
+		// It lives in an Include, so the main file cannot change it. The host
+		// column gave up the room for this above; say it here.
+		row = strings.TrimSpace(row) + " · from include"
 	}
-	state := m.connState(e)
-	port := "—"
-	if e.Port != 0 {
-		port = itoa(e.Port)
-	}
-	cols := marker + padRight(e.Alias, name) + padRight(host, hostWidth)
-	if userWidth > 0 {
-		cols += padRight(e.User, userWidth)
-	}
-	if portWidth > 0 {
-		cols += padLeft(port, portWidth)
-	}
-	cols += padRight(" "+state.label, connStateWidth)
-	if !e.Editable && !e.Cloud {
-		// It lives in an Include, so the main file cannot change it: say so here
-		// rather than failing when the edit is attempted.
-		cols += " from include"
-	}
-	// Exactly the interior width: a row that overflows wraps and breaks the frame.
-	cols = ansi.Truncate(cols, inner, "…")
+	row = ansi.Truncate(row, inner, "…")
 
 	if selected {
 		// A filled row, so the choice is unmistakable rather than a tint.
-		return m.st.PaletteItemActive.Width(inner).Render(padVisible(cols, inner))
+		return m.st.PaletteItemActive.Width(inner).Render(padVisible(row, inner))
 	}
 	if !e.Editable && !e.Cloud {
-		return m.st.CardMuted.Render(padVisible(cols, inner))
+		return m.st.CardMuted.Render(padVisible(row, inner))
 	}
-	return padVisible(cols, inner)
-}
-
-// connState reports whether a host is connected, connecting, or idle, using the
-// same dots as the tab strip.
-func (m *Model) connState(e connEntry) struct{ label string } {
-	for _, s := range m.liveSessions() {
-		if s.alias != e.Alias {
-			continue
-		}
-		return struct{ label string }{label: s.state.Label()}
-	}
-	return struct{ label string }{label: "not connected"}
+	return padVisible(row, inner)
 }
 
 // connDetailRows is the detail box: the highlighted host, in full.

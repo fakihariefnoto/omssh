@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/archive"
+	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
@@ -716,5 +717,60 @@ func TestPasteOptionsEveryRowHasAMark(t *testing.T) {
 	}
 	if !strings.Contains(card, "not an archive") {
 		t.Errorf("the unavailable unpack should say why:\n%s", card)
+	}
+}
+
+// The local folder is a choice, not a fact: four servers is a legitimate
+// dashboard, and a bucket needs no session to be offered.
+func TestDashboardChooserOffersBucketsAndOptionalLocal(t *testing.T) {
+	m, _ := fourPanes(t)
+	m.cfg.Cloud.Profiles = map[string]config.CloudProfile{
+		"backups": {Provider: "s3", Bucket: "my-backups", Region: "eu-central-1"},
+	}
+	m.loadConnections()
+
+	m.openPanes()
+	// The bucket is offered even though nothing opened it.
+	found := false
+	for i, choice := range m.paneChoices() {
+		if choice == "cloud:backups" {
+			found = true
+			m.panes.cursor = i
+		}
+	}
+	if !found {
+		t.Fatalf("the chooser should offer the bucket: %v", m.paneChoices())
+	}
+	if !strings.Contains(ansi.Strip(render(m)), "on demand") {
+		t.Error("the bucket card should say it opens on demand")
+	}
+
+	// Untick the local machine and tick the bucket: apply, then run the client
+	// command the way the runtime would.
+	delete(m.panes.chosen, "")
+	m.panes.chosen["cloud:backups"] = true
+	cmd := m.applyPanes()
+	if cmd == nil {
+		t.Fatal("applying a bucket choice should start opening it")
+	}
+	for _, pane := range m.Panes {
+		if pane.Side == SideLocal {
+			t.Error("the local pane was unticked and should not be on screen")
+		}
+	}
+}
+
+// Entering the dashboard asks when there is something to choose between: a
+// bucket counts even with no sessions.
+func TestDashboardAsksWhenOnlyBucketsExist(t *testing.T) {
+	m := newTestModel(t)
+	m.cfg.Cloud.Profiles = map[string]config.CloudProfile{
+		"backups": {Provider: "s3", Bucket: "my-backups", Region: "eu-central-1"},
+	}
+	m.screen = screenHome
+	m.panesAsked = false
+	m.openFiles()
+	if m.Overlay != OverlayPanes {
+		t.Fatalf("a configured bucket should make the dashboard ask, overlay=%v", m.Overlay)
 	}
 }

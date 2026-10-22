@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/remoteinfo"
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // Four panes, two by two, is the dashboard's promise: four machines in one view.
@@ -35,8 +37,9 @@ type sessionSampleMsg struct {
 // sampleTickMsg asks for the numbers to be read again while the chooser is open.
 type sampleTickMsg struct{}
 
-// paneChoices is the list the chooser offers: local first, then the connected
-// hosts in tab order, so the list matches the strip above it.
+// paneChoices is the list the chooser offers: the local machine, then the
+// connected hosts in tab order, then every configured bucket — which needs no
+// session and can be opened at any time, so it is always on offer.
 func (m *Model) paneChoices() []string {
 	choices := []string{""} // the empty alias is the local pane
 	seen := map[string]bool{}
@@ -47,13 +50,41 @@ func (m *Model) paneChoices() []string {
 		seen[tab.Host] = true
 		choices = append(choices, tab.Host)
 	}
+	clouds := make([]string, 0, len(m.cfg.Cloud.Profiles))
+	for name := range m.cfg.Cloud.Profiles {
+		clouds = append(clouds, name)
+	}
+	sort.Strings(clouds)
+	for _, name := range clouds {
+		host := cloudPrefix + name
+		if seen[host] {
+			continue
+		}
+		seen[host] = true
+		choices = append(choices, host)
+	}
 	return choices
+}
+
+// localPaneIndex is the pane showing this machine, or -1 when the dashboard has
+// none — which is allowed: the local folder is a choice, not a fact of life.
+func (m *Model) localPaneIndex() int {
+	for i := range m.Panes {
+		if m.Panes[i].Side == SideLocal {
+			return i
+		}
+	}
+	return -1
 }
 
 // openPanes shows the chooser with what is on screen already ticked.
 func (m *Model) openPanes() {
-	chosen := map[string]bool{"": true} // the local pane is always one of them
+	chosen := map[string]bool{}
 	for i := 0; i < m.paneCount(); i++ {
+		if m.Panes[i].Side == SideLocal {
+			chosen[""] = true
+			continue
+		}
 		if host := m.Panes[i].Host; host != "" {
 			chosen[host] = true
 		}
@@ -118,10 +149,6 @@ func (m *Model) handlePanesKey(msg tea.KeyPressMsg) {
 		m.panes.cursor = (m.panes.cursor + 1) % len(choices)
 	case "space", "x":
 		alias := choices[clamp(m.panes.cursor, 0, len(choices)-1)]
-		if alias == "" {
-			m.toastInfo("The local pane stays: it is where you started")
-			break
-		}
 		if m.panes.chosen[alias] {
 			delete(m.panes.chosen, alias)
 			break
@@ -132,27 +159,44 @@ func (m *Model) handlePanesKey(msg tea.KeyPressMsg) {
 		}
 		m.panes.chosen[alias] = true
 	case "enter":
-		m.applyPanes()
+		m.overlayCmd = m.applyPanes()
 	}
 }
 
 // applyPanes rebuilds the pane list from the ticks, keeping the order the list
-// showed.
-func (m *Model) applyPanes() {
+// showed. A bucket needs a client, which is a network operation, so those panes
+// start empty and are filled by a command.
+func (m *Model) applyPanes() tea.Cmd {
 	m.panesAsked = true
 	chosen := m.panes.chosen
 	panes := make([]Pane, 0, maxPanes)
-	local := NewPane(m.Panes[0].FS, m.Panes[0].Path, m.Panes[0].Home)
-	if m.Panes[0].FS == nil {
-		local = m.Panes[0]
-	}
-	panes = append(panes, local)
+	cmds := make([]tea.Cmd, 0, 2)
 
-	for _, alias := range m.paneChoices() {
-		if alias == "" || !chosen[alias] {
+	// The local machine, if it was ticked. It is not mandatory: four servers is
+	// a legitimate dashboard.
+	if chosen[""] {
+		if i := m.localPaneIndex(); i >= 0 {
+			panes = append(panes, m.Panes[i])
+		} else {
+			panes = append(panes, NewPane(mustLocalFS(), ".", ""))
+		}
+	}
+
+	for _, choice := range m.paneChoices() {
+		if choice == "" || !chosen[choice] {
 			continue
 		}
-		sess, live := m.live[alias]
+		if name, ok := strings.CutPrefix(choice, cloudPrefix); ok {
+			if _, configured := m.cfg.Cloud.Profiles[name]; !configured {
+				continue
+			}
+			// Reserve the pane now, in the chosen order, and fill it when the
+			// client is ready.
+			panes = append(panes, NewRemotePane())
+			cmds = append(cmds, m.openCloudPane(name))
+			continue
+		}
+		sess, live := m.live[choice]
 		if !live {
 			continue
 		}
@@ -162,26 +206,52 @@ func (m *Model) applyPanes() {
 		panes = append(panes, pane)
 	}
 	if len(panes) == 0 {
-		panes = append(panes, m.Panes[0])
+		// Nothing ticked: the local pane is the fallback, because a dashboard with
+		// no panes is not a dashboard.
+		if i := m.localPaneIndex(); i >= 0 {
+			panes = append(panes, m.Panes[i])
+		} else {
+			panes = append(panes, NewPane(mustLocalFS(), ".", ""))
+		}
+		m.toastInfo("Nothing was ticked · showing the local machine")
 	}
 	m.Panes = panes
 	m.Focused = min(m.Focused, len(m.Panes)-1)
 	m.syncActiveTab()
 	m.Overlay = OverlayNone
 	m.mode = "NORMAL"
-	m.toastInfo(fmt.Sprintf("%d %s on screen · w moves between them",
-		len(m.Panes), plural(len(m.Panes), "pane", "panes")))
+	if len(panes) > 0 {
+		m.toastInfo(fmt.Sprintf("%d %s on screen · w moves between them",
+			len(panes), plural(len(panes), "pane", "panes")))
+	}
 
 	// Every pane needs its listing: they were rebuilt, not moved.
 	for i := range m.Panes {
-		m.loadPaneAsync(i)
+		if cmd := m.loadPaneAsync(i); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+// mustLocalFS is the local filesystem, which cannot fail to open here: it is the
+// same one the interface started with.
+func mustLocalFS() vfs.FS {
+	fsys, err := vfs.NewLocal("/")
+	if err != nil {
+		return nil
+	}
+	return fsys
 }
 
 // sessionCard is one card on the chooser: everything the interface knows about a
 // session, without opening it.
 type sessionCard struct {
 	alias  string
+	cloud  bool
 	title  string
 	target string
 	path   string
@@ -192,10 +262,10 @@ type sessionCard struct {
 
 // sessionCards is the list of cards, in tab order with the local machine first.
 func (m *Model) sessionCards() []sessionCard {
-	cards := make([]sessionCard, 0, len(m.tabs))
+	cards := make([]sessionCard, 0, len(m.tabs)+len(m.cfg.Cloud.Profiles)+1)
 	localPath := ""
-	if len(m.Panes) > 0 {
-		localPath = m.Panes[0].Path
+	if i := m.localPaneIndex(); i >= 0 {
+		localPath = m.Panes[i].Path
 	}
 	cards = append(cards, sessionCard{
 		alias:  "",
@@ -207,6 +277,17 @@ func (m *Model) sessionCards() []sessionCard {
 	})
 	for _, alias := range m.paneChoices()[1:] {
 		card := sessionCard{alias: alias, title: alias}
+		if name, ok := strings.CutPrefix(alias, cloudPrefix); ok {
+			// A bucket needs no session: it can be opened whenever it is chosen,
+			// which is why it is offered next to the connected hosts.
+			profile := m.cfg.Cloud.Profiles[name]
+			card.title = name
+			card.target = fmt.Sprintf("%s · %s", strings.ToUpper(profile.Provider), profile.Bucket)
+			card.state = "on demand"
+			card.cloud = true
+			cards = append(cards, card)
+			continue
+		}
 		if live, ok := m.live[alias]; ok {
 			target := live.Target
 			card.target = fmt.Sprintf("%s@%s:%d", target.User, target.Host, target.Port)
@@ -259,15 +340,17 @@ func (m *Model) renderPanesChooser(l layout) string {
 		"",
 	}
 
-	// As many rows of cards as fit, scrolling with the cursor.
+	// A card is eight content lines plus its padding and border; the height budget
+	// has to count all of them, or the footer is the part that gets clipped.
 	const cardRows = 8
-	perPage := max(columns, (l.Height-6)/cardRows*columns)
+	const cardBlock = cardRows + 4
+	perPage := max(columns, (l.Height-8)/cardBlock*columns)
 	start := clamp(m.panes.cursor, 0, max(0, len(cards)-1))
 	start = max(0, min(start-(perPage-1), len(cards)-perPage))
 	start = max(0, start)
 
 	for i := start; i < len(cards); i += columns {
-		if len(lines)+cardRows > l.Height-3 {
+		if len(lines)+cardBlock > l.Height-6 {
 			break
 		}
 		rendered := make([]string, 0, columns)
@@ -283,9 +366,11 @@ func (m *Model) renderPanesChooser(l layout) string {
 	if len(cards) == 1 {
 		lines = append(lines, "", m.st.PaneEmpty.Render("No sessions yet · Ctrl+O connects"))
 	}
+	// One footer line, not two: the overlay keeps a card's tail when it has to
+	// clip, and the count is the part a person needs to see.
 	lines = append(lines, "",
 		m.st.CardMuted.Render(truncate(fmt.Sprintf(
-			"%d of %d chosen · arrows choose · Space picks · Enter shows · Esc keeps",
+			"%d of %d chosen · Space picks · Enter shows · Esc keeps · local is optional",
 			len(m.panes.chosen), maxPanes), inner)))
 	return m.card(width, lines)
 }
@@ -300,9 +385,6 @@ func (m *Model) renderSessionCard(card sessionCard, selected bool, width int) st
 
 	tick := "[ ]"
 	if m.panes.chosen[card.alias] {
-		tick = "[x]"
-	}
-	if card.alias == "" {
 		tick = "[x]"
 	}
 	title := m.st.CardText.Render(card.title)

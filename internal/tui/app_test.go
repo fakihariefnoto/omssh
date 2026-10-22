@@ -597,14 +597,10 @@ func TestCursorIsRestoredAfterVisitingADirectory(t *testing.T) {
 	}
 }
 
-func TestHiddenFilesAreHiddenUntilAskedFor(t *testing.T) {
+// Dotfiles are visible by default: hiding a file by default makes people wonder
+// where it went. "." hides them for those who prefer a shorter list.
+func TestHiddenFilesAreShownUntilAskedToHide(t *testing.T) {
 	m := newTestModel(t)
-	for _, e := range m.Pane().Entries {
-		if e.Name == ".hidden" {
-			t.Fatal("dotfiles should be hidden by default")
-		}
-	}
-	press(t, m, run('.', 0, "."))
 	found := false
 	for _, e := range m.Pane().Entries {
 		if e.Name == ".hidden" {
@@ -612,7 +608,34 @@ func TestHiddenFilesAreHiddenUntilAskedFor(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal(". should reveal dotfiles")
+		t.Fatal("dotfiles should be visible by default")
+	}
+
+	press(t, m, run('.', 0, "."))
+	for _, e := range m.Pane().Visible() {
+		if e.Name == ".hidden" {
+			t.Fatal(". should hide dotfiles")
+		}
+	}
+}
+
+// The preference is remembered per run and comes from the config.
+func TestShowHiddenPreference(t *testing.T) {
+	m := newTestModel(t, func(cfg *config.Config) { cfg.UI.ShowHidden = false })
+	for _, e := range m.Pane().Visible() {
+		if e.Name == ".hidden" {
+			t.Fatal("show_hidden: false should keep dotfiles out of the listing")
+		}
+	}
+	press(t, m, run('.', 0, "."))
+	found := false
+	for _, e := range m.Pane().Visible() {
+		if e.Name == ".hidden" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal(". should reveal them")
 	}
 }
 
