@@ -9,12 +9,16 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/config"
 )
 
-func themedModel(t *testing.T, name string) *Model {
+func themedModel(t *testing.T, name string, hasDark ...bool) *Model {
 	t.Helper()
+	dark := false
+	if len(hasDark) > 0 {
+		dark = hasDark[0]
+	}
 	cfg := config.Default()
 	cfg.UI.Theme = name
 	cfg.UI.Start = "home"
-	m, err := New(Options{Config: cfg, Profile: colorprofile.TrueColor, HasDark: false})
+	m, err := New(Options{Config: cfg, Profile: colorprofile.TrueColor, HasDark: dark})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +30,8 @@ func themedModel(t *testing.T, name string) *Model {
 // terminal drew dark text on the terminal's dark screen — the menu that looked
 // like it had merged with the background.
 func TestLightThemePaintsItsBackground(t *testing.T) {
-	m := themedModel(t, "dawn")
+	// A light theme on a dark terminal is the case that was unreadable.
+	m := themedModel(t, "dawn", true)
 	out := render(m)
 	if !strings.Contains(out, "\x1b[48;2;251;251;253m") {
 		t.Fatalf("dawn should paint its own background")
@@ -36,6 +41,24 @@ func TestLightThemePaintsItsBackground(t *testing.T) {
 		if !strings.Contains(line, "\x1b[48;2;251;251;253m") {
 			t.Fatalf("line %d has no theme background: %q", i, line)
 		}
+	}
+}
+
+// When the theme and the terminal already agree, the terminal's own background —
+// including transparency — is left alone. Painting a matching colour would cover
+// a terminal that was configured on purpose.
+func TestMatchingBackgroundIsLeftAlone(t *testing.T) {
+	light := themedModel(t, "dawn", false)
+	if light.bgSeq != "" {
+		t.Errorf("dawn on a light terminal should not paint: %q", light.bgSeq)
+	}
+	dark := themedModel(t, "midnight", true)
+	if dark.bgSeq != "" {
+		t.Errorf("midnight on a dark terminal should not paint: %q", dark.bgSeq)
+	}
+	// The mismatch in the other direction is painted too.
+	if themedModel(t, "midnight", false).bgSeq == "" {
+		t.Error("midnight on a light terminal should paint its dark background")
 	}
 }
 

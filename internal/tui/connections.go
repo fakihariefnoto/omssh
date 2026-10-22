@@ -45,9 +45,11 @@ type connectionsState struct {
 // connForm is the add/edit form. One field per directive omssh manages.
 type connForm struct {
 	original string // alias being edited; empty when adding
-	fields   []connField
-	focus    int
-	err      string
+	// kind is "host" for ~/.ssh/config blocks and "cloud" for a bucket profile.
+	kind   string
+	fields []connField
+	focus  int
+	err    string
 }
 
 type connField struct {
@@ -391,8 +393,10 @@ func (m *Model) saveConfig() {
 // someone who came here to get a shell.
 func connKeyLegend(width int) string {
 	switch {
+	case width >= 136:
+		return "Enter browse · t terminal · Q disconnect · f pin · x hide · H all · b bucket · e edit · a add · d delete · / filter · Esc back"
 	case width >= 130:
-		return "Enter browse · t terminal · Q disconnect · f pin · x hide · H all · e edit · a add · d delete · / filter · Esc back"
+		return "Enter browse · t terminal · Q disconnect · f pin · x hide · H all · b bucket · a add · / filter · Esc back"
 	case width >= 112:
 		return "Enter · t terminal · Q disconnect · f pin · x hide · H all · a add · / filter · Esc"
 	case width >= 92:
@@ -640,6 +644,90 @@ func (m *Model) openConnectionForm(original string, spec sshconfig.Spec) {
 	m.Overlay = OverlayForm
 }
 
+// openCloudForm asks for the six things a bucket profile needs. It is the same
+// form machinery as a host block: one place to type into, one place to save.
+func (m *Model) openCloudForm() {
+	form := connForm{kind: "cloud"}
+	add := func(key, label, hint, value string) {
+		field := connField{key: key, label: label, hint: hint}
+		field.in.Set(value)
+		form.fields = append(form.fields, field)
+	}
+	add("Name", "name", "profile name, shown in this list", "")
+	add("Provider", "type", "s3 or r2", "s3")
+	add("Bucket", "bucket", "the bucket name", "")
+	add("Region", "region", "us-east-1 for AWS · auto for R2", "")
+	add("Endpoint", "endpoint", "R2: https://<account>.r2.cloudflarestorage.com", "")
+	add("Prefix", "prefix", "optional: root the pane inside the bucket", "")
+	m.form = form
+	m.Overlay = OverlayForm
+}
+
+// saveCloudForm writes a bucket profile to the config, after saying what is wrong
+// with it if anything is.
+func (m *Model) saveCloudForm() tea.Cmd {
+	profile := config.CloudProfile{}
+	name := ""
+	for _, field := range m.form.fields {
+		value := strings.TrimSpace(field.in.Value)
+		switch field.key {
+		case "Name":
+			name = value
+		case "Provider":
+			profile.Provider = strings.ToLower(value)
+		case "Bucket":
+			profile.Bucket = value
+		case "Region":
+			profile.Region = value
+		case "Endpoint":
+			profile.Endpoint = value
+		case "Prefix":
+			profile.Prefix = value
+		}
+	}
+	switch {
+	case name == "":
+		m.form.err = "a profile needs a name"
+		return nil
+	case profile.Provider == "":
+		profile.Provider = "s3"
+	}
+	if profile.Provider != "s3" && profile.Provider != "r2" {
+		m.form.err = "type must be s3 or r2"
+		return nil
+	}
+	if profile.Bucket == "" {
+		m.form.err = "a bucket name is required"
+		return nil
+	}
+	if profile.Provider == "r2" && profile.Endpoint == "" {
+		m.form.err = "R2 needs an endpoint, https://<account>.r2.cloudflarestorage.com"
+		return nil
+	}
+	if profile.Provider == "s3" && profile.Region == "" {
+		m.form.err = "S3 needs a region, like us-east-1"
+		return nil
+	}
+	if profile.Provider == "r2" && profile.Region == "" {
+		profile.Region = "auto"
+	}
+	if m.cfg.Cloud.Profiles == nil {
+		m.cfg.Cloud.Profiles = map[string]config.CloudProfile{}
+	}
+	m.cfg.Cloud.Profiles[name] = profile
+	m.form = connForm{}
+	m.Overlay = OverlayNone
+	m.saveConfig()
+	m.loadConnections()
+	for i, e := range m.visibleConnections() {
+		if e.Alias == name {
+			m.conn.cursor = i
+		}
+	}
+	m.toastSuccess("Added " + name + " · Enter opens it")
+	return nil
+}
+
 // saveConnectionForm writes the form to ~/.ssh/config.
 func (m *Model) saveConnectionForm() tea.Cmd {
 	spec := sshconfig.Spec{}
@@ -776,6 +864,9 @@ func (m *Model) renderConnectionForm(l layout) string {
 	content := cardContent(width)
 
 	title := "Add connection"
+	if m.form.kind == "cloud" {
+		title = "Add bucket"
+	}
 	if m.form.original != "" {
 		title = "Edit " + m.form.original
 	}
@@ -818,6 +909,9 @@ func (m *Model) handleFormKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.form.focus = (m.form.focus - 1 + len(m.form.fields)) % len(m.form.fields)
 		return nil
 	case "enter":
+		if m.form.kind == "cloud" {
+			return m.saveCloudForm()
+		}
 		return m.saveConnectionForm()
 	default:
 		m.form.err = ""

@@ -322,7 +322,7 @@ func New(opts Options) (*Model, error) {
 		sshPath:     opts.SSHConfigPath,
 		themeName:   resolved.Name,
 		themeNames:  theme.Names(),
-		bgSeq:       backgroundSeq(resolved),
+		bgSeq:       backgroundSeq(resolved, opts.HasDark),
 		dropped:     paneKeys.Dropped(),
 		tabs:        []Tab{{Title: "localhost", State: StateReady}},
 		Panes:       []Pane{NewPane(localFS, dir, home), NewRemotePane()},
@@ -432,13 +432,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		// Only reached when the user asked to follow the terminal background.
 		m.hasDark = msg.IsDark()
-		if m.cfg.UI.Theme == "auto" {
+		// The mismatch rule depends on the terminal, so the background is
+		// recomputed even when the theme itself does not change.
+		m.bgSeq = backgroundSeq(m.st.Theme, m.hasDark)
+		switch {
+		case m.cfg.UI.Theme == "auto":
 			m.applyTheme("auto")
-		} else {
+		case m.hasDark:
+			m.toastInfo("The terminal background is dark")
+		default:
 			m.toastInfo("The terminal background is light")
-			if m.hasDark {
-				m.toastInfo("The terminal background is dark")
-			}
 		}
 		return m, nil
 
@@ -1039,6 +1042,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.mode = "CONNECTIONS"
 	case "session.add":
 		m.openConnectionForm("", sshconfig.Spec{})
+	case "session.add-cloud":
+		m.openCloudForm()
 	case "session.edit":
 		if entry, ok := m.currentConnection(); ok {
 			if !entry.Editable {
@@ -1554,7 +1559,7 @@ func (m *Model) applyTheme(name string) {
 	}
 	m.st = theme.NewStyles(resolved)
 	m.themeName = resolved.Name
-	m.bgSeq = backgroundSeq(resolved)
+	m.bgSeq = backgroundSeq(resolved, m.hasDark)
 	m.cfg.UI.Theme = name
 	m.settings.cursor = indexOf(m.themeNames, resolved.Name)
 	m.toastSuccess("Theme: " + resolved.Name)

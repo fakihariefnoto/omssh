@@ -310,8 +310,11 @@ cloud:
 secret belongs in the config file. For R2, create an R2 API token and export its
 key pair the same way.
 
-The profiles appear in the connections screen (`Ctrl+O`) after your hosts.
-`Enter` opens one; `t` says there is no shell, because there is not.
+**Adding one from the interface:** `Ctrl+O`, then `b`. The form asks for a name,
+the type (`s3` or `r2`), the bucket, the region, the endpoint (R2 only) and an
+optional prefix; `Enter` writes it to the config. The profiles appear in the list
+after your hosts and `Enter` opens one. `t` says there is no shell, because there
+is not.
 
 **What object storage cannot do**, and the interface says so instead of failing
 halfway:

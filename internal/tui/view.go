@@ -92,9 +92,11 @@ func (m *Model) paintBackground(line string) string {
 }
 
 // backgroundSeq is the escape that sets a theme's background, or "" when the
-// theme has none (mono, or a terminal without colour).
-func backgroundSeq(t theme.Theme) string {
-	if t.Mono {
+// terminal and the theme already agree. Painting a matching background would
+// cover a transparent or themed terminal for no reason; painting a mismatched
+// one is what keeps a light theme readable on a dark terminal.
+func backgroundSeq(t theme.Theme, terminalDark bool) string {
+	if t.Mono || t.Dark == terminalDark {
 		return ""
 	}
 	styled := lipgloss.NewStyle().Background(t.Colors.BG).Render("x")
