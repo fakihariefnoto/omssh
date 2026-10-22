@@ -79,6 +79,11 @@ type UI struct {
 	Start string `yaml:"start"`
 	// Onboarding records that the first-run card has been dismissed.
 	Onboarding bool `yaml:"onboarding_done"`
+	// PaintBackground decides whether the theme paints its own background:
+	// "auto" (only when the theme and the terminal disagree, and the terminal's
+	// darkness is known), "always", or "never" (leave the terminal's background,
+	// transparency included, alone).
+	PaintBackground string `yaml:"paint_background"`
 	// WidthMargin keeps this many columns free at the right edge. Terminals
 	// disagree about the width of a few glyphs (the "ambiguous width" ones), and
 	// a terminal that draws one wider than the interface counted wraps the line —
@@ -139,11 +144,12 @@ type Hooks struct {
 
 // Known values, kept in one place so validation and help text cannot drift.
 var (
-	Themes       = []string{"auto", "amber", "midnight", "dawn", "mist", "mono", "contrast"}
-	IconSets     = []string{"unicode", "ascii", "nerd"}
-	Motions      = []string{"full", "reduced"}
-	StartScreens = []string{"home", "files"}
-	DeployMode   = []string{"sync", "update"}
+	Themes           = []string{"auto", "amber", "midnight", "dawn", "mist", "mono", "contrast"}
+	IconSets         = []string{"unicode", "ascii", "nerd"}
+	Motions          = []string{"full", "reduced"}
+	StartScreens     = []string{"home", "files"}
+	PaintBackgrounds = []string{"auto", "always", "never"}
+	DeployMode       = []string{"sync", "update"}
 )
 
 // Default returns the configuration omssh starts from on a machine with no
@@ -152,13 +158,14 @@ func Default() Config {
 	return Config{
 		Version: 1,
 		UI: UI{
-			Theme:      "amber",
-			Icons:      "unicode",
-			Motion:     "full",
-			Sidebar:    true,
-			Preview:    true,
-			ShowHidden: true,
-			Start:      "home",
+			Theme:           "amber",
+			Icons:           "unicode",
+			Motion:          "full",
+			Sidebar:         true,
+			Preview:         true,
+			ShowHidden:      true,
+			PaintBackground: "auto",
+			Start:           "home",
 			ConfirmThreshold: ConfirmThreshold{
 				Files: 20,
 				Bytes: 10 << 20, // 10 MiB
@@ -209,6 +216,9 @@ func (c Config) Validate() error {
 		if profile.Provider == "s3" && strings.TrimSpace(profile.Region) == "" {
 			return fmt.Errorf("cloud.profiles.%s.region: S3 needs a region, like us-east-1", name)
 		}
+	}
+	if err := oneOf("ui.paint_background", c.UI.PaintBackground, PaintBackgrounds); err != nil {
+		return err
 	}
 	if c.UI.WidthMargin < 0 || c.UI.WidthMargin > 8 {
 		return fmt.Errorf("ui.width_margin: must be between 0 and 8")

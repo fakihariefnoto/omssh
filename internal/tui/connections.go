@@ -1233,10 +1233,9 @@ func (m *Model) renderConnectionForm(l layout) string {
 			shown = field.in.Rendered()
 		}
 		value := m.st.PathInput.Width(valueWidth).Render(truncate(shown, valueWidth))
-		switch {
-		case i == m.form.focus:
+		if i == m.form.focus {
 			lines = append(lines, m.st.Accent.Bold(true).Render("▸ ")+label+" "+value)
-		default:
+		} else {
 			lines = append(lines, "  "+label+" "+value)
 		}
 		lines = append(lines, spaces(indent)+m.st.CardMuted.Render(truncate(field.hint, valueWidth)))

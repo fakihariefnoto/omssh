@@ -87,17 +87,43 @@ func (m *Model) paintBackground(line string) string {
 	if m.bgSeq == "" {
 		return line
 	}
-	line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+m.bgSeq)
-	return m.bgSeq + line + "\x1b[0m"
+	paint := m.fgSeq + m.bgSeq
+	line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+paint)
+	return paint + line + "\x1b[0m"
+}
+
+// foregroundSeq is the other half of painting a background: the terminal's own
+// default foreground may be the same lightness as the painted background, which
+// is what made a light theme look broken — white text on white.
+func foregroundSeq(t theme.Theme, terminalDark, known bool, mode string) string {
+	if t.Mono || mode == "never" {
+		return ""
+	}
+	if mode != "always" && (!known || t.Dark == terminalDark) {
+		return ""
+	}
+	styled := lipgloss.NewStyle().Foreground(t.Colors.FG).Render("x")
+	if i := strings.Index(styled, "x"); i > 0 {
+		return styled[:i]
+	}
+	return ""
 }
 
 // backgroundSeq is the escape that sets a theme's background, or "" when the
 // terminal and the theme already agree. Painting a matching background would
 // cover a transparent or themed terminal for no reason; painting a mismatched
 // one is what keeps a light theme readable on a dark terminal.
-func backgroundSeq(t theme.Theme, terminalDark bool) string {
-	if t.Mono || t.Dark == terminalDark {
+func backgroundSeq(t theme.Theme, terminalDark, known bool, mode string) string {
+	if t.Mono || mode == "never" {
 		return ""
+	}
+	if mode != "always" {
+		// auto: only when the theme and the terminal disagree, and only when the
+		// terminal actually said which it is. Guessing wrong paints over a
+		// transparent or themed background for no reason.
+		if !known || t.Dark == terminalDark {
+			return ""
+		}
 	}
 	styled := lipgloss.NewStyle().Background(t.Colors.BG).Render("x")
 	if i := strings.Index(styled, "x"); i > 0 {

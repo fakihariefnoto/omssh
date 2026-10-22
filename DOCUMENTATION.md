@@ -454,6 +454,7 @@ ui:
   sidebar: true
   preview: true
   show_hidden: true     # dotfiles visible; "." toggles them
+  paint_background: auto  # auto | always | never (see Themes)
   start: home           # home | files
   width_margin: 0       # see Troubleshooting
 
@@ -476,6 +477,12 @@ deploy:
 `Ctrl+,` opens settings: the theme list, the current icons and motion, and the
 keymap. Themes adapt to light and dark terminals; `auto` follows the terminal's
 background on demand (`Ctrl+K` → *Follow terminal background*).
+
+**Backgrounds.** A theme paints its background (and its foreground) only when it
+disagrees with the terminal — a light theme on a dark one — and only when the
+terminal said which it is (via `COLORFGBG` or *Follow terminal background* in the
+palette). Otherwise the terminal's own background, transparency included, is left
+alone. `ui.paint_background: always` forces it, `never` turns it off.
 
 Icons come in three sets: `unicode` (default, good on any font), `ascii`, and
 `nerd` (Nerd Font required — shows `?` without one). Nothing in the interface

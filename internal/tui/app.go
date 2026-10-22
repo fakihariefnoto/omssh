@@ -39,6 +39,9 @@ type Options struct {
 	// broken", so the query is offered as an action instead, where a brief pause
 	// is expected and the user asked for it.
 	HasDark bool
+	// DarkKnown is false when the terminal did not say (no COLORFGBG and no
+	// query). "auto" only paints a background when the answer is known.
+	DarkKnown bool
 	// OffersConnect enables the connection entries in the launcher and the
 	// first-run card. It stays false until the SSH layer exists, because a menu
 	// of dead ends teaches nothing.
@@ -76,6 +79,7 @@ type Model struct {
 
 	profile    colorprofile.Profile
 	hasDark    bool
+	darkKnown  bool
 	sshPath    string
 	configPath string
 	secrets    *keys.Store
@@ -84,7 +88,11 @@ type Model struct {
 	// bgSeq paints the theme's own background behind every line. Without it a
 	// light theme on a dark terminal draws dark text on a dark screen — the menu
 	// that "overlaps the background".
-	bgSeq   string
+	bgSeq string
+	// fgSeq goes with it: painting a light background under a terminal's light
+	// default foreground leaves unstyled text invisible, which is what made a
+	// light theme look broken.
+	fgSeq   string
 	dropped []keymap.Dropped
 
 	width, height int
@@ -325,11 +333,13 @@ func New(opts Options) (*Model, error) {
 		resolver:    paneKeys.Resolver(""),
 		profile:     opts.Profile,
 		hasDark:     opts.HasDark,
+		darkKnown:   opts.DarkKnown,
 		sshPath:     opts.SSHConfigPath,
 		secrets:     opts.SecretStore,
 		themeName:   resolved.Name,
 		themeNames:  theme.Names(),
-		bgSeq:       backgroundSeq(resolved, opts.HasDark),
+		bgSeq:       backgroundSeq(resolved, opts.HasDark, opts.DarkKnown, cfg.UI.PaintBackground),
+		fgSeq:       foregroundSeq(resolved, opts.HasDark, opts.DarkKnown, cfg.UI.PaintBackground),
 		dropped:     paneKeys.Dropped(),
 		tabs:        []Tab{{Title: "localhost", State: StateReady}},
 		Panes:       []Pane{NewPane(localFS, dir, home), NewRemotePane()},
@@ -439,9 +449,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		// Only reached when the user asked to follow the terminal background.
 		m.hasDark = msg.IsDark()
+		m.darkKnown = true
 		// The mismatch rule depends on the terminal, so the background is
 		// recomputed even when the theme itself does not change.
-		m.bgSeq = backgroundSeq(m.st.Theme, m.hasDark)
+		m.bgSeq = backgroundSeq(m.st.Theme, m.hasDark, m.darkKnown, m.cfg.UI.PaintBackground)
+		m.fgSeq = foregroundSeq(m.st.Theme, m.hasDark, m.darkKnown, m.cfg.UI.PaintBackground)
 		switch {
 		case m.cfg.UI.Theme == "auto":
 			m.applyTheme("auto")
@@ -1582,7 +1594,8 @@ func (m *Model) applyTheme(name string) {
 	}
 	m.st = theme.NewStyles(resolved)
 	m.themeName = resolved.Name
-	m.bgSeq = backgroundSeq(resolved, m.hasDark)
+	m.bgSeq = backgroundSeq(resolved, m.hasDark, m.darkKnown, m.cfg.UI.PaintBackground)
+	m.fgSeq = foregroundSeq(resolved, m.hasDark, m.darkKnown, m.cfg.UI.PaintBackground)
 	m.cfg.UI.Theme = name
 	m.settings.cursor = indexOf(m.themeNames, resolved.Name)
 	m.toastSuccess("Theme: " + resolved.Name)

@@ -18,7 +18,9 @@ func themedModel(t *testing.T, name string, hasDark ...bool) *Model {
 	cfg := config.Default()
 	cfg.UI.Theme = name
 	cfg.UI.Start = "home"
-	m, err := New(Options{Config: cfg, Profile: colorprofile.TrueColor, HasDark: dark})
+	// DarkKnown mirrors a terminal that said which it is (COLORFGBG or the query),
+	// which is the only case "auto" acts on.
+	m, err := New(Options{Config: cfg, Profile: colorprofile.TrueColor, HasDark: dark, DarkKnown: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +64,42 @@ func TestMatchingBackgroundIsLeftAlone(t *testing.T) {
 	}
 }
 
+// A terminal that did not say is left alone by "auto": guessing wrong would paint
+// over a transparent background for no reason. "always" and "never" are explicit.
+func TestBackgroundModes(t *testing.T) {
+	base := config.Default()
+	base.UI.Theme = "dawn"
+
+	unknown := base
+	m, err := New(Options{Config: unknown, Profile: colorprofile.TrueColor, HasDark: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.bgSeq != "" {
+		t.Error("an unknown terminal should not be painted over")
+	}
+
+	always := base
+	always.UI.PaintBackground = "always"
+	m, err = New(Options{Config: always, Profile: colorprofile.TrueColor, HasDark: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.bgSeq == "" {
+		t.Error("paint_background: always should paint")
+	}
+
+	never := base
+	never.UI.PaintBackground = "never"
+	m, err = New(Options{Config: never, Profile: colorprofile.TrueColor, HasDark: true, DarkKnown: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.bgSeq != "" {
+		t.Error("paint_background: never should leave the terminal alone")
+	}
+}
+
 // Mono has no colours at all, so selection has to be carried by attributes.
 func TestMonoCarriesSelectionByAttribute(t *testing.T) {
 	m := themedModel(t, "mono")
@@ -84,5 +122,21 @@ func TestMonoCarriesSelectionByAttribute(t *testing.T) {
 	out := render(m)
 	if !strings.Contains(out, "\x1b[") {
 		t.Fatal("mono should still use attributes")
+	}
+}
+
+// A painted background needs the matching foreground: a light theme on a dark
+// terminal inherits a light default foreground, and white text on a white
+// background is what "dawn is broken" looked like.
+func TestPaintedBackgroundAlsoSetsTheForeground(t *testing.T) {
+	m := themedModel(t, "dawn", true)
+	out := render(m)
+	if !strings.Contains(out, "\x1b[38;2;36;41;47m") {
+		t.Fatalf("dawn should paint its foreground as well")
+	}
+	for i, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "\x1b[38;2;36;41;47m") {
+			t.Fatalf("line %d has no theme foreground: %q", i, line)
+		}
 	}
 }

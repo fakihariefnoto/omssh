@@ -38,6 +38,9 @@ ui:
   # cell wider than the interface counts them, and the wrapped line scrolls the
   # whole frame. Set 1 or 2 if the layout ever shifts while you type.
   width_margin: 0
+  # auto: paint the theme's background only when the theme and the terminal
+  # disagree (a light theme on a dark terminal). always | never.
+  paint_background: auto
 
 connections:
   # Hosts pinned to the top of the list, in this order.
