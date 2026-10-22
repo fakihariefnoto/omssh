@@ -11,7 +11,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/cloudcred"
 	"github.com/fakihariefnoto/omssh/internal/config"
+	"github.com/fakihariefnoto/omssh/internal/keys"
 	"github.com/fakihariefnoto/omssh/internal/sshconfig"
 )
 
@@ -694,6 +696,21 @@ func (m *Model) hasInclude() bool {
 	return false
 }
 
+// credStore is the keyring bucket credentials live in, or nil when the machine
+// has none. It is never probed up front: an unavailable keyring means "use the
+// AWS chain", which needs no keyring at all.
+func (m *Model) credStore() *keys.Store {
+	if m.secrets != nil {
+		return m.secrets
+	}
+	if m.sessions != nil {
+		if store := m.sessions.Store(); store != nil {
+			return store
+		}
+	}
+	return keys.Default("omssh")
+}
+
 // hostOf is the address column: a DNS name for a host, s3://bucket/prefix for a
 // bucket, and the alias when neither is set.
 func (m *Model) hostOf(e connEntry) string {
@@ -893,8 +910,10 @@ func (m *Model) handleConnectionsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			}
 		}
 	case "esc":
-		// Leave the manager: filtering is handled above, so this is "back".
-		m.screen = m.connReturn
+		// Back to the launcher. The dashboard is still there behind it, and Esc
+		// from the launcher goes to the files — one key, one direction.
+		m.screen = screenHome
+		m.home.cursor = 0
 		m.mode = "NORMAL"
 		return nil, true
 	}
@@ -939,6 +958,9 @@ func (m *Model) openCloudForm(provider string) {
 	add("Region", "region", "us-east-1 for AWS · auto for R2", "")
 	add("Endpoint", "endpoint", "R2: https://<account>.r2.cloudflarestorage.com", "")
 	add("Prefix", "prefix", "optional: root the pane inside the bucket", "")
+	add("AccessKeyID", "key id", "optional: stored in the OS keyring, not here", "")
+	add("SecretKey", "secret", "optional · leave blank to use the AWS chain", "")
+	form.fields[len(form.fields)-1].in.Masked = true
 	m.form = form
 	m.Overlay = OverlayForm
 }
@@ -948,6 +970,7 @@ func (m *Model) openCloudForm(provider string) {
 func (m *Model) saveCloudForm() tea.Cmd {
 	profile := config.CloudProfile{}
 	name := ""
+	accessKey, secretKey := "", ""
 	for _, field := range m.form.fields {
 		value := strings.TrimSpace(field.in.Value)
 		switch field.key {
@@ -963,6 +986,10 @@ func (m *Model) saveCloudForm() tea.Cmd {
 			profile.Endpoint = value
 		case "Prefix":
 			profile.Prefix = value
+		case "AccessKeyID":
+			accessKey = value
+		case "SecretKey":
+			secretKey = value
 		}
 	}
 	switch {
@@ -991,10 +1018,20 @@ func (m *Model) saveCloudForm() tea.Cmd {
 	if profile.Provider == "r2" && profile.Region == "" {
 		profile.Region = "auto"
 	}
+	if (accessKey == "") != (secretKey == "") {
+		m.form.err = "give both the key id and the secret, or neither"
+		return nil
+	}
 	if m.cfg.Cloud.Profiles == nil {
 		m.cfg.Cloud.Profiles = map[string]config.CloudProfile{}
 	}
 	m.cfg.Cloud.Profiles[name] = profile
+	if accessKey != "" {
+		if err := cloudcred.Store(m.credStore(), name, accessKey, secretKey); err != nil {
+			m.form.err = "cannot store the credentials: " + err.Error()
+			return nil
+		}
+	}
 	m.form = connForm{}
 	m.Overlay = OverlayNone
 	m.saveConfig()
@@ -1154,7 +1191,7 @@ func (m *Model) renderConnectionForm(l layout) string {
 
 	for i, field := range m.form.fields {
 		label := m.st.StatusMuted.Render(padRight(field.label, 6))
-		value := m.st.CardText.Render(truncate(field.in.Value, content-12))
+		value := m.st.CardText.Render(truncate(field.in.Display(), content-12))
 		if i == m.form.focus {
 			value = m.st.PathInput.Width(content - 12).Render(truncate(field.in.Rendered(), content-12))
 			lines = append(lines, m.st.Accent.Bold(true).Render("▸ ")+label+value)

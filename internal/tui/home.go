@@ -90,6 +90,7 @@ func (m *Model) homeItems() []homeItem {
 	}
 	return append(items,
 		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},
+		homeItem{ID: "app.dashboard", Icon: "=", Label: "Dashboard", Hint: "choose panes"},
 		homeItem{ID: "app.files", Icon: "~", Label: "Browse local files", Hint: "Enter"},
 		homeItem{ID: "nav.path", Icon: "/", Label: "Go to a folder", Hint: "Ctrl+L"},
 		// Keys and help live inside settings: one card for "how do I change how
@@ -273,15 +274,39 @@ func (m *Model) activateHome(item homeItem) tea.Cmd {
 }
 
 // openFiles leaves the launcher for the file manager.
+// openFiles goes straight to the file manager with the local machine on screen.
+// It is what "Browse local files" means: no question, the local folder.
 func (m *Model) openFiles() {
 	m.screen = screenFiles
 	m.mode = "NORMAL"
-	// Before the dashboard, which places it shows is a choice: the local folder,
-	// the connected hosts, and every bucket (a bucket needs no session and can be
-	// opened at any time). Asked once per run, and skipped when there is nothing
-	// to choose between.
+	if m.localPaneIndex() < 0 {
+		// The local pane can be absent (a dashboard of four servers). Asking for
+		// the local files puts it back, in front.
+		m.Panes = append([]Pane{NewPane(mustLocalFS(), ".", homeOr("."))}, m.Panes...)
+		m.Panes = m.Panes[:m.paneCount()]
+		m.Focused = 0
+		m.loadPaneAsync(0)
+		return
+	}
+	m.Focused = m.localPaneIndex()
+}
+
+// openDashboard is the question "what should the dashboard show?". It is the
+// launcher's Dashboard entry and the Esc-then-Enter route.
+func (m *Model) openDashboard() {
+	m.screen = screenFiles
+	m.mode = "NORMAL"
 	candidates := 1 + len(m.live) + len(m.cfg.Cloud.Profiles)
-	if !m.panesAsked && candidates > 1 {
+	if candidates > 1 {
 		m.openPanes()
 	}
+}
+
+// homeOr is the user's home directory, or the fallback when it cannot be found.
+func homeOr(fallback string) string {
+	home, err := userHome()
+	if err != nil {
+		return fallback
+	}
+	return home
 }

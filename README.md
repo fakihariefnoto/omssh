@@ -78,10 +78,11 @@ omssh              # the launcher
 omssh prod         # the interface, already connected to prod
 ```
 
-1. `Ctrl+O` lists the hosts in your `~/.ssh/config` — `Enter` browses one, `t`
-   opens a terminal on it.
-2. Each connection gets a pane. Open a second and a third; at four they lay out
-   2×2. `w` moves the focus, `Tab` cycles sessions.
+1. `Ctrl+O` opens **Manage connections** — hosts and buckets, one screen per kind.
+   `Enter` browses one, `t` opens a terminal on it. `Esc` returns to the launcher.
+2. **Dashboard** on the launcher asks which places it should show — local is
+   optional, and buckets need no session. Up to four panes, 2×2. `w` moves the
+   focus, `Tab` cycles sessions.
 3. Mark a file with `y`, move to another pane, press `p`. `A` opens the paste
    options if you want it unpacked or packed instead.
 4. `Ctrl+E` extracts an archive into either side, `Ctrl+G` compresses the

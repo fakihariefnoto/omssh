@@ -13,11 +13,23 @@ import (
 type input struct {
 	Value  string
 	Cursor int // rune offset
+	// Masked hides the value on screen while keeping it intact: a secret typed
+	// into a form should not be readable over someone's shoulder, and should not
+	// be repeated in a screenshot of the interface.
+	Masked bool
 	// selectAll is set when Set pre-filled the value. The next insertion then
 	// replaces it, which is how a text field behaves when it takes focus: pasting
 	// a path into a prompt that already holds one must not concatenate the two.
 	// Any cursor movement cancels it, so editing a pre-filled name still works.
 	selectAll bool
+}
+
+// Display is what the form draws: the value, or dots when it is a secret.
+func (in input) Display() string {
+	if !in.Masked {
+		return in.Value
+	}
+	return strings.Repeat("•", len([]rune(in.Value)))
 }
 
 // Set replaces the value, puts the cursor at the end, and marks the value as

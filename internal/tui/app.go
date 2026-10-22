@@ -16,6 +16,7 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/clipboard"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keymap"
+	"github.com/fakihariefnoto/omssh/internal/keys"
 	"github.com/fakihariefnoto/omssh/internal/remoteinfo"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/sshconfig"
@@ -52,6 +53,9 @@ type Options struct {
 	// SSHConfigPath overrides ~/.ssh/config. Tests use it; the CLI leaves it
 	// empty so the real file is used.
 	SSHConfigPath string
+	// SecretStore is the keyring used for bucket credentials. Tests pass an
+	// in-memory store; the CLI leaves it nil and the interface builds one.
+	SecretStore *keys.Store
 	// ConfigPath is where preferences are written back: favourites, hidden hosts
 	// and recents. Empty means "do not persist" (tests, and a config-less run).
 	ConfigPath string
@@ -74,6 +78,7 @@ type Model struct {
 	hasDark    bool
 	sshPath    string
 	configPath string
+	secrets    *keys.Store
 	themeName  string
 	themeNames []string
 	// bgSeq paints the theme's own background behind every line. Without it a
@@ -321,6 +326,7 @@ func New(opts Options) (*Model, error) {
 		profile:     opts.Profile,
 		hasDark:     opts.HasDark,
 		sshPath:     opts.SSHConfigPath,
+		secrets:     opts.SecretStore,
 		themeName:   resolved.Name,
 		themeNames:  theme.Names(),
 		bgSeq:       backgroundSeq(resolved, opts.HasDark),
@@ -1039,6 +1045,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 
 	case "app.files":
 		m.openFiles()
+	case "app.dashboard":
+		m.openDashboard()
 
 	case "session.open":
 		m.loadConnections()

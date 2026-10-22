@@ -318,8 +318,8 @@ func TestConnectionsDeleteAsksFirst(t *testing.T) {
 func TestConnectionsEscReturns(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
 	press(t, m, keyNamed(tea.KeyEsc))
-	if m.screen != screenFiles {
-		t.Errorf("Esc should return to the file manager, screen is %v", m.screen)
+	if m.screen != screenHome {
+		t.Errorf("Esc should return to the launcher, screen is %v", m.screen)
 	}
 }
 

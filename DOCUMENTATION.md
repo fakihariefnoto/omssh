@@ -38,6 +38,10 @@ omssh prod       # the interface, connected to prod on startup
 `omssh` starts on a launcher, not in a menu-less void. From there:
 
 - **Manage connections** (`Ctrl+O`) — hosts and buckets, one screen per kind.
+  `Esc` there returns here, to the launcher.
+- **Dashboard** — asks which places it should show (local optional, hosts, buckets).
+- **Browse local files** — skips the question and brings the local folder to the
+  front, adding it back if a remote-only dashboard had removed it.
 - **Browse local files** (`Esc` or `Enter`) — the file manager at the directory
   you started in.
 - **Settings, theme and keys** (`Ctrl+,`) — themes, icons, motion, and the keymap.
@@ -52,6 +56,7 @@ connections screen from anywhere, and `Esc` always takes you one step back.
     Oh My SSH — SSH/SFTP with terminal UI
 
  ▸ [>] Manage connections        Ctrl+O
+   [=] Dashboard                 choose panes
    [~] Browse local files        Enter
    [/] Go to a folder            Ctrl+L
    [+] Settings, theme and keys  Ctrl+,
@@ -546,6 +551,7 @@ with `omssh keys`. The grammar is small:
 | Key | Action |
 | --- | --- |
 | `Ctrl+O` | Connections |
+| — | The launcher's Dashboard entry asks which places to show |
 | `Tab` / `Shift+Tab` | Next / previous session |
 | `1`…`9` | Jump to a session |
 | `[` / `]` | Previous / next session |

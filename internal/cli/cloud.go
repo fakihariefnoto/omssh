@@ -10,7 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/fakihariefnoto/omssh/internal/cloudcred"
 	"github.com/fakihariefnoto/omssh/internal/config"
+	"github.com/fakihariefnoto/omssh/internal/keys"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 	"github.com/fakihariefnoto/omssh/internal/vfs/object"
 )
@@ -29,6 +31,7 @@ func newCloudCmd(opts *Options, stdout io.Writer) *cobra.Command {
 	cmd.AddCommand(newCloudListCmd(opts, stdout))
 	cmd.AddCommand(newCloudCheckCmd(opts, stdout))
 	cmd.AddCommand(newCloudLsCmd(opts, stdout))
+	cmd.AddCommand(newCloudForgetCmd(opts, stdout))
 	return cmd
 }
 
@@ -94,6 +97,21 @@ func newCloudCheckCmd(opts *Options, stdout io.Writer) *cobra.Command {
 	}
 }
 
+func newCloudForgetCmd(_ *Options, stdout io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "forget <profile>",
+		Short: "Remove the stored access key for a profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := cloudcred.Forget(keys.Default("omssh"), args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintln(stdout, "forgot the stored credentials for "+args[0])
+			return nil
+		},
+	}
+}
+
 func newCloudLsCmd(opts *Options, stdout io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls <profile> [path]",
@@ -134,11 +152,15 @@ func openCloud(opts *Options, name string) (*object.FS, config.CloudProfile, err
 	if !ok {
 		return nil, config.CloudProfile{}, fmt.Errorf("no cloud profile named %q · omssh cloud list", name)
 	}
+	store := keys.Default("omssh")
+	accessKey, secretKey, _ := cloudcred.Load(store, name)
 	client, err := object.NewClient(context.Background(), object.ClientOptions{
-		Provider:  profile.Provider,
-		Region:    profile.Region,
-		Endpoint:  profile.Endpoint,
-		PathStyle: profile.PathStyle,
+		Provider:        profile.Provider,
+		Region:          profile.Region,
+		Endpoint:        profile.Endpoint,
+		PathStyle:       profile.PathStyle,
+		AccessKeyID:     accessKey,
+		SecretAccessKey: secretKey,
 	})
 	if err != nil {
 		return nil, profile, err

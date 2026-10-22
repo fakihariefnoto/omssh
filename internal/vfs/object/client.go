@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -20,6 +21,10 @@ type ClientOptions struct {
 	// PathStyle forces path-style addressing. R2 and MinIO are happier with it;
 	// AWS prefers virtual-hosted.
 	PathStyle bool
+	// AccessKeyID and SecretAccessKey are set when the person stored credentials
+	// in the keyring. When empty, the standard AWS chain is used unchanged.
+	AccessKeyID     string
+	SecretAccessKey string
 }
 
 // NewClient builds an S3 client from the standard AWS credential chain: the
@@ -41,7 +46,13 @@ func NewClient(ctx context.Context, opts ClientOptions) (*s3.Client, error) {
 		return nil, errors.New("object: R2 needs an endpoint, https://<account>.r2.cloudflarestorage.com")
 	}
 
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	loadOptions := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
+	if opts.AccessKeyID != "" && opts.SecretAccessKey != "" {
+		loadOptions = append(loadOptions, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(opts.AccessKeyID, opts.SecretAccessKey, ""),
+		))
+	}
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, loadOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("object: loading credentials: %w", err)
 	}

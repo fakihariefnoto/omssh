@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/fakihariefnoto/omssh/internal/cloudcred"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
@@ -37,13 +38,18 @@ func (m *Model) openCloudPane(name string) tea.Cmd {
 	m.mode = "CONNECTING"
 	m.toastInfo("Opening " + name + "…")
 	ctx := m.connectContext()
+	// The keyring is read here, on the update loop, and the pair is captured by
+	// the command; the store is not safe to touch from the goroutine.
+	accessKey, secretKey, _ := cloudcred.Load(m.credStore(), name)
 
 	return func() tea.Msg {
 		client, err := object.NewClient(ctx, object.ClientOptions{
-			Provider:  profile.Provider,
-			Region:    profile.Region,
-			Endpoint:  profile.Endpoint,
-			PathStyle: profile.PathStyle,
+			Provider:        profile.Provider,
+			Region:          profile.Region,
+			Endpoint:        profile.Endpoint,
+			PathStyle:       profile.PathStyle,
+			AccessKeyID:     accessKey,
+			SecretAccessKey: secretKey,
 		})
 		if err != nil {
 			return cloudReadyMsg{name: name, err: err}

@@ -210,7 +210,7 @@ func TestDashboardAsksWhenThereAreTooManySessions(t *testing.T) {
 	m.screen = screenHome
 	m.panesAsked = false
 
-	m.openFiles()
+	m.openDashboard()
 	if m.Overlay != OverlayPanes {
 		t.Fatalf("five sessions should open the chooser, overlay is %v", m.Overlay)
 	}
@@ -769,8 +769,39 @@ func TestDashboardAsksWhenOnlyBucketsExist(t *testing.T) {
 	}
 	m.screen = screenHome
 	m.panesAsked = false
-	m.openFiles()
+	m.openDashboard()
 	if m.Overlay != OverlayPanes {
 		t.Fatalf("a configured bucket should make the dashboard ask, overlay=%v", m.Overlay)
+	}
+}
+
+// The launcher offers both questions: "show me the files" and "what should the
+// dashboard show?".
+func TestLauncherDashboardAndLocalFiles(t *testing.T) {
+	m, _ := fourPanes(t)
+	m.cfg.Cloud.Profiles = map[string]config.CloudProfile{
+		"backups": {Provider: "s3", Bucket: "b", Region: "eu-central-1"},
+	}
+	m.loadConnections()
+	m.screen = screenHome
+
+	// Dashboard asks.
+	m.runAction("app.dashboard")
+	if m.Overlay != OverlayPanes {
+		t.Fatalf("Dashboard should open the chooser, overlay=%v", m.Overlay)
+	}
+
+	// Browse local files does not: it puts the local pane in front.
+	m.Overlay = OverlayNone
+	m.Panes = m.Panes[1:] // pretend a remote-only dashboard
+	m.Focused = 0
+	m.runAction("app.files")
+	if m.Overlay == OverlayPanes {
+		t.Error("Browse local files should not ask a question")
+	}
+	if index := m.localPaneIndex(); index < 0 {
+		t.Fatal("Browse local files should bring the local pane back")
+	} else if m.Focused != index {
+		t.Errorf("the local pane should have the focus, focused %d", m.Focused)
 	}
 }
