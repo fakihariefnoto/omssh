@@ -99,6 +99,38 @@ func TestSidebarFollowsTheOpenSession(t *testing.T) {
 	}
 }
 
+// The settings card can hide dotfiles, the preference the config calls
+// show_hidden, and it is saved.
+func TestSettingsTogglesHiddenFiles(t *testing.T) {
+	m := newTestModel(t)
+	m.configPath = t.TempDir() + "/config.yaml"
+	if !m.showHidden {
+		t.Fatal("dotfiles should be visible by default")
+	}
+	m.overlayCmd = m.toggleShowHidden()
+	if m.showHidden {
+		t.Error("Enter should hide dotfiles")
+	}
+	for _, e := range m.Pane().Visible() {
+		if e.Name == ".hidden" {
+			t.Error("a hidden file is still listed")
+		}
+	}
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.ShowHidden {
+		t.Error("the preference should be saved as hidden")
+	}
+
+	// And back.
+	m.toggleShowHidden()
+	if !m.showHidden {
+		t.Error("toggling again should show them")
+	}
+}
+
 // A theme choice is a preference: it must survive the process.
 func TestThemeChoiceIsPersisted(t *testing.T) {
 	m := newTestModel(t)
@@ -157,7 +189,7 @@ func TestSettingsCarriesTheKeymap(t *testing.T) {
 
 	// Put the cursor on the keymap row (after the themes and the background row)
 	// and open it.
-	m.settings.cursor = len(m.settingsOptions()) + 1
+	m.settings.cursor = len(m.settingsOptions()) + 3
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayHelp {
 		t.Errorf("Enter on the keymap row should open help, overlay is %v", m.Overlay)

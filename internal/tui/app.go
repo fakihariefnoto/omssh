@@ -746,9 +746,12 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlaySettings:
 		options := m.settingsOptions()
-		// The rows after the themes are the background mode and the keymap.
+		// The rows after the themes: background mode, hidden files, icons, help.
 		backgroundRow := len(options)
-		last := len(options) + 1
+		hiddenRow := backgroundRow + 1
+		iconsRow := hiddenRow + 1
+		helpRow := iconsRow + 1
+		last := helpRow
 		switch msg.String() {
 		case "esc", "ctrl+,":
 			m.Overlay = OverlayNone
@@ -756,7 +759,11 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 			switch m.settings.cursor {
 			case backgroundRow:
 				m.cycleBackground()
-			case last:
+			case hiddenRow:
+				m.overlayCmd = m.toggleShowHidden()
+			case iconsRow:
+				m.cycleIcons()
+			case helpRow:
 				m.Overlay = OverlayHelp
 				m.help.input.Clear()
 			default:
@@ -1637,6 +1644,35 @@ func terminalKind(dark bool) string {
 		return "dark"
 	}
 	return "light"
+}
+
+// toggleShowHidden flips the dotfile preference, reloads both panes and saves it.
+func (m *Model) toggleShowHidden() tea.Cmd {
+	m.showHidden = !m.showHidden
+	m.cfg.UI.ShowHidden = m.showHidden
+	m.saveConfig()
+	if m.showHidden {
+		m.toastInfo("Hidden files shown")
+	} else {
+		m.toastInfo("Hidden files hidden")
+	}
+	return m.refreshAll()
+}
+
+// cycleIcons walks the three icon sets. It is a preference, so it is saved.
+func (m *Model) cycleIcons() {
+	order := []string{"unicode", "ascii", "nerd"}
+	next := "unicode"
+	for i, name := range order {
+		if m.cfg.UI.Icons == name {
+			next = order[(i+1)%len(order)]
+			break
+		}
+	}
+	m.cfg.UI.Icons = next
+	m.icons = theme.IconsFor(next)
+	m.saveConfig()
+	m.toastInfo("Icons: " + next)
 }
 
 // cycleBackground walks auto → always → never. It exists because whether a theme

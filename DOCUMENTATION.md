@@ -474,9 +474,17 @@ deploy:
 
 ## Themes and icons
 
-`Ctrl+,` opens settings: the theme list, the current icons and motion, the
-background mode, and the keymap. A theme choice is saved to the config, so it
-survives the process. Themes adapt to light and dark terminals; `auto` follows the
+`Ctrl+,` opens settings: the theme list, the background mode, **hidden files**,
+icons, motion, and the keymap. Every choice is saved to the config, so it survives
+the process:
+
+| Row | Enter |
+| --- | --- |
+| Theme | applies it |
+| Background | auto → always → never |
+| Hidden files | hidden ⇄ shown (the same as `.`) |
+| Icons | unicode → ascii → nerd |
+| Keyboard and help | opens the keymap | Themes adapt to light and dark terminals; `auto` follows the
 terminal's background on demand (`Ctrl+K` → *Follow terminal background*).
 
 The card also shows what the terminal says about itself (`terminal reads as dark`,

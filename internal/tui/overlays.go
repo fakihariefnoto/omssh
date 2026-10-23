@@ -294,10 +294,7 @@ func (m *Model) renderSettings(l layout) string {
 			lines = append(lines, m.st.PaletteItem.Render(row))
 		}
 	}
-	lines = append(lines, "",
-		m.st.CardMuted.Render("Icons: "+m.cfg.UI.Icons+"   Motion: "+m.cfg.UI.Motion),
-		"",
-	)
+	lines = append(lines, "", m.st.CardMuted.Render("Motion: "+m.cfg.UI.Motion), "")
 
 	// Background painting, and what the terminal says about itself: the second
 	// half is the number a "white glitch" is always about.
@@ -332,10 +329,29 @@ func (m *Model) renderSettings(l layout) string {
 		)
 	}
 
+	// Files, not colours: the preferences that change what the listing shows.
+	hidden := "hidden"
+	if m.showHidden {
+		hidden = "shown"
+	}
+	hiddenRow := m.listRow("Hidden files: "+hidden, "Enter", content)
+	if m.settings.cursor == len(options)+1 {
+		lines = append(lines, m.st.PaletteItemActive.Render(hiddenRow))
+	} else {
+		lines = append(lines, m.st.PaletteItem.Render(hiddenRow))
+	}
+
+	iconsRow := m.listRow("Icons: "+m.cfg.UI.Icons, "Enter", content)
+	if m.settings.cursor == len(options)+2 {
+		lines = append(lines, m.st.PaletteItemActive.Render(iconsRow))
+	} else {
+		lines = append(lines, m.st.PaletteItem.Render(iconsRow))
+	}
+
 	// The keys live here too: "how does this behave" and "what can I press" are
 	// the same question asked at different moments.
 	helpRow := m.listRow("Keyboard and help", "?", content)
-	if m.settings.cursor == len(options)+1 {
+	if m.settings.cursor == len(options)+3 {
 		lines = append(lines, m.st.PaletteItemActive.Render(helpRow))
 	} else {
 		lines = append(lines, m.st.PaletteItem.Render(helpRow))
