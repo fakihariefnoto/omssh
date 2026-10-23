@@ -203,9 +203,9 @@ func (c Config) Validate() error {
 	}
 	for name, profile := range c.Cloud.Profiles {
 		switch profile.Provider {
-		case "s3", "r2":
+		case "s3", "r2", "b2", "gcs", "oss":
 		default:
-			return fmt.Errorf("cloud.profiles.%s.provider: got %q, want s3 or r2", name, profile.Provider)
+			return fmt.Errorf("cloud.profiles.%s.provider: got %q, want s3, r2, b2, gcs or oss", name, profile.Provider)
 		}
 		if strings.TrimSpace(profile.Bucket) == "" {
 			return fmt.Errorf("cloud.profiles.%s.bucket: cannot be empty", name)
@@ -213,8 +213,13 @@ func (c Config) Validate() error {
 		if profile.Provider == "r2" && strings.TrimSpace(profile.Endpoint) == "" {
 			return fmt.Errorf("cloud.profiles.%s.endpoint: R2 needs https://<account>.r2.cloudflarestorage.com", name)
 		}
-		if profile.Provider == "s3" && strings.TrimSpace(profile.Region) == "" {
-			return fmt.Errorf("cloud.profiles.%s.region: S3 needs a region, like us-east-1", name)
+		switch profile.Provider {
+		case "s3", "b2", "oss":
+			if strings.TrimSpace(profile.Region) == "" {
+				return fmt.Errorf("cloud.profiles.%s.region: %s needs a region", name, profile.Provider)
+			}
+		case "r2", "gcs":
+			// R2 and GCS use "auto" when the region is left empty.
 		}
 	}
 	if err := oneOf("ui.paint_background", c.UI.PaintBackground, PaintBackgrounds); err != nil {

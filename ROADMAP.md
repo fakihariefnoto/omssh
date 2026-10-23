@@ -104,7 +104,7 @@ one implementation, not five.
 
 ---
 
-## M9 — The compatible providers  (partly done: R2 preset exists)
+## M9 — The compatible providers  (shipped: s3, r2, b2, gcs, oss)
 
 R2, OSS, GCS and B2 speak S3-compatible APIs, with differences that are
 configuration, not code.

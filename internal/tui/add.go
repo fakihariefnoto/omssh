@@ -29,6 +29,9 @@ func addKinds() []addKind {
 		{label: "SSH host", hint: "a machine in ~/.ssh/config"},
 		{label: "AWS S3 bucket", hint: "region, bucket, optional prefix", provider: "s3"},
 		{label: "Cloudflare R2 bucket", hint: "account endpoint, bucket", provider: "r2"},
+		{label: "Backblaze B2 bucket", hint: "region, bucket (S3 API)", provider: "b2"},
+		{label: "Google Cloud Storage", hint: "bucket, HMAC keys (S3 API)", provider: "gcs"},
+		{label: "Alibaba Cloud OSS", hint: "region, bucket (S3 API)", provider: "oss"},
 	}
 }
 

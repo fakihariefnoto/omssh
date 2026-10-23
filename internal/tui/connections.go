@@ -996,7 +996,7 @@ func (m *Model) openCloudForm(provider string) {
 	add("Name", "name", "profile name, shown in this list", "")
 	add("Provider", "type", "s3 or r2", provider)
 	add("Bucket", "bucket", "the bucket name", "")
-	add("Region", "region", "us-east-1 for AWS · auto for R2", "")
+	add("Region", "region", "AWS/B2/OSS: the bucket's region · R2/GCS: blank", "")
 	add("Endpoint", "endpoint", "R2: https://<account>.r2.cloudflarestorage.com", "")
 	add("Prefix", "prefix", "optional: root the pane inside the bucket", "")
 	add("AccessKeyID", "key id", "optional: stored in the OS keyring, not here", "")
@@ -1040,8 +1040,10 @@ func (m *Model) saveCloudForm() tea.Cmd {
 	case profile.Provider == "":
 		profile.Provider = "s3"
 	}
-	if profile.Provider != "s3" && profile.Provider != "r2" {
-		m.form.err = "type must be s3 or r2"
+	switch profile.Provider {
+	case "s3", "r2", "b2", "gcs", "oss":
+	default:
+		m.form.err = "type must be s3, r2, b2, gcs or oss"
 		return nil
 	}
 	if profile.Bucket == "" {
@@ -1056,8 +1058,15 @@ func (m *Model) saveCloudForm() tea.Cmd {
 		m.form.err = "S3 needs a region, like us-east-1"
 		return nil
 	}
-	if profile.Provider == "r2" && profile.Region == "" {
-		profile.Region = "auto"
+	switch profile.Provider {
+	case "r2":
+		if profile.Region == "" {
+			profile.Region = "auto"
+		}
+	case "gcs":
+		if profile.Region == "" {
+			profile.Region = "auto"
+		}
 	}
 	if (accessKey == "") != (secretKey == "") {
 		m.form.err = "give both the key id and the secret, or neither"

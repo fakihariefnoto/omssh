@@ -73,6 +73,21 @@ cloud:
   #     bucket: assets
   #     endpoint: https://<account>.r2.cloudflarestorage.com
   #     region: auto
+  #
+  #   b2-archive:                       # Backblaze B2 (S3 API)
+  #     provider: b2
+  #     bucket: my-archive
+  #     region: us-west-004             # the bucket's region; the endpoint follows
+  #
+  #   gcs-backups:                      # Google Cloud Storage (S3 XML API)
+  #     provider: gcs
+  #     bucket: my-backups
+  #     region: auto                    # HMAC keys, not a service account
+  #
+  #   oss-cn:                           # Alibaba Cloud OSS (S3-compatible)
+  #     provider: oss
+  #     bucket: my-bucket
+  #     region: cn-hangzhou             # virtual-hosted only; the endpoint follows
 
 keys:
   # Ctrl+Q quits. "esc" is rejected: Esc only ever dismisses or goes back.

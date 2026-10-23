@@ -314,8 +314,21 @@ is a hard stop, because that is what a changed key means.
 
 ## Object storage
 
-AWS S3 and Cloudflare R2 are places like hosts: they get a pane, a tab and the
-same copy, archive and deploy behaviour as a server.
+S3-compatible storage is a place like a host: a pane, a tab and the same copy,
+archive and deploy behaviour as a server. One client covers five providers, because
+they differ in endpoint and addressing style, not in the operations omssh uses:
+
+| Provider | `provider` | Endpoint |
+| --- | --- | --- |
+| AWS S3 | `s3` | regional, from the SDK |
+| Cloudflare R2 | `r2` | `https://<account>.r2.cloudflarestorage.com` (required) |
+| Backblaze B2 | `b2` | `https://s3.<region>.backblazeb2.com` (derived) |
+| Google Cloud Storage | `gcs` | `https://storage.googleapis.com`, HMAC keys |
+| Alibaba Cloud OSS | `oss` | `https://s3.oss-<region>.aliyuncs.com` (derived) |
+
+OSS rejects path-style requests, so it is always virtual-hosted; B2 and R2 are
+path-style. The form needs a bucket and a region for AWS/B2/OSS, an account
+endpoint for R2, and only a bucket for GCS.
 
 ```yaml
 cloud:
@@ -330,6 +343,17 @@ cloud:
       bucket: assets
       endpoint: https://<account>.r2.cloudflarestorage.com
       region: auto
+    b2-archive:                    # Backblaze B2
+      provider: b2
+      bucket: my-archive
+      region: us-west-004
+    gcs-backups:                   # Google Cloud Storage (S3 XML API, HMAC keys)
+      provider: gcs
+      bucket: my-backups
+    oss-cn:                        # Alibaba Cloud OSS
+      provider: oss
+      bucket: my-bucket
+      region: cn-hangzhou
 ```
 
 **Credentials** are either entered in the form or taken from the standard AWS
