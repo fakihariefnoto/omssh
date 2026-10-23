@@ -203,15 +203,17 @@ func monoStyles(t Theme) Styles {
 
 		PaneTitle:        emphasis,
 		PaneTitleBlurred: muted,
-		PaneBorder:       plain,
-		PaneBorderBlur:   plain.Faint(true),
-		PaneHeader:       plain.Underline(true),
-		PaneRow:          plain,
-		PaneRowCursor:    selected,
-		PaneRowSelected:  emphasis,
-		PaneDir:          plain.Bold(true),
-		PaneSymlink:      plain.Underline(true),
-		PaneEmpty:        muted.Italic(true),
+		// Borders are the interface's shape, not its colour: mono keeps them, and
+		// carries focus with a heavier border rather than a tint.
+		PaneBorder:      plain.Border(lipgloss.DoubleBorder()),
+		PaneBorderBlur:  plain.Border(lipgloss.RoundedBorder()).Faint(true),
+		PaneHeader:      plain.Underline(true),
+		PaneRow:         plain,
+		PaneRowCursor:   selected,
+		PaneRowSelected: emphasis,
+		PaneDir:         plain.Bold(true),
+		PaneSymlink:     plain.Underline(true),
+		PaneEmpty:       muted.Italic(true),
 
 		Breadcrumb:       muted,
 		BreadcrumbActive: emphasis,

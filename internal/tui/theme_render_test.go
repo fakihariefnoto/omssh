@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
 )
@@ -138,5 +139,20 @@ func TestPaintedBackgroundAlsoSetsTheForeground(t *testing.T) {
 		if !strings.Contains(line, "\x1b[38;2;36;41;47m") {
 			t.Fatalf("line %d has no theme foreground: %q", i, line)
 		}
+	}
+}
+
+// Mono has no colour, but it still has shape: panes keep their borders, and the
+// focused one is marked with a heavier border rather than a tint.
+func TestMonoKeepsPaneBorders(t *testing.T) {
+	m := themedModel(t, "mono")
+	m.openFiles()
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "╔") && !strings.Contains(out, "╭") {
+		t.Fatalf("mono panes should have borders:\n%s", out)
+	}
+	// The focused pane's border is distinct, so "where am I" survives mono.
+	if m.st.PaneBorder.GetBorderStyle() == m.st.PaneBorderBlur.GetBorderStyle() {
+		t.Error("the focused and unfocused borders should differ in mono")
 	}
 }

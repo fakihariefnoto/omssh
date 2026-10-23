@@ -475,8 +475,8 @@ deploy:
 ## Themes and icons
 
 `Ctrl+,` opens settings: the theme list, the background mode, **hidden files**,
-icons, motion, and the keymap. Every choice is saved to the config, so it survives
-the process:
+icons, motion, and the keymap. Every choice is written to `ui.theme` and its
+neighbours in `~/.config/omssh/config.yaml`, so it survives the process:
 
 | Row | Enter |
 | --- | --- |
