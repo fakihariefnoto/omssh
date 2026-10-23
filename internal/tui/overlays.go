@@ -356,6 +356,15 @@ func (m *Model) renderSettings(l layout) string {
 	} else {
 		lines = append(lines, m.st.PaletteItem.Render(helpRow))
 	}
+	// Where the choices go, on screen: "where is this stored?" should not need a
+	// second command.
+	if m.configPath != "" {
+		where := m.configPath
+		if home, err := userHome(); err == nil {
+			where = strings.Replace(where, home, "~", 1)
+		}
+		lines = append(lines, "", m.st.CardMuted.Render(truncate("saved to "+where, content)))
+	}
 	lines = append(lines,
 		"",
 		m.st.CardMuted.Render("↑↓ choose · Enter apply · ? opens the keymap · Ctrl+, close"),

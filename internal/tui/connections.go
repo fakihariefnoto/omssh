@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -484,6 +485,25 @@ func (m *Model) noteRecent(alias string) {
 	}
 	m.cfg.Connections.Recent = recent
 	m.saveConfig()
+}
+
+// saveConfigChecked writes the config and reads it back, so a save that did not
+// happen reports itself instead of being discovered at the next start.
+func (m *Model) saveConfigChecked() error {
+	if m.configPath == "" {
+		return errors.New("no config path")
+	}
+	if err := config.Save(m.configPath, m.cfg); err != nil {
+		return err
+	}
+	saved, err := config.Load(m.configPath)
+	if err != nil {
+		return err
+	}
+	if saved.UI.Theme != m.cfg.UI.Theme {
+		return errors.New("the file does not hold the theme after writing it")
+	}
+	return nil
 }
 
 // saveConfig writes preferences back. Failing to save is not worth interrupting a

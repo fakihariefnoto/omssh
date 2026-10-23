@@ -1613,8 +1613,19 @@ func (m *Model) applyTheme(name string) {
 	m.fgSeq = foregroundSeq(resolved, m.hasDark, m.darkKnown, m.cfg.UI.PaintBackground)
 	m.cfg.UI.Theme = name
 	m.settings.cursor = indexOf(m.themeNames, resolved.Name)
-	// The choice is a preference, so it outlives the process.
-	m.saveConfig()
+	// The choice is a preference, so it outlives the process. Read it back: a save
+	// that silently did not happen is indistinguishable from a program that
+	// forgets, and the person should hear about it now rather than next start.
+	if m.configPath == "" {
+		// An embedded interface (tests) has no file to write; say so rather than
+		// pretending, and do not invent a path that could be someone's real config.
+		m.toastSuccess("Theme: " + resolved.Name)
+		return
+	}
+	if err := m.saveConfigChecked(); err != nil {
+		m.toastError("Theme not saved: " + err.Error())
+		return
+	}
 	if m.themeMismatch() && m.cfg.UI.PaintBackground == "never" {
 		// Readable only if the theme paints its own colours, and painting is off.
 		m.toastWarning(resolved.Name + " is a light theme on a dark terminal · Background: always, or a dark theme")
