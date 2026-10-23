@@ -9,7 +9,7 @@ criteria pass, not when its code merges.
 
 ---
 
-## M7 — The local pane becomes optional
+## M7 — The local pane becomes optional  (shipped: the chooser can untick it)
 
 Today every dashboard starts with a local pane, and the chooser will not untick
 it. That is a good default for a file manager and a bad one for someone whose work
@@ -302,6 +302,68 @@ the traffic can be recorded.
   host key would not match, and making it match is an attack, not a feature.
 - Recordings are evidence only if the machine and the files are trustworthy; the
   roadmap claims capture, not chain of custody.
+
+---
+
+## M14 — An interface for agents
+
+A person drives a screen. An agent cannot: it needs a command that does not ask
+questions, output it can parse, and a safety model that fails closed. This is the
+milestone that turns everything above into something an AI agent can use without a
+pseudo-terminal.
+
+**Deliverables**
+
+- One path grammar for every place: `omssh fs <verb> <place>:<path>`, where a
+  place is a host alias or a cloud profile. Verbs: `ls`, `stat`, `get`, `put`,
+  `mv`, `rm`, `mkdir`, `extract`. SSH and buckets stop being different shapes to a
+  caller.
+- `--json` on every command: one document, stable field names. `--json-lines` for
+  long operations: one object per event (`start`, `progress`, `item-error`,
+  `done`), so a copy is observable while it runs.
+- `--batch`: never prompt. An unknown host key exits 65 with the fingerprint on
+  stderr; a password that is needed and not stored exits 77; nothing waits for a
+  terminal that is not there.
+- `omssh mcp`: an MCP server over stdio, exposing the same operations as tools
+  with JSON schemas. Local transport, no network listener, credentials resolved
+  exactly as the TUI resolves them.
+- An audit log in the state directory: one JSON line per mutating action with
+  place, path, bytes and outcome.
+
+**Safety, because it is the whole feature**
+
+- **Read-only by default.** Writes need `--allow-write` for the run, not a flag on
+  a tool call an agent can set itself.
+- **Allowlists** for hosts and paths (`--allow-host prod`, `--allow-path
+  /srv/app`), enforced once, before a filesystem is handed to a tool.
+- **Destructive calls return a plan** unless `--yes` was given — the same plan the
+  TUI shows before a copy, move or deploy.
+- **No secrets in arguments.** Keys come from the agent, the keyring or the
+  environment, never from a tool parameter that lands in a transcript.
+- **`exec` is off by default** and, when enabled, runs an allowlisted command. A
+  remote shell is the most dangerous thing this program can offer.
+- Every mutating call is audited, including the ones that failed.
+
+**Acceptance criteria**
+
+- An MCP client lists places, reads a file, copies a tree with progress, and
+  extracts an archive, with no TTY anywhere.
+- Against an unknown host, `--batch` exits 65 before any timeout with the
+  fingerprint on stderr, rather than hanging on a prompt.
+- A write without `--allow-write` exits 77 and changes nothing.
+- The audit log names every mutating call, and its path is on `omssh config path`
+  output.
+
+**Risks**
+
+- Tool descriptions are part of the contract: each must say whether it reads or
+  writes, and what it will refuse. They need versioning when they change.
+- An agent with `--allow-write` and a broad allowlist is a shell with extra steps.
+  The defaults are the product.
+
+**Not planned:** driving the TUI from an agent. Screen-scraping a terminal UI is
+neither stable nor honest; the CLI and MCP are the interfaces, and the TUI stays
+for people.
 
 ---
 
