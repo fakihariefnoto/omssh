@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/actions"
+	"github.com/fakihariefnoto/omssh/internal/theme"
 )
 
 // overlayRows is how many list rows an overlay shows before scrolling.
@@ -271,7 +272,22 @@ func (m *Model) renderSettings(l layout) string {
 		if name == m.themeName {
 			mark = m.st.Success.Render("✓")
 		}
-		row := padRight(mark+"  "+name, content)
+		// Light or dark, on the row itself: picking dawn on a dark terminal is a
+		// decision, and it should be an informed one.
+		kind := ""
+		if t, err := theme.Resolve(name, m.profile, m.hasDark); err == nil {
+			kind = "dark"
+			if !t.Dark {
+				kind = "light"
+			}
+			if name == "auto" {
+				kind = "follows terminal"
+			}
+			if name == "mono" {
+				kind = "no colour"
+			}
+		}
+		row := padRight(mark+"  "+name, content-len(kind)-1) + m.st.CardMuted.Render(kind)
 		if i == m.settings.cursor {
 			lines = append(lines, m.st.PaletteItemActive.Render(row))
 		} else {
@@ -304,6 +320,17 @@ func (m *Model) renderSettings(l layout) string {
 		terminal = "terminal reads as light"
 	}
 	lines = append(lines, m.st.CardMuted.Render(truncate("  "+terminal, content)))
+
+	// The one combination that cannot be readable: a light theme on a dark
+	// terminal with painting turned off leaves dark text on a dark screen.
+	if m.darkKnown && m.themeMismatch() && background == "never" {
+		lines = append(lines,
+			"",
+			m.st.Warning.Render(truncate("  "+m.themeName+" is a "+themeKind(m.themeName)+" theme on a "+
+				terminalKind(m.hasDark)+" terminal", content)),
+			m.st.CardMuted.Render(truncate("  set Background: always, or pick a matching theme", content)),
+		)
+	}
 
 	// The keys live here too: "how does this behave" and "what can I press" are
 	// the same question asked at different moments.

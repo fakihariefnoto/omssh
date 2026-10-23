@@ -480,9 +480,14 @@ survives the process. Themes adapt to light and dark terminals; `auto` follows t
 terminal's background on demand (`Ctrl+K` → *Follow terminal background*).
 
 The card also shows what the terminal says about itself (`terminal reads as dark`,
-`light` or `unknown`), because that is what the background rule acts on. If the
-answer is wrong, set *Background* to `never` and the theme will leave the
-terminal's own colours alone.
+`light` or `unknown`), because that is what the background rule acts on. Each
+theme is labelled `light` or `dark` for the same reason: a light theme on a dark
+terminal can only be readable if it paints its own background.
+
+If the answer is wrong, set *Background* to `never` and the theme leaves the
+terminal's own colours alone — but then pick a theme that matches it. Dawn on a
+dark terminal without painting is dark text on a dark screen, and the settings card
+says so in words.
 
 **Backgrounds.** A theme paints its background (and its foreground) only when it
 disagrees with the terminal — a light theme on a dark one — and only when the

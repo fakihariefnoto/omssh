@@ -1602,7 +1602,41 @@ func (m *Model) applyTheme(name string) {
 	m.settings.cursor = indexOf(m.themeNames, resolved.Name)
 	// The choice is a preference, so it outlives the process.
 	m.saveConfig()
+	if m.themeMismatch() && m.cfg.UI.PaintBackground == "never" {
+		// Readable only if the theme paints its own colours, and painting is off.
+		m.toastWarning(resolved.Name + " is a light theme on a dark terminal · Background: always, or a dark theme")
+		return
+	}
 	m.toastSuccess("Theme: " + resolved.Name)
+}
+
+// themeMismatch reports the combination painting exists for: a theme whose
+// lightness is not the terminal's.
+func (m *Model) themeMismatch() bool {
+	return m.darkKnown && m.st.Theme.Dark != m.hasDark
+}
+
+// themeKind names a theme's lightness for the settings card.
+func themeKind(name string) string {
+	if name == "mono" {
+		return "no-colour"
+	}
+	t, err := theme.Resolve(name, colorprofile.TrueColor, true)
+	if err != nil {
+		return "unknown"
+	}
+	if t.Dark {
+		return "dark"
+	}
+	return "light"
+}
+
+// terminalKind names the terminal's lightness the way the warning reads.
+func terminalKind(dark bool) string {
+	if dark {
+		return "dark"
+	}
+	return "light"
 }
 
 // cycleBackground walks auto → always → never. It exists because whether a theme
