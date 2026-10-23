@@ -746,18 +746,20 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlaySettings:
 		options := m.settingsOptions()
-		// The last row is the keymap, which is why the range is one longer.
-		last := len(options)
+		// The rows after the themes are the background mode and the keymap.
+		backgroundRow := len(options)
+		last := len(options) + 1
 		switch msg.String() {
 		case "esc", "ctrl+,":
 			m.Overlay = OverlayNone
 		case "enter":
-			if m.settings.cursor == last {
+			switch m.settings.cursor {
+			case backgroundRow:
+				m.cycleBackground()
+			case last:
 				m.Overlay = OverlayHelp
 				m.help.input.Clear()
-				break
-			}
-			if m.settings.cursor < len(options) {
+			default:
 				m.applyTheme(options[m.settings.cursor])
 			}
 		case "?":
@@ -1598,7 +1600,28 @@ func (m *Model) applyTheme(name string) {
 	m.fgSeq = foregroundSeq(resolved, m.hasDark, m.darkKnown, m.cfg.UI.PaintBackground)
 	m.cfg.UI.Theme = name
 	m.settings.cursor = indexOf(m.themeNames, resolved.Name)
+	// The choice is a preference, so it outlives the process.
+	m.saveConfig()
 	m.toastSuccess("Theme: " + resolved.Name)
+}
+
+// cycleBackground walks auto → always → never. It exists because whether a theme
+// should paint its own background is a matter of taste once it is readable: a
+// transparent or hand-coloured terminal deserves to be left alone.
+func (m *Model) cycleBackground() {
+	order := []string{"auto", "always", "never"}
+	next := "auto"
+	for i, mode := range order {
+		if m.cfg.UI.PaintBackground == mode {
+			next = order[(i+1)%len(order)]
+			break
+		}
+	}
+	m.cfg.UI.PaintBackground = next
+	m.bgSeq = backgroundSeq(m.st.Theme, m.hasDark, m.darkKnown, next)
+	m.fgSeq = foregroundSeq(m.st.Theme, m.hasDark, m.darkKnown, next)
+	m.saveConfig()
+	m.toastInfo("Background: " + next)
 }
 
 // applyCapabilities rebuilds the keymap once the terminal has told us what it

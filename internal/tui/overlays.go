@@ -283,10 +283,32 @@ func (m *Model) renderSettings(l layout) string {
 		"",
 	)
 
+	// Background painting, and what the terminal says about itself: the second
+	// half is the number a "white glitch" is always about.
+	background := m.cfg.UI.PaintBackground
+	if background == "" {
+		background = "auto"
+	}
+	backgroundRow := m.listRow("Background: "+background, "Enter", content)
+	if m.settings.cursor == len(options) {
+		lines = append(lines, m.st.PaletteItemActive.Render(backgroundRow))
+	} else {
+		lines = append(lines, m.st.PaletteItem.Render(backgroundRow))
+	}
+	terminal := "terminal reads as unknown"
+	switch {
+	case !m.darkKnown:
+	case m.hasDark:
+		terminal = "terminal reads as dark"
+	default:
+		terminal = "terminal reads as light"
+	}
+	lines = append(lines, m.st.CardMuted.Render(truncate("  "+terminal, content)))
+
 	// The keys live here too: "how does this behave" and "what can I press" are
 	// the same question asked at different moments.
 	helpRow := m.listRow("Keyboard and help", "?", content)
-	if m.settings.cursor == len(options) {
+	if m.settings.cursor == len(options)+1 {
 		lines = append(lines, m.st.PaletteItemActive.Render(helpRow))
 	} else {
 		lines = append(lines, m.st.PaletteItem.Render(helpRow))

@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
@@ -265,5 +265,47 @@ func TestFormLayout(t *testing.T) {
 		if labelWidth+valueWidth > content {
 			t.Errorf("content %d: columns are %d wide together", content, labelWidth+valueWidth)
 		}
+	}
+}
+
+// A bucket added in one run is there in the next: the profile is written to the
+// config, and a fresh model built from that file lists it.
+func TestBucketSurvivesARestart(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.configPath = t.TempDir() + "/config.yaml"
+
+	m.runAction("session.add")
+	m.add.cursor = 1 // AWS S3
+	press(t, m, keyNamed(tea.KeyEnter))
+	m.form.fields[0].in.Set("backups")
+	m.form.fields[2].in.Set("my-backups")
+	m.form.fields[3].in.Set("eu-central-1")
+	m.handleFormKey(keyNamed(tea.KeyEnter))
+
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatalf("the saved config should load: %v", err)
+	}
+	if _, ok := cfg.Cloud.Profiles["backups"]; !ok {
+		t.Fatalf("the profile was not written: %+v", cfg.Cloud.Profiles)
+	}
+
+	// A new interface, same file.
+	next, err := New(Options{
+		Config: cfg, Profile: colorprofile.TrueColor, HasDark: true, Dir: t.TempDir(),
+		SSHConfigPath: m.sshPath, ConfigPath: m.configPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next.loadConnections()
+	found := false
+	for _, e := range next.visibleConnections() {
+		if e.Alias == "backups" && e.Cloud {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the restarted interface should list the bucket: %+v", next.visibleConnections())
 	}
 }

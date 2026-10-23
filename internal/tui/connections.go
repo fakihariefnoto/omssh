@@ -493,7 +493,9 @@ func (m *Model) saveConfig() {
 		return
 	}
 	if err := config.Save(m.configPath, m.cfg); err != nil {
-		m.toastWarning("Could not save preferences: " + err.Error())
+		// Louder than a warning: preferences that do not persist look like a
+		// program that forgets, and the path is the first thing to check.
+		m.toastError("Could not save " + m.configPath + ": " + err.Error())
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
@@ -98,6 +99,50 @@ func TestSidebarFollowsTheOpenSession(t *testing.T) {
 	}
 }
 
+// A theme choice is a preference: it must survive the process.
+func TestThemeChoiceIsPersisted(t *testing.T) {
+	m := newTestModel(t)
+	m.configPath = t.TempDir() + "/config.yaml"
+	m.applyTheme("dawn")
+
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatalf("the config should be valid: %v", err)
+	}
+	if cfg.UI.Theme != "dawn" {
+		t.Errorf("the theme should be saved, got %q", cfg.UI.Theme)
+	}
+}
+
+// The settings card can turn background painting off, for a terminal that was
+// coloured by hand.
+func TestBackgroundModeCycles(t *testing.T) {
+	m := newTestModel(t)
+	m.configPath = t.TempDir() + "/config.yaml"
+	m.cfg.UI.PaintBackground = "auto"
+
+	m.cycleBackground()
+	if m.cfg.UI.PaintBackground != "always" {
+		t.Errorf("auto should become always, got %q", m.cfg.UI.PaintBackground)
+	}
+	m.cycleBackground()
+	if m.cfg.UI.PaintBackground != "never" {
+		t.Errorf("always should become never, got %q", m.cfg.UI.PaintBackground)
+	}
+	m.cycleBackground()
+	if m.cfg.UI.PaintBackground != "auto" {
+		t.Errorf("never should wrap to auto, got %q", m.cfg.UI.PaintBackground)
+	}
+
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.PaintBackground != "auto" {
+		t.Errorf("the mode should be saved, got %q", cfg.UI.PaintBackground)
+	}
+}
+
 // Keys and help are part of settings, not a second menu row that answers half of
 // the same question.
 func TestSettingsCarriesTheKeymap(t *testing.T) {
@@ -110,8 +155,9 @@ func TestSettingsCarriesTheKeymap(t *testing.T) {
 		t.Fatalf("settings should offer the keymap:\n%s", out)
 	}
 
-	// Put the cursor on the keymap row and open it.
-	m.settings.cursor = len(m.settingsOptions())
+	// Put the cursor on the keymap row (after the themes and the background row)
+	// and open it.
+	m.settings.cursor = len(m.settingsOptions()) + 1
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayHelp {
 		t.Errorf("Enter on the keymap row should open help, overlay is %v", m.Overlay)
