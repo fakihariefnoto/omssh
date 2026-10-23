@@ -32,6 +32,7 @@ func addKinds() []addKind {
 		{label: "Backblaze B2 bucket", hint: "region, bucket (S3 API)", provider: "b2"},
 		{label: "Google Cloud Storage", hint: "bucket, HMAC keys (S3 API)", provider: "gcs"},
 		{label: "Alibaba Cloud OSS", hint: "region, bucket (S3 API)", provider: "oss"},
+		{label: "WebDAV server", hint: "Nextcloud, Box, SharePoint, a NAS", provider: "webdav"},
 	}
 }
 

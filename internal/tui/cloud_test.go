@@ -162,10 +162,18 @@ func TestConnectionSections(t *testing.T) {
 		t.Errorf("the S3 screen should list the bucket:\n%s", out)
 	}
 
-	// A planned section says so instead of looking empty.
+	// WebDAV is a real screen now; it lists nothing because nothing is configured.
 	press(t, m, keyNamed(tea.KeyTab))
 	if m.conn.section != secWebDAV {
 		t.Fatalf("Tab should reach WebDAV, section is %v", m.conn.section)
+	}
+	if m.conn.section.planned() {
+		t.Error("WebDAV shipped and should not be marked planned")
+	}
+	// Azure is still planned, and says so instead of looking empty.
+	press(t, m, keyNamed(tea.KeyTab))
+	if m.conn.section != secAzure {
+		t.Fatalf("Tab should reach Azure, section is %v", m.conn.section)
 	}
 	out = ansi.Strip(render(m))
 	if !strings.Contains(out, "M10") {

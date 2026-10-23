@@ -325,10 +325,16 @@ they differ in endpoint and addressing style, not in the operations omssh uses:
 | Backblaze B2 | `b2` | `https://s3.<region>.backblazeb2.com` (derived) |
 | Google Cloud Storage | `gcs` | `https://storage.googleapis.com`, HMAC keys |
 | Alibaba Cloud OSS | `oss` | `https://s3.oss-<region>.aliyuncs.com` (derived) |
+| WebDAV | `webdav` | any `https://…/dav/` collection (Nextcloud, Box, SharePoint, a NAS) |
 
 OSS rejects path-style requests, so it is always virtual-hosted; B2 and R2 are
 path-style. The form needs a bucket and a region for AWS/B2/OSS, an account
 endpoint for R2, and only a bucket for GCS.
+
+**WebDAV is a different client**, because it is a different protocol: real
+directories, a real `MOVE` (an actual rename, not copy-then-delete), and ETags. It
+needs a URL and optionally a username and password, which are stored in the keyring
+like a bucket's key pair.
 
 ```yaml
 cloud:
@@ -354,6 +360,10 @@ cloud:
       provider: oss
       bucket: my-bucket
       region: cn-hangzhou
+    nextcloud:                     # WebDAV
+      provider: webdav
+      endpoint: https://cloud.example.com/remote.php/dav/files/me/
+      username: me                 # the password waits in the keyring
 ```
 
 **Credentials** are either entered in the form or taken from the standard AWS
@@ -376,9 +386,10 @@ is not.
 **What object storage cannot do**, and the interface says so instead of failing
 halfway:
 
-- no permissions and no symlinks (`P` and `L` report "not supported");
-- no atomic rename: a rename is copy-then-delete, and a failure between the two
-  leaves both copies;
+- buckets have no permissions and no symlinks (`P` and `L` report "not supported");
+- a bucket rename is copy-then-delete, and a failure between the two leaves both
+  copies. A WebDAV rename is one `MOVE`, which is atomic on every server that
+  implements the specification;
 - no append or partial write: a write is buffered locally and put on close;
 - directories are prefixes. An empty folder exists only as a marker object.
 

@@ -39,6 +39,8 @@ type CloudProfile struct {
 	Endpoint string `yaml:"endpoint"`
 	// Prefix roots the pane inside the bucket.
 	Prefix string `yaml:"prefix"`
+	// Username is the WebDAV account; buckets use the AWS chain or a key pair.
+	Username string `yaml:"username"`
 	// PathStyle forces path-style addressing; R2 always uses it.
 	PathStyle bool `yaml:"path_style"`
 }
@@ -204,11 +206,15 @@ func (c Config) Validate() error {
 	for name, profile := range c.Cloud.Profiles {
 		switch profile.Provider {
 		case "s3", "r2", "b2", "gcs", "oss":
+			if strings.TrimSpace(profile.Bucket) == "" {
+				return fmt.Errorf("cloud.profiles.%s.bucket: cannot be empty", name)
+			}
+		case "webdav":
+			if strings.TrimSpace(profile.Endpoint) == "" {
+				return fmt.Errorf("cloud.profiles.%s.endpoint: WebDAV needs a URL", name)
+			}
 		default:
-			return fmt.Errorf("cloud.profiles.%s.provider: got %q, want s3, r2, b2, gcs or oss", name, profile.Provider)
-		}
-		if strings.TrimSpace(profile.Bucket) == "" {
-			return fmt.Errorf("cloud.profiles.%s.bucket: cannot be empty", name)
+			return fmt.Errorf("cloud.profiles.%s.provider: got %q, want s3, r2, b2, gcs, oss or webdav", name, profile.Provider)
 		}
 		if profile.Provider == "r2" && strings.TrimSpace(profile.Endpoint) == "" {
 			return fmt.Errorf("cloud.profiles.%s.endpoint: R2 needs https://<account>.r2.cloudflarestorage.com", name)

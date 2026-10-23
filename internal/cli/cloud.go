@@ -10,11 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/fakihariefnoto/omssh/internal/cloud"
 	"github.com/fakihariefnoto/omssh/internal/cloudcred"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keys"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
-	"github.com/fakihariefnoto/omssh/internal/vfs/object"
 )
 
 // newCloudCmd inspects object-storage profiles without starting the interface.
@@ -143,7 +143,7 @@ func newCloudLsCmd(opts *Options, stdout io.Writer) *cobra.Command {
 }
 
 // openCloud turns a profile name into a filesystem.
-func openCloud(opts *Options, name string) (*object.FS, config.CloudProfile, error) {
+func openCloud(opts *Options, name string) (vfs.FS, config.CloudProfile, error) {
 	cfg, _, err := loadConfig(opts)
 	if err != nil {
 		return nil, config.CloudProfile{}, err
@@ -152,21 +152,9 @@ func openCloud(opts *Options, name string) (*object.FS, config.CloudProfile, err
 	if !ok {
 		return nil, config.CloudProfile{}, fmt.Errorf("no cloud profile named %q · omssh cloud list", name)
 	}
-	store := keys.Default("omssh")
-	accessKey, secretKey, _ := cloudcred.Load(store, name)
-	client, err := object.NewClient(context.Background(), object.ClientOptions{
-		Provider:        profile.Provider,
-		Region:          profile.Region,
-		Endpoint:        profile.Endpoint,
-		PathStyle:       profile.PathStyle,
-		AccessKeyID:     accessKey,
-		SecretAccessKey: secretKey,
-	})
-	if err != nil {
-		return nil, profile, err
-	}
-	fsys, err := object.New(object.Options{
-		API: client, Bucket: profile.Bucket, Prefix: profile.Prefix, Label: name,
+	id, secret, _ := cloudcred.Load(keys.Default("omssh"), name)
+	fsys, err := cloud.Open(context.Background(), name, profile, cloud.Credentials{
+		AccessKey: id, Secret: secret, Username: id, Password: secret,
 	})
 	if err != nil {
 		return nil, profile, err

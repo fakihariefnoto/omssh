@@ -148,10 +148,15 @@ configuration, not code.
 
 ---
 
-## M10 — Providers with their own protocol
+## M10 — Providers with their own protocol  (WebDAV shipped; Azure Blob remains)
 
 Two of the services people ask for are not S3-shaped, and pretending otherwise
 would be the wrong kind of reuse.
+
+**WebDAV — shipped** in `internal/vfs/webdav`: PROPFIND with Depth 0 and 1, GET,
+PUT, MKCOL, DELETE and MOVE, with basic auth, passing the conformance suite. It is
+in the connection manager as its own screen and in the cloud form as its own
+provider.
 
 **Azure Blob Storage** — the native REST API:
 
@@ -182,7 +187,8 @@ would be the wrong kind of reuse.
 
 - Copy between WebDAV and SSH, WebDAV and Azure, and either and the local disk,
   with progress and cancellation, through the same `xfer` engine as everything
-  else.
+  else. (WebDAV half done: conformance passes; cross-protocol copy will be checked
+  against a live server.)
 - A rename on WebDAV is one `MOVE`, not a copy and a delete.
 - Azure block upload above the multipart threshold survives one failed block.
 - Delete and overwrite ask the same questions they ask on a server.

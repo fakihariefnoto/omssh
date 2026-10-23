@@ -64,12 +64,10 @@ func (s connSection) title() string {
 
 // planned is true for a section whose driver has not shipped. The tab exists so
 // the plan is visible, and it says so instead of pretending to be empty.
-func (s connSection) planned() bool { return s >= secWebDAV }
+func (s connSection) planned() bool { return s >= secAzure }
 
 func (s connSection) plannedNote() string {
 	switch s {
-	case secWebDAV:
-		return "WebDAV (Nextcloud, Box, SharePoint) arrives with M10: PROPFIND, MOVE, ETags."
 	case secAzure:
 		return "Azure Blob arrives with M10: native REST, block uploads, SAS or Entra ID."
 	default:
@@ -229,12 +227,16 @@ func (m *Model) visibleConnections() []connEntry {
 				continue
 			}
 		case secS3:
-			if !e.Cloud {
+			if !e.Cloud || strings.EqualFold(e.User, "webdav") {
+				continue
+			}
+		case secWebDAV:
+			if !e.Cloud || !strings.EqualFold(e.User, "webdav") {
 				continue
 			}
 		case secOverview:
 			// everything
-		case secWebDAV, secAzure, secGCP:
+		case secAzure, secGCP:
 			continue
 		}
 		if !m.conn.showAll {
@@ -1042,31 +1044,44 @@ func (m *Model) saveCloudForm() tea.Cmd {
 	}
 	switch profile.Provider {
 	case "s3", "r2", "b2", "gcs", "oss":
+		if profile.Bucket == "" {
+			m.form.err = "a bucket name is required"
+			return nil
+		}
+		switch profile.Provider {
+		case "r2":
+			if profile.Endpoint == "" {
+				m.form.err = "R2 needs an endpoint, https://<account>.r2.cloudflarestorage.com"
+				return nil
+			}
+			if profile.Region == "" {
+				profile.Region = "auto"
+			}
+		case "gcs":
+			if profile.Region == "" {
+				profile.Region = "auto"
+			}
+		case "s3", "b2", "oss":
+			if profile.Region == "" {
+				m.form.err = profile.Provider + " needs the bucket's region"
+				return nil
+			}
+		}
+	case "webdav":
+		if profile.Endpoint == "" {
+			m.form.err = "WebDAV needs a URL, like https://host/remote.php/dav/files/me/"
+			return nil
+		}
+		if !strings.HasPrefix(profile.Endpoint, "http://") && !strings.HasPrefix(profile.Endpoint, "https://") {
+			m.form.err = "the WebDAV URL must start with http:// or https://"
+			return nil
+		}
+		// The URL is the root; a bucket name means nothing here.
+		profile.Bucket = ""
+		profile.Prefix = ""
 	default:
-		m.form.err = "type must be s3, r2, b2, gcs or oss"
+		m.form.err = "type must be s3, r2, b2, gcs, oss or webdav"
 		return nil
-	}
-	if profile.Bucket == "" {
-		m.form.err = "a bucket name is required"
-		return nil
-	}
-	if profile.Provider == "r2" && profile.Endpoint == "" {
-		m.form.err = "R2 needs an endpoint, https://<account>.r2.cloudflarestorage.com"
-		return nil
-	}
-	if profile.Provider == "s3" && profile.Region == "" {
-		m.form.err = "S3 needs a region, like us-east-1"
-		return nil
-	}
-	switch profile.Provider {
-	case "r2":
-		if profile.Region == "" {
-			profile.Region = "auto"
-		}
-	case "gcs":
-		if profile.Region == "" {
-			profile.Region = "auto"
-		}
 	}
 	if (accessKey == "") != (secretKey == "") {
 		m.form.err = "give both the key id and the secret, or neither"

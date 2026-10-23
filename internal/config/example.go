@@ -88,6 +88,11 @@ cloud:
   #     provider: oss
   #     bucket: my-bucket
   #     region: cn-hangzhou             # virtual-hosted only; the endpoint follows
+  #
+  #   nextcloud:                        # WebDAV
+  #     provider: webdav
+  #     endpoint: https://cloud.example.com/remote.php/dav/files/me/
+  #     username: me                    # password goes in the keyring
 
 keys:
   # Ctrl+Q quits. "esc" is rejected: Esc only ever dismisses or goes back.
