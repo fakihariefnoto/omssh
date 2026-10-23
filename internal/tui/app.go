@@ -335,6 +335,7 @@ func New(opts Options) (*Model, error) {
 		hasDark:     opts.HasDark,
 		darkKnown:   opts.DarkKnown,
 		sshPath:     opts.SSHConfigPath,
+		configPath:  opts.ConfigPath,
 		secrets:     opts.SecretStore,
 		themeName:   resolved.Name,
 		themeNames:  theme.Names(),

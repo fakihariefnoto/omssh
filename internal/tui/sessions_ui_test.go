@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
@@ -193,5 +194,34 @@ func TestSettingsCarriesTheKeymap(t *testing.T) {
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayHelp {
 		t.Errorf("Enter on the keymap row should open help, overlay is %v", m.Overlay)
+	}
+}
+
+// The interface must be told where to save. A New() that drops Options.ConfigPath
+// writes nothing, and every preference silently resets — which is exactly what
+// happened before this test existed.
+func TestNewKeepsTheConfigPath(t *testing.T) {
+	path := t.TempDir() + "/config.yaml"
+	m, err := New(Options{
+		Config:     config.Default(),
+		Profile:    colorprofile.TrueColor,
+		HasDark:    true,
+		Dir:        t.TempDir(),
+		ConfigPath: path,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.configPath != path {
+		t.Fatalf("configPath = %q, want %q", m.configPath, path)
+	}
+
+	m.applyTheme("dawn")
+	saved, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("the theme should have been written to %s: %v", path, err)
+	}
+	if saved.UI.Theme != "dawn" {
+		t.Errorf("saved theme = %q, want dawn", saved.UI.Theme)
 	}
 }
