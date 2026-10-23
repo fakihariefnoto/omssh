@@ -155,8 +155,9 @@ func (m *Model) dumpFrame(body string, l layout) {
 		return
 	}
 	defer func() { _ = file.Close() }()
-	fmt.Fprintf(file, "=== %s size=%dx%d overlay=%s screen=%v focus=%d panes=%d transfers=%d\n",
-		time.Now().Format("15:04:05.000"), l.Width, l.Height, m.Overlay.Name(), m.screen, m.Focused, len(m.Panes), m.Jobs())
+	fmt.Fprintf(file, "=== %s size=%dx%d overlay=%s screen=%v focus=%d panes=%d transfers=%d theme=%s\n",
+		time.Now().Format("15:04:05.000"), l.Width, l.Height, m.Overlay.Name(), m.screen,
+		m.Focused, len(m.Panes), m.Jobs(), m.themeName)
 	for id, job := range m.transfers {
 		fmt.Fprintf(file, "--- transfer %d: %q %d/%d finished=%v\n", id, job.label, job.done, job.total, job.finished)
 	}

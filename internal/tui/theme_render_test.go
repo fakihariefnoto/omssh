@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
@@ -154,5 +156,24 @@ func TestMonoKeepsPaneBorders(t *testing.T) {
 	// The focused pane's border is distinct, so "where am I" survives mono.
 	if m.st.PaneBorder.GetBorderStyle() == m.st.PaneBorderBlur.GetBorderStyle() {
 		t.Error("the focused and unfocused borders should differ in mono")
+	}
+}
+
+// A terminal that did not say is asked, once, when the interface starts: the reply
+// is what makes "auto" able to paint (or stop painting) correctly.
+func TestStartupAsksForAnUnknownBackground(t *testing.T) {
+	cfg := config.Default()
+	cfg.UI.Theme = "dawn"
+	m, err := New(Options{Config: cfg, Profile: colorprofile.TrueColor, HasDark: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.bgSeq != "" {
+		t.Fatal("nothing is painted before the answer")
+	}
+	// Luck: a dark terminal, so dawn paints.
+	m.Update(tea.BackgroundColorMsg{Color: color.RGBA{R: 0x10, G: 0x12, B: 0x14, A: 0xff}})
+	if m.bgSeq == "" {
+		t.Error("a dark answer should make dawn paint its light background")
 	}
 }

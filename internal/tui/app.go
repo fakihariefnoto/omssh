@@ -385,6 +385,12 @@ func (m *Model) Jobs() int { return len(m.transfers) }
 // is a startup delay at best and a blank screen at worst.
 func (m *Model) Init() tea.Cmd {
 	commands := []tea.Cmd{tea.RequestWindowSize, heartbeat()}
+	if !m.darkKnown {
+		// The terminal did not say (no COLORFGBG). Ask once, without blocking the
+		// first paint: the reply arrives when it arrives, and the theme repaints
+		// with the right background in either direction.
+		commands = append(commands, tea.RequestBackgroundColor)
+	}
 	if cmd := m.armProgress(); cmd != nil {
 		commands = append(commands, cmd)
 	}
