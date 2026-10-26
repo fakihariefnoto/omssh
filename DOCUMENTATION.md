@@ -263,15 +263,16 @@ terminal. Transfers run off the update loop; the interface keeps answering.
 `Tab` / `Shift+Tab` moves between them:
 
 ```
-[1 Overview]  2 SSH  3 S3  4 WebDAV·soon  5 Azure·soon  6 GCP·soon
+[1 Overview]  2 SSH  3 S3  4 GCP·soon  5 Azure·soon  6 WebDAV
 ```
 
-The **Overview** lists everything, hosts and buckets together. **SSH** and **S3**
-each list their own. The last three tabs say when they arrive instead of showing a
-convincing empty list.
+The **Overview** lists everything, hosts and buckets together. **SSH**, **S3** and
+**WebDAV** each list their own. GCP and Azure are tabs that say when they arrive
+instead of showing a convincing empty list — GCS already works through the S3 tab,
+with HMAC keys.
 
-`a` adds whatever the current screen is about — directly on SSH and S3, and with a
-chooser on the overview:
+`a` adds whatever the current screen is about — directly on SSH, S3 and WebDAV, and
+with a chooser on the overview:
 
 ```
 Add
@@ -279,7 +280,14 @@ What kind of place?
 ▸ SSH host               a machine in ~/.ssh/config
   AWS S3 bucket          region, bucket, optional prefix
   Cloudflare R2 bucket   account endpoint, bucket
+  Backblaze B2 bucket    region, bucket (S3 API)
+  Google Cloud Storage   bucket, HMAC keys (S3 API)
+  Alibaba Cloud OSS      region, bucket (S3 API)
+  WebDAV server          Nextcloud, Box, SharePoint, a NAS
 ```
+
+The kind is chosen here and shown in the form as `type`; it is not a field you
+type, so a bucket profile cannot end up claiming a provider it was not given.
 
 `Ctrl+O` lists the hosts in `~/.ssh/config`. Nothing is copied into another file.
 

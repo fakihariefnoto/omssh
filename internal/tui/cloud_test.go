@@ -64,11 +64,14 @@ func TestAddBucketForm(t *testing.T) {
 	if m.Overlay != OverlayForm || m.form.kind != "cloud" {
 		t.Fatalf("choosing R2 should open the bucket form, overlay=%v kind=%q", m.Overlay, m.form.kind)
 	}
-	if got := m.form.fields[1].in.Value; got != "r2" {
-		t.Errorf("the type should be prefilled with r2, got %q", got)
+	if m.form.provider != "r2" {
+		t.Errorf("the form should be an r2 form, provider is %q", m.form.provider)
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "type  r2") {
+		t.Errorf("the form should show the type it is adding:\n%s", out)
 	}
 	values := map[string]string{
-		"Name": "photos", "Provider": "r2", "Bucket": "my-photos",
+		"Name": "photos", "Bucket": "my-photos",
 		"Region": "", "Endpoint": "https://acct.r2.cloudflarestorage.com", "Prefix": "2026/",
 	}
 	for i := range m.form.fields {
@@ -111,8 +114,8 @@ func TestAddBucketValidates(t *testing.T) {
 	m.add.cursor = 1
 	press(t, m, keyNamed(tea.KeyEnter))
 	m.form.fields[0].in.Set("broken")
-	m.form.fields[1].in.Set("s3")
-	m.form.fields[2].in.Set("")
+	// The bucket is the second field now that "type" is fixed.
+	m.form.fields[1].in.Set("")
 	m.handleFormKey(keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayForm {
 		t.Error("an invalid profile should keep the form open")
@@ -162,18 +165,10 @@ func TestConnectionSections(t *testing.T) {
 		t.Errorf("the S3 screen should list the bucket:\n%s", out)
 	}
 
-	// WebDAV is a real screen now; it lists nothing because nothing is configured.
+	// GCP is planned and says so instead of looking empty.
 	press(t, m, keyNamed(tea.KeyTab))
-	if m.conn.section != secWebDAV {
-		t.Fatalf("Tab should reach WebDAV, section is %v", m.conn.section)
-	}
-	if m.conn.section.planned() {
-		t.Error("WebDAV shipped and should not be marked planned")
-	}
-	// Azure is still planned, and says so instead of looking empty.
-	press(t, m, keyNamed(tea.KeyTab))
-	if m.conn.section != secAzure {
-		t.Fatalf("Tab should reach Azure, section is %v", m.conn.section)
+	if m.conn.section != secGCP {
+		t.Fatalf("Tab should reach GCP, section is %v", m.conn.section)
 	}
 	out = ansi.Strip(render(m))
 	if !strings.Contains(out, "M10") {
@@ -181,6 +176,19 @@ func TestConnectionSections(t *testing.T) {
 	}
 	if _, ok := m.currentConnection(); ok {
 		t.Error("a planned screen has nothing to choose")
+	}
+
+	// Azure is planned too, and comes before WebDAV, which is last and real.
+	press(t, m, keyNamed(tea.KeyTab))
+	if m.conn.section != secAzure || !m.conn.section.planned() {
+		t.Fatalf("Tab should reach the planned Azure screen, section is %v", m.conn.section)
+	}
+	press(t, m, keyNamed(tea.KeyTab))
+	if m.conn.section != secWebDAV {
+		t.Fatalf("Tab should end on WebDAV, section is %v", m.conn.section)
+	}
+	if m.conn.section.planned() {
+		t.Error("WebDAV shipped and should not be marked planned")
 	}
 }
 
@@ -201,10 +209,18 @@ func TestAddFromASectionSkipsTheChooser(t *testing.T) {
 	}
 
 	m.Overlay = OverlayNone
-	m.conn.section = secWebDAV
+	m.conn.section = secAzure
 	m.runAction("session.add")
 	if m.Overlay == OverlayForm {
 		t.Error("a planned section should not open a form it cannot save")
+	}
+
+	// WebDAV is real: a there opens its form directly, typed.
+	m.Overlay = OverlayNone
+	m.conn.section = secWebDAV
+	m.runAction("session.add")
+	if m.Overlay != OverlayForm || m.form.provider != "webdav" {
+		t.Fatalf("a in WebDAV should open a webdav form, overlay=%v provider=%q", m.Overlay, m.form.provider)
 	}
 }
 
@@ -286,8 +302,8 @@ func TestBucketSurvivesARestart(t *testing.T) {
 	m.add.cursor = 1 // AWS S3
 	press(t, m, keyNamed(tea.KeyEnter))
 	m.form.fields[0].in.Set("backups")
-	m.form.fields[2].in.Set("my-backups")
-	m.form.fields[3].in.Set("eu-central-1")
+	m.form.fields[1].in.Set("my-backups")
+	m.form.fields[2].in.Set("eu-central-1")
 	m.handleFormKey(keyNamed(tea.KeyEnter))
 
 	cfg, err := config.Load(m.configPath)

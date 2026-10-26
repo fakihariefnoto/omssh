@@ -1087,6 +1087,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 			m.openConnectionForm("", sshconfig.Spec{})
 		case secS3:
 			m.openCloudForm("s3")
+		case secWebDAV:
+			m.openCloudForm("webdav")
 		case secOverview:
 			m.openAddChooser()
 		default:
