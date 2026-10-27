@@ -411,6 +411,17 @@ func (f *FS) copyBlob(ctx context.Context, source, target string) error {
 	return f.api.Put(ctx, target, body)
 }
 
+// Metadata asks the blob, not the listing: content type, ETag and access tier are
+// properties, and a listing does not carry them.
+func (f *FS) Metadata(name string) (vfs.ObjectMeta, error) {
+	meta, err := f.api.Stat(context.Background(), f.key(name))
+	if err != nil {
+		return vfs.ObjectMeta{}, f.wrap(name, err)
+	}
+	return vfs.ObjectMeta{ContentType: meta.contentType, ETag: meta.etag,
+		StorageClass: meta.tier, Size: meta.size, Modified: meta.modified}, nil
+}
+
 // Chmod is not supported: blobs have no permission bits.
 func (f *FS) Chmod(string, fs.FileMode) error { return vfs.ErrUnsupported }
 

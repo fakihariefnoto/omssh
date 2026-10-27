@@ -445,6 +445,23 @@ their auth mode instead of a region. The profiles appear in the list
 after your hosts and `Enter` opens one. `t` says there is no shell, because there
 is not.
 
+**Object metadata in the preview.** A bucket file's preview starts with the
+facts the listing does not carry: content type, size, modified time, storage
+class and ETag. Local and SFTP files do not have those fields, so their preview
+does not pretend to.
+
+**Copy link** (`u`) signs a temporary download URL for the object. It asks for an
+expiry in minutes (15 by default), copies the URL to the clipboard, and also shows
+it in a prompt — a headless machine may have no clipboard, and a link nobody can
+select would be a dead end. Only S3-compatible profiles can sign a link today:
+Azure needs a delegation key and GCS a service-account key pair, and the action
+says so rather than producing a URL that does not work.
+
+**Copies inside one bucket stay in the bucket.** When both sides are the same
+S3-compatible or GCS filesystem, the copy is one server-side request instead of a
+download and an upload; the progress bar reports the item once. Across providers
+or buckets the bytes travel as before.
+
 **What object storage cannot do**, and the interface says so instead of failing
 halfway:
 

@@ -326,6 +326,34 @@ func Copy(ctx context.Context, req Request, plan Plan) (Result, error) {
 			return
 		}
 
+		// Object storage can copy an object without sending it through here. It
+		// is one request instead of a download and an upload, so it is worth
+		// asking before opening either side.
+		if copier, ok := req.Dst.(vfs.Copier); ok {
+			copyErr := copier.CopyRemote(req.Src, srcPath, dstPath)
+			if copyErr == nil {
+				mu.Lock()
+				done += item.Size
+				result.Bytes += item.Size
+				if item.Action == ActionCreate {
+					result.Created++
+				} else {
+					result.Updated++
+				}
+				if req.Progress != nil {
+					req.Progress(done, plan.Bytes, item.Name)
+				}
+				mu.Unlock()
+				return
+			}
+			if !errors.Is(copyErr, vfs.ErrUnsupported) {
+				mu.Lock()
+				result.Errors = append(result.Errors, ItemError{Name: item.Name, Err: copyErr})
+				mu.Unlock()
+				return
+			}
+		}
+
 		// Read the running total under the lock: another worker may be updating
 		// it, and the progress callback wants the number it started from.
 		mu.Lock()

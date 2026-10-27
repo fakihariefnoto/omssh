@@ -23,10 +23,13 @@ const scope = "https://www.googleapis.com/auth/devstorage.read_write"
 
 // meta is what GCS can say about one entry.
 type meta struct {
-	key      string
-	size     int64
-	modified time.Time
-	dir      bool
+	key         string
+	size        int64
+	modified    time.Time
+	dir         bool
+	contentType string
+	etag        string
+	storage     string
 }
 
 // api is the narrow surface the filesystem needs. It exists so the conformance
@@ -100,7 +103,8 @@ func (a *gcsAPI) Stat(ctx context.Context, key string) (meta, error) {
 		return meta{}, err
 	}
 	return meta{key: key, size: attrs.Size, modified: attrs.Updated,
-		dir: strings.HasSuffix(key, "/") && attrs.Size == 0}, nil
+		dir:         strings.HasSuffix(key, "/") && attrs.Size == 0,
+		contentType: attrs.ContentType, etag: attrs.Etag, storage: attrs.StorageClass}, nil
 }
 
 func (a *gcsAPI) List(ctx context.Context, prefix, delimiter string) ([]meta, error) {
@@ -119,7 +123,8 @@ func (a *gcsAPI) List(ctx context.Context, prefix, delimiter string) ([]meta, er
 			continue
 		}
 		out = append(out, meta{key: attrs.Name, size: attrs.Size, modified: attrs.Updated,
-			dir: strings.HasSuffix(attrs.Name, "/") && attrs.Size == 0})
+			dir:         strings.HasSuffix(attrs.Name, "/") && attrs.Size == 0,
+			contentType: attrs.ContentType, etag: attrs.Etag, storage: attrs.StorageClass})
 	}
 	return out, nil
 }

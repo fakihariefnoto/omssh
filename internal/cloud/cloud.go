@@ -7,6 +7,10 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
@@ -93,7 +97,19 @@ func Open(ctx context.Context, name string, profile config.CloudProfile, creds C
 	if err != nil {
 		return nil, err
 	}
-	return object.New(object.Options{API: client, Bucket: profile.Bucket, Prefix: profile.Prefix, Label: name})
+	// Presigning is local signing with the credentials this client already has;
+	// it opens no second connection and reads nothing.
+	presign := func(ctx context.Context, key string, expiry time.Duration) (string, error) {
+		request, err := s3.NewPresignClient(client).PresignGetObject(ctx,
+			&s3.GetObjectInput{Bucket: aws.String(profile.Bucket), Key: aws.String(key)},
+			s3.WithPresignExpires(expiry))
+		if err != nil {
+			return "", err
+		}
+		return request.URL, nil
+	}
+	return object.New(object.Options{API: client, Presign: presign,
+		Bucket: profile.Bucket, Prefix: profile.Prefix, Label: name})
 }
 
 // IsWebDAV reports whether a profile is a WebDAV server rather than a bucket.

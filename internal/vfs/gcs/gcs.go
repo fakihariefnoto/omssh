@@ -377,6 +377,28 @@ func (f *FS) Rename(oldpath, newpath string) error {
 	return f.RemoveAll(oldpath)
 }
 
+// Metadata asks the object, not the listing: content type, ETag and storage class
+// are attributes, and a listing does not carry them all.
+func (f *FS) Metadata(name string) (vfs.ObjectMeta, error) {
+	meta, err := f.api.Stat(context.Background(), f.key(name))
+	if err != nil {
+		return vfs.ObjectMeta{}, f.wrap(name, err)
+	}
+	return vfs.ObjectMeta{ContentType: meta.contentType, ETag: meta.etag,
+		StorageClass: meta.storage, Size: meta.size, Modified: meta.modified}, nil
+}
+
+// CopyRemote copies an object inside this bucket, server-side.
+func (f *FS) CopyRemote(src vfs.FS, srcName, dstName string) error {
+	if src != f {
+		return vfs.ErrUnsupported
+	}
+	if err := f.api.Copy(context.Background(), f.key(srcName), f.key(dstName)); err != nil {
+		return f.wrap(srcName, err)
+	}
+	return nil
+}
+
 // Chmod is not supported: objects have no permission bits.
 func (f *FS) Chmod(string, fs.FileMode) error { return vfs.ErrUnsupported }
 

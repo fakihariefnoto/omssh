@@ -126,6 +126,10 @@ func standardPreset() []Action {
 			Desc: "Copy the selection, choosing the destination", Enabled: f(fileSelected)},
 		{ID: "file.move-to", Label: "Move to…", Category: CatFile, Default: "M",
 			Desc: "Move the selection, choosing the destination", Enabled: f(fileSelected)},
+		{ID: "file.link", Label: "Copy link", Category: CatFile, Default: "u",
+			Desc: "Make a temporary download URL for the object and copy it", Enabled: f(func(ctx Context) bool {
+				return ctx.Cursor && !ctx.CursorIsDir
+			})},
 		{ID: "file.chmod", Label: "Change permissions", Category: CatFile, Default: "P",
 			Desc: "Change mode bits on the selection", Enabled: f(fileSelected)},
 		{ID: "file.symlink", Label: "Create symlink", Category: CatFile, Default: "L",

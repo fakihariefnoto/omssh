@@ -1181,6 +1181,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openCopyTo(false)
 	case "file.move-to":
 		m.openCopyTo(true)
+	case "file.link":
+		m.openPrompt("prompt.link")
 	case "session.new-tab":
 		m.runAction("session.open")
 	case "deploy.preview":
@@ -1436,6 +1438,9 @@ func (m *Model) openPrompt(action actions.ID) {
 	case "prompt.copy-to", "prompt.move-to":
 		m.openCopyTo(action == "prompt.move-to")
 		return
+	case "prompt.link":
+		m.prompt = promptState{Title: "Link expiry", Hint: "Minutes until the link stops working (1–10080)", Action: action, open: true}
+		m.prompt.input.Set("15")
 	case "prompt.chmod":
 		m.prompt = promptState{Title: "Permissions", Hint: "Octal mode, like 644 or 755", Action: action, open: true}
 		m.prompt.input.Set("644")
@@ -1542,7 +1547,52 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 		return m.chmodTargets(value)
 	case "prompt.symlink":
 		return m.makeSymlink(value)
+	case "prompt.link":
+		return m.copyLink(value)
+	case "prompt.link-show":
+		// The URL is on screen to be read or selected; Enter just dismisses it.
+		return nil
 	}
+	return nil
+}
+
+// copyLink signs a temporary read URL for the cursor and puts it on the
+// clipboard. The URL is also shown: a headless machine has no clipboard, and a
+// link nobody can select would be a dead end.
+func (m *Model) copyLink(value string) tea.Cmd {
+	pane := m.Pane()
+	entry, ok := pane.CursorEntry()
+	if !ok || entry.Dir || pane.FS == nil {
+		m.toastInfo("Put the cursor on a file first")
+		return nil
+	}
+	presigner, ok := pane.FS.(vfs.Presigner)
+	if !ok {
+		m.toastInfo("Only object storage can make links · this place cannot")
+		return nil
+	}
+	minutes, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || minutes < 1 || minutes > 10080 {
+		m.toastError("Expiry is a number of minutes, 1 to 10080")
+		return nil
+	}
+	url, err := presigner.PresignGet(pane.FS.Join(pane.Path, entry.Name), time.Duration(minutes)*time.Minute)
+	if err != nil {
+		m.toastError("Cannot sign a link: " + err.Error())
+		return nil
+	}
+	note := "Copied to the clipboard · Enter closes"
+	if err := clipboard.Write(context.Background(), url); err != nil {
+		note = "Select the link and copy it · " + err.Error()
+	}
+	m.prompt = promptState{
+		Title:  fmt.Sprintf("Link · %s · expires in %dm", entry.Name, minutes),
+		Hint:   note,
+		Action: "prompt.link-show",
+		open:   true,
+	}
+	m.prompt.input.Set(url)
+	m.Overlay = OverlayPrompt
 	return nil
 }
 

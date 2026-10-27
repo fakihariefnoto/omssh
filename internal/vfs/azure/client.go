@@ -18,10 +18,13 @@ import (
 
 // blobMeta is what blob storage can say about one entry.
 type blobMeta struct {
-	key      string
-	size     int64
-	modified time.Time
-	dir      bool
+	key         string
+	size        int64
+	modified    time.Time
+	dir         bool
+	contentType string
+	etag        string
+	tier        string
 }
 
 // api is the narrow surface the filesystem needs. It is an interface so the
@@ -115,6 +118,15 @@ func (a *azureAPI) Stat(ctx context.Context, key string) (blobMeta, error) {
 	}
 	if props.LastModified != nil {
 		meta.modified = *props.LastModified
+	}
+	if props.ContentType != nil {
+		meta.contentType = *props.ContentType
+	}
+	if props.ETag != nil {
+		meta.etag = string(*props.ETag)
+	}
+	if props.AccessTier != nil {
+		meta.tier = *props.AccessTier
 	}
 	// A zero-byte blob whose name ends in "/" is a directory marker.
 	meta.dir = strings.HasSuffix(key, "/") && meta.size == 0

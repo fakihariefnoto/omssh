@@ -208,17 +208,20 @@ rename.
 
 ---
 
-## M11 — Storage polish
+## M11 — Storage polish  (shipped: presigned links, metadata preview, server-side copy inside one bucket)
 
 Only after M8 and M9 are honest.
 
-- Presigned URLs: *Copy link* for an object, with an expiry chosen in the dialog.
-- Object metadata in the preview: content type, size, modified, storage class,
-  ETag.
+- ~~Presigned URLs: *Copy link* for an object, with an expiry chosen in the
+  dialog.~~ Shipped for S3-compatible profiles; Azure and GCS need provider-specific
+  delegation and are reported as unsupported rather than silently failing.
+- ~~Object metadata in the preview: content type, size, modified, storage class,
+  ETag.~~ Shipped for S3, Azure and GCS.
 - Bucket administration is explicitly **out of scope**: omssh browses and moves
   objects; it does not create buckets, set lifecycle rules or manage IAM.
-- Server-side copy when source and destination are the same provider and region,
-  instead of streaming bytes through the laptop.
+- ~~Server-side copy when source and destination are the same provider and
+  region.~~ Shipped for S3-compatible and GCS; Azure streams because its copy
+  needs the source authorized.
 
 ---
 

@@ -53,14 +53,18 @@ type Options struct {
 	// API is the client. Required; NewClient builds one from the AWS
 	// configuration.
 	API API
+	// Presign builds a temporary GET URL for a key. Nil when the client cannot
+	// sign one, which is a capability the interface reports by absence.
+	Presign func(ctx context.Context, key string, expiry time.Duration) (string, error)
 }
 
 // FS is one bucket (or one prefix inside it) as a filesystem.
 type FS struct {
-	api    API
-	bucket string
-	prefix string
-	label  string
+	api     API
+	presign func(ctx context.Context, key string, expiry time.Duration) (string, error)
+	bucket  string
+	prefix  string
+	label   string
 }
 
 // New validates the options and returns the filesystem.
@@ -79,7 +83,7 @@ func New(opts Options) (*FS, error) {
 	if label == "" {
 		label = opts.Bucket
 	}
-	return &FS{api: opts.API, bucket: opts.Bucket, prefix: prefix, label: label}, nil
+	return &FS{api: opts.API, presign: opts.Presign, bucket: opts.Bucket, prefix: prefix, label: label}, nil
 }
 
 // key turns a vfs path into an object key. The root is the prefix itself.
@@ -425,6 +429,58 @@ func (f *FS) Rename(oldpath, newpath string) error {
 		return f.wrap(oldpath, err)
 	}
 	return f.Remove(oldpath)
+}
+
+// Metadata asks the object, not the listing: content type, ETag and storage class
+// are HEAD answers, and a listing does not carry them.
+func (f *FS) Metadata(name string) (vfs.ObjectMeta, error) {
+	out, err := f.api.HeadObject(context.Background(), &s3.HeadObjectInput{
+		Bucket: aws.String(f.bucket),
+		Key:    aws.String(f.key(name)),
+	})
+	if err != nil {
+		return vfs.ObjectMeta{}, f.wrap(name, err)
+	}
+	meta := vfs.ObjectMeta{ETag: aws.ToString(out.ETag)}
+	if out.ContentType != nil {
+		meta.ContentType = *out.ContentType
+	}
+	if out.StorageClass != "" {
+		meta.StorageClass = string(out.StorageClass)
+	}
+	if out.ContentLength != nil {
+		meta.Size = *out.ContentLength
+	}
+	if out.LastModified != nil {
+		meta.Modified = *out.LastModified
+	}
+	return meta, nil
+}
+
+// PresignGet signs a temporary read URL.
+func (f *FS) PresignGet(name string, expiry time.Duration) (string, error) {
+	if f.presign == nil {
+		return "", vfs.ErrUnsupported
+	}
+	return f.presign(context.Background(), f.key(name), expiry)
+}
+
+// CopyRemote copies an object inside this bucket, server-side. The source must be
+// the same filesystem: a copy from another bucket would carry another
+// authorization, and this client has only its own.
+func (f *FS) CopyRemote(src vfs.FS, srcName, dstName string) error {
+	if src != f {
+		return vfs.ErrUnsupported
+	}
+	_, err := f.api.CopyObject(context.Background(), &s3.CopyObjectInput{
+		Bucket:     aws.String(f.bucket),
+		CopySource: aws.String(f.bucket + "/" + f.key(srcName)),
+		Key:        aws.String(f.key(dstName)),
+	})
+	if err != nil {
+		return f.wrap(srcName, err)
+	}
+	return nil
 }
 
 // Chmod is not supported: objects have no permission bits.

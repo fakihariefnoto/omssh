@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -151,4 +152,65 @@ func TestFindBelowJumpsToTheMatch(t *testing.T) {
 		t.Errorf("a miss should be reported:\n%s", out)
 	}
 	_ = tea.KeyEnter
+}
+
+// signingFS is a filesystem that can sign links, standing in for a bucket.
+type signingFS struct {
+	vfs.FS
+	signed string
+}
+
+func (s *signingFS) PresignGet(name string, expiry time.Duration) (string, error) {
+	s.signed = name
+	return "https://example.test/signed?expires=" + expiry.String(), nil
+}
+
+// A link is signed for the cursor's object and shown, so it can be copied even on
+// a machine with no clipboard.
+func TestCopyLinkFlow(t *testing.T) {
+	m := newTestModel(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("abc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	local, err := vfs.NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsys := &signingFS{FS: local}
+	m.Panes[0] = Pane{Side: SideLocal, FS: fsys, Home: "/", Path: "/", Selected: map[string]bool{},
+		Entries: []Entry{{Name: "a.txt", Size: 3}}, History: []string{"/"}}
+	m.Focused = 0
+
+	m.runAction("file.link")
+	if m.Overlay != OverlayPrompt || m.prompt.Action != "prompt.link" {
+		t.Fatalf("u should ask for an expiry, overlay=%v action=%q", m.Overlay, m.prompt.Action)
+	}
+	if m.prompt.input.Value != "15" {
+		t.Errorf("the default expiry should be 15 minutes, got %q", m.prompt.input.Value)
+	}
+	m.applyPrompt("prompt.link", "15")
+	if fsys.signed != "/a.txt" {
+		t.Errorf("signed %q, want the cursor's object", fsys.signed)
+	}
+	if !strings.Contains(m.prompt.input.Value, "https://example.test/") {
+		t.Errorf("the link should be shown, got %q", m.prompt.input.Value)
+	}
+}
+
+// A place that cannot sign links says so instead of failing at the protocol.
+func TestCopyLinkUnsupportedPlace(t *testing.T) {
+	m := newTestModel(t)
+	local, err := vfs.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[0] = Pane{Side: SideLocal, FS: local, Home: "/", Path: "/", Selected: map[string]bool{},
+		Entries: []Entry{{Name: "a.txt"}}, History: []string{"/"}}
+	m.Focused = 0
+	m.runAction("file.link")
+	m.applyPrompt("prompt.link", "15")
+	if m.Overlay == OverlayPrompt && m.prompt.Action == "prompt.link-show" {
+		t.Error("a local file should not produce a link")
+	}
 }

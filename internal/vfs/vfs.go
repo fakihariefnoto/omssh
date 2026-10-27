@@ -89,6 +89,37 @@ type FS interface {
 	String() string
 }
 
+// ObjectMeta is what an object store knows beyond fs.FileInfo. Local files and
+// SFTP have no equivalent, so this is optional rather than part of FS.
+type ObjectMeta struct {
+	ContentType  string
+	ETag         string
+	StorageClass string
+	Size         int64
+	Modified     time.Time
+}
+
+// Metadataer is implemented by filesystems that can describe an object beyond
+// the four fields fs.FileInfo carries. A preview asks for this and shows what it
+// gets; a filesystem that cannot answer simply does not implement it.
+type Metadataer interface {
+	Metadata(name string) (ObjectMeta, error)
+}
+
+// Presigner makes a temporary read URL for one file. Only object stores signed
+// this way implement it; a local disk or an SFTP server never will.
+type Presigner interface {
+	PresignGet(name string, expiry time.Duration) (string, error)
+}
+
+// Copier copies inside one filesystem without sending the bytes through the
+// caller. srcName and dstName are both paths on this filesystem; src is passed so
+// an implementation can refuse a copy from a different bucket, which would need a
+// different authorization than the one it has.
+type Copier interface {
+	CopyRemote(src FS, srcName, dstName string) error
+}
+
 // Errors the UI branches on, so it can say something useful instead of printing
 // whatever the server said.
 var (

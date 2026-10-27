@@ -126,6 +126,25 @@ func (m *Model) renderPreviewNow(pane *Pane, entry Entry, width, rows int) strin
 		}, width, rows)
 	}
 	header := m.st.CardMuted.Render(truncate(name, width) + "  " + humanSize(entry.Size))
+	if metaer, ok := pane.FS.(vfs.Metadataer); ok {
+		if meta, metaErr := metaer.Metadata(target); metaErr == nil {
+			parts := make([]string, 0, 5)
+			if meta.ContentType != "" {
+				parts = append(parts, meta.ContentType)
+			}
+			parts = append(parts, humanSize(meta.Size))
+			if !meta.Modified.IsZero() {
+				parts = append(parts, meta.Modified.Local().Format("2006-01-02 15:04"))
+			}
+			if meta.StorageClass != "" {
+				parts = append(parts, meta.StorageClass)
+			}
+			if meta.ETag != "" {
+				parts = append(parts, "etag "+truncate(meta.ETag, 12))
+			}
+			header += "\n" + m.st.StatusMuted.Render(truncate(strings.Join(parts, " · "), width))
+		}
+	}
 	var body []string
 	if isBinary(data) {
 		body = hexDump(data, hexBytes)

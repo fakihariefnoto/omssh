@@ -448,3 +448,54 @@ func TestWorkersCopyInParallel(t *testing.T) {
 		t.Errorf("four workers (%v) were not faster than one (%v)", parallel, sequential)
 	}
 }
+
+// A filesystem that can copy server-side is asked to, and the bytes are never
+// read or written through this machine.
+func TestCopyUsesServerSideCopy(t *testing.T) {
+	srcDir, dstDir := t.TempDir(), t.TempDir()
+	srcFS, err := vfs.NewLocal(srcDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstFS, err := vfs.NewLocal(dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "a.bin"), []byte("0123456789"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	copier := &remoteCopyFS{FS: dstFS}
+
+	req := xfer.Request{Src: srcFS, SrcDir: "/", Dst: copier, DstDir: "/",
+		Names: []string{"a.bin"}, Policy: xfer.PolicyOverwrite}
+	plan, err := xfer.PlanCopy(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := xfer.Copy(context.Background(), req, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(copier.calls) != 1 || copier.calls[0] != "/a.bin → /a.bin" {
+		t.Fatalf("server-side copy calls = %v", copier.calls)
+	}
+	if result.Bytes != 10 {
+		t.Errorf("bytes = %d, want 10", result.Bytes)
+	}
+	// The destination was never opened: the copy stayed inside the fake.
+	if _, err := os.Stat(filepath.Join(dstDir, "a.bin")); err == nil {
+		t.Error("the file should not have been streamed through the copy engine")
+	}
+}
+
+// remoteCopyFS pretends to be object storage: it records the copy instead of
+// moving bytes, so a streamed copy would be visible as a missing file.
+type remoteCopyFS struct {
+	vfs.FS
+	calls []string
+}
+
+func (r *remoteCopyFS) CopyRemote(src vfs.FS, srcName, dstName string) error {
+	r.calls = append(r.calls, srcName+" → "+dstName)
+	return nil
+}
