@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -803,5 +804,76 @@ func TestLauncherDashboardAndLocalFiles(t *testing.T) {
 		t.Fatal("Browse local files should bring the local pane back")
 	} else if m.Focused != index {
 		t.Errorf("the local pane should have the focus, focused %d", m.Focused)
+	}
+}
+
+// A transfer large enough to watch gets a screen; a routine copy stays in the
+// sidebar.
+func TestBigTransfersGetAScreen(t *testing.T) {
+	if bigTransfer(3, 2<<20) {
+		t.Error("a small copy should stay in the sidebar")
+	}
+	if !bigTransfer(50, 1) {
+		t.Error("fifty files is worth watching")
+	}
+	if !bigTransfer(1, 200<<20) {
+		t.Error("two hundred megabytes is worth watching")
+	}
+
+	m := newTestModel(t)
+	m.transfers = map[int]transfer{
+		1: {id: 1, label: "copy → contabo", name: "assets/logo.svg", done: 3, total: 4, started: time.Now()},
+	}
+	// Alt+J opens it rather than toasting a summary.
+	m.runAction("view.jobs")
+	if m.Overlay != OverlayTransfers {
+		t.Fatalf("Alt+J should open the transfer screen, overlay=%v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Transfers", "copy → contabo", "assets/logo.svg", "Esc closes"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the screen should show %q:\n%s", want, out)
+		}
+	}
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.Overlay != OverlayNone {
+		t.Error("Esc should close the screen")
+	}
+	// The copy itself is untouched by closing it.
+	if m.Jobs() != 1 {
+		t.Errorf("closing the screen must not cancel the copy, jobs=%d", m.Jobs())
+	}
+}
+
+// A big paste opens the screen on its own, and a dialog that is already open wins.
+func TestBigPasteOpensTheTransferScreen(t *testing.T) {
+	m := newTestModel(t)
+	dest := t.TempDir()
+	destFS, err := vfs.NewLocal(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[1] = Pane{Side: SideRemote, Host: "contabo", FS: destFS, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 1
+
+	// Sixty tiny files: the count threshold, without writing sixty files.
+	names := make([]string, 0, 60)
+	for i := 0; i < 60; i++ {
+		names = append(names, fmt.Sprintf("f%02d", i))
+	}
+	m.staged = stagedState{Paths: names, From: 0, Sizes: map[string]int64{}, Dir: m.Panes[0].Path}
+	if cmd := m.pasteStaged(); cmd == nil {
+		t.Fatalf("paste should start: %v", m.toasts)
+	}
+	if m.Overlay != OverlayTransfers {
+		t.Errorf("a 60-file paste should open the transfer screen, overlay=%v", m.Overlay)
+	}
+
+	// With a dialog open, the screen does not steal it.
+	m.Overlay = OverlayPrompt
+	m.openTransfersIfBig(60, 0)
+	if m.Overlay != OverlayPrompt {
+		t.Error("an open dialog should not be replaced by the transfer screen")
 	}
 }

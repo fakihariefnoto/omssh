@@ -203,12 +203,13 @@ func (m *Model) pasteStaged() tea.Cmd {
 		policy = xfer.PolicyUpdateIfNewer
 	}
 	request := xfer.Request{
-		Src:    src.FS,
-		SrcDir: srcDir,
-		Dst:    dst.FS,
-		DstDir: dst.Path,
-		Names:  append([]string{}, m.staged.Paths...),
-		Policy: policy,
+		Src:     src.FS,
+		SrcDir:  srcDir,
+		Dst:     dst.FS,
+		DstDir:  dst.Path,
+		Names:   append([]string{}, m.staged.Paths...),
+		Policy:  policy,
+		Workers: m.cfg.Transfers.Workers,
 	}
 	cut := m.staged.Cut
 	after := m.staged.After
@@ -220,6 +221,7 @@ func (m *Model) pasteStaged() tea.Cmd {
 	}
 	id, onProgress := m.startTransfer(fmt.Sprintf("%s → %s", verb, m.paneLabel(to)))
 	request.Progress = onProgress
+	m.openTransfersIfBig(len(request.Names), m.stagedBytes())
 	m.mode = "COPYING"
 	if after == pastePack {
 		m.mode = "ARCHIVING"

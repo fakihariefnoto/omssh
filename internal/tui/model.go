@@ -292,6 +292,7 @@ const (
 	OverlayPanes
 	OverlayPaste
 	OverlayAdd
+	OverlayTransfers
 )
 
 // Name returns the identifier the action registry expects in Context.Overlay.
@@ -317,6 +318,8 @@ func (o Overlay) Name() string {
 		return "paste"
 	case OverlayAdd:
 		return "add"
+	case OverlayTransfers:
+		return "transfers"
 	default:
 		return ""
 	}

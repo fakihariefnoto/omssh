@@ -48,6 +48,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderPasteOptions(l)
 	case OverlayAdd:
 		return m.renderAddChooser(l)
+	case OverlayTransfers:
+		return m.renderTransfersScreen(l)
 	default:
 		return ""
 	}

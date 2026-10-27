@@ -55,6 +55,17 @@ func (m *Model) copyNames(from, to int, srcFS vfs.FS, srcDir string, dstFS vfs.F
 		verb = "move"
 	}
 	id, onProgress := m.startTransfer(fmt.Sprintf("%s → %s", verb, m.paneLabel(to)))
+	var total int64
+	if from >= 0 && from < len(m.Panes) {
+		for _, entry := range m.Panes[from].Entries {
+			for _, name := range names {
+				if entry.Name == name {
+					total += entry.Size
+				}
+			}
+		}
+	}
+	m.openTransfersIfBig(len(names), total)
 	request := xfer.Request{
 		Src:      srcFS,
 		SrcDir:   srcDir,
@@ -63,6 +74,7 @@ func (m *Model) copyNames(from, to int, srcFS vfs.FS, srcDir string, dstFS vfs.F
 		Names:    names,
 		Policy:   xfer.PolicyUpdateIfNewer,
 		Progress: onProgress,
+		Workers:  m.cfg.Transfers.Workers,
 	}
 	ctx := m.connectContext()
 

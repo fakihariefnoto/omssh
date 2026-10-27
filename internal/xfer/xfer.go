@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fakihariefnoto/omssh/internal/vfs"
@@ -106,8 +107,12 @@ type Request struct {
 	// OnConflict is called for each conflicting item when Policy is PolicyAsk. A
 	// nil callback with PolicyAsk behaves like PolicySkip.
 	OnConflict func(Item) (ConflictPolicy, error)
-	// Progress is called after each item, with the bytes done so far.
+	// Progress is called after each item, with the bytes done so far. It is
+	// always called from one goroutine at a time, whichever worker finished.
 	Progress func(done, total int64, name string)
+	// Workers is how many files are copied at once. Zero and one both mean
+	// "in order, one at a time", which is what a single small copy wants.
+	Workers int
 }
 
 // Result is what a copy did.
@@ -275,43 +280,67 @@ func decide(req Request, srcPath, dstPath string, srcInfo fs.FileInfo) (Action, 
 
 // Copy runs the plan. It returns what it did, and any per-item failures.
 func Copy(ctx context.Context, req Request, plan Plan) (Result, error) {
-	result := Result{}
-	var done int64
-	buf := make([]byte, 1<<20)
+	workers := req.Workers
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(plan.Items) {
+		workers = max(1, len(plan.Items))
+	}
 
-	for i := range plan.Items {
-		if err := ctx.Err(); err != nil {
-			return result, err
-		}
-		item := &plan.Items[i]
+	// The result and the progress counter are shared by every worker, so one
+	// mutex guards both: a progress callback that is not thread-safe (the TUI's
+	// sends on a channel) must never see two calls at once.
+	var (
+		mu     sync.Mutex
+		result Result
+		done   int64
+	)
+
+	work := make(chan *Item)
+	var wg sync.WaitGroup
+
+	copyOne := func(item *Item) {
 		if item.Action == ActionSkip {
+			mu.Lock()
 			result.Skipped++
-			continue
+			mu.Unlock()
+			return
 		}
 		srcPath := req.Src.Join(req.SrcDir, item.Name)
 		dstPath := req.Dst.Join(req.DstDir, item.Name)
 
 		if item.Dir {
 			if err := req.Dst.MkdirAll(dstPath, 0o755); err != nil {
+				mu.Lock()
 				result.Errors = append(result.Errors, ItemError{Name: item.Name, Err: err})
+				mu.Unlock()
 			}
-			continue
+			return
 		}
 
 		if err := req.Dst.MkdirAll(req.Dst.Dir(dstPath), 0o755); err != nil {
+			mu.Lock()
 			result.Errors = append(result.Errors, ItemError{Name: item.Name, Err: err})
-			continue
+			mu.Unlock()
+			return
 		}
 
-		written, err := copyFile(ctx, req, srcPath, dstPath, buf, done, plan.Bytes, item.Name)
+		// Read the running total under the lock: another worker may be updating
+		// it, and the progress callback wants the number it started from.
+		mu.Lock()
+		base := done
+		mu.Unlock()
+		buf := make([]byte, 1<<20)
+		written, err := copyFile(ctx, req, srcPath, dstPath, buf, base, plan.Bytes, item.Name)
+		mu.Lock()
+		defer mu.Unlock()
 		if err != nil {
-			// A cancelled copy is not an item failing: report the context, which
-			// is what the caller asked about.
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return result, ctxErr
+			// A cancelled copy is not an item failing: the context is the answer.
+			if ctx.Err() == nil {
+				result.Errors = append(result.Errors, ItemError{Name: item.Name, Err: err})
 			}
-			result.Errors = append(result.Errors, ItemError{Name: item.Name, Err: err})
-			continue
+			return
 		}
 		done += written
 		result.Bytes += written
@@ -323,6 +352,41 @@ func Copy(ctx context.Context, req Request, plan Plan) (Result, error) {
 		if req.Progress != nil {
 			req.Progress(done, plan.Bytes, item.Name)
 		}
+	}
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range work {
+				if ctx.Err() != nil {
+					continue // drain, so the sender never blocks
+				}
+				copyOne(item)
+			}
+		}()
+	}
+
+	// Dispatch. A cancelled context stops feeding the workers rather than
+	// leaving them with an unbounded queue.
+	for i := range plan.Items {
+		if ctx.Err() != nil {
+			break
+		}
+		item := &plan.Items[i]
+		select {
+		case work <- item:
+		case <-ctx.Done():
+		}
+	}
+	close(work)
+	wg.Wait()
+
+	// Workers finish in any order; the report should not change between runs.
+	sort.Slice(result.Errors, func(i, j int) bool { return result.Errors[i].Name < result.Errors[j].Name })
+
+	if err := ctx.Err(); err != nil {
+		return result, err
 	}
 	if err := result.Error(); err != nil {
 		return result, err

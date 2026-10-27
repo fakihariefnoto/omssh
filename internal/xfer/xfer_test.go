@@ -3,6 +3,7 @@ package xfer_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -392,5 +393,58 @@ func TestSourceIsUntouched(t *testing.T) {
 	}
 	if !after.ModTime().Equal(before.ModTime()) || after.Size() != before.Size() {
 		t.Errorf("the source changed: %v -> %v", before.ModTime(), after.ModTime())
+	}
+}
+
+// workers actually work: with a slow filesystem, four workers finish faster than
+// one, and the result is identical either way.
+func TestWorkersCopyInParallel(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+	for i := 0; i < 8; i++ {
+		if err := os.WriteFile(filepath.Join(src, fmt.Sprintf("f%d", i)), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srcFS, err := vfs.NewLocal(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstFS, err := vfs.NewLocal(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, 8)
+	for i := 0; i < 8; i++ {
+		names = append(names, fmt.Sprintf("f%d", i))
+	}
+
+	run := func(workers int) time.Duration {
+		req := xfer.Request{
+			Src: srcFS, SrcDir: "/", Dst: dstFS, DstDir: "/",
+			Names: names, Policy: xfer.PolicyOverwrite, Workers: workers,
+		}
+		plan, err := xfer.PlanCopy(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A slow source makes the difference visible without a network.
+		req.Src = slowFS{FS: srcFS, delay: 5 * time.Millisecond}
+		start := time.Now()
+		result, err := xfer.Copy(context.Background(), req, plan)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The first run creates, the second updates; both must move every file.
+		if result.Created+result.Updated != len(names) {
+			t.Errorf("workers %d: copied %d of %d", workers, result.Created+result.Updated, len(names))
+		}
+		return time.Since(start)
+	}
+
+	// Warm the cache with the sequential run first, then compare.
+	sequential := run(1)
+	parallel := run(4)
+	if parallel >= sequential {
+		t.Errorf("four workers (%v) were not faster than one (%v)", parallel, sequential)
 	}
 }
