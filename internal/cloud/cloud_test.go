@@ -42,6 +42,31 @@ func TestOpenBucket(t *testing.T) {
 	}
 }
 
+// Azure is a container, not a bucket, and the auth mode decides which secret the
+// keyring's one value is.
+func TestOpenAzure(t *testing.T) {
+	fsys, err := Open(context.Background(), "blobs", config.CloudProfile{
+		Provider: "azure", Account: "acct", Bucket: "site", Auth: "key",
+	}, Credentials{Secret: "a2V5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsys.String() != "azure:site/" {
+		t.Errorf("String = %q", fsys.String())
+	}
+	if fsys.Capabilities().Chmod || fsys.Capabilities().Symlink {
+		t.Error("blobs have no modes and no links")
+	}
+
+	// Entra needs nothing from the keyring, so an empty secret is fine; an empty
+	// key is not when key auth was chosen.
+	if _, err := Open(context.Background(), "blobs", config.CloudProfile{
+		Provider: "azure", Account: "acct", Bucket: "site", Auth: "key",
+	}, Credentials{}); err == nil {
+		t.Error("key auth without a stored key should fail")
+	}
+}
+
 // The validation the form and the config share.
 func TestValidate(t *testing.T) {
 	if err := Validate(config.CloudProfile{Provider: "webdav"}); err == nil {
@@ -55,6 +80,12 @@ func TestValidate(t *testing.T) {
 	}
 	if err := Validate(config.CloudProfile{Provider: "s3"}); err == nil {
 		t.Error("a bucket provider needs a bucket")
+	}
+	if err := Validate(config.CloudProfile{Provider: "azure"}); err == nil {
+		t.Error("Azure needs a container")
+	}
+	if err := Validate(config.CloudProfile{Provider: "azure", Bucket: "site"}); err != nil {
+		t.Errorf("a valid Azure profile was refused: %v", err)
 	}
 	if err := Validate(config.CloudProfile{Provider: "nope"}); err == nil {
 		t.Error("an unknown provider should be refused")

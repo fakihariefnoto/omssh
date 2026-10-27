@@ -27,10 +27,7 @@ func TestSplitSpec(t *testing.T) {
 		{"site:/var/www/./app/", "site", "/var/www/app"},
 	}
 	for _, tc := range cases {
-		place, path, err := splitSpec(tc.spec)
-		if err != nil {
-			t.Fatalf("splitSpec(%q): %v", tc.spec, err)
-		}
+		place, path := splitSpec(tc.spec)
 		if place != tc.place || path != tc.path {
 			t.Errorf("splitSpec(%q) = %q, %q; want %q, %q", tc.spec, place, path, tc.place, tc.path)
 		}

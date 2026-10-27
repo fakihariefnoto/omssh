@@ -53,7 +53,7 @@ const (
 	exitPermission = 77
 )
 
-func newFsCmd(opts *Options, stdout, stderr io.Writer) *cobra.Command {
+func newFsCmd(opts *Options, stdout io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fs",
 		Short: "Read and write files on a host, a bucket or the local disk",
@@ -62,7 +62,7 @@ func newFsCmd(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 			"With --batch nothing prompts: an unknown host key exits 65 with the\n" +
 			"fingerprint, and a password that is needed and not stored exits 77.",
 	}
-	cmd.AddCommand(newFsLsCmd(opts, stdout, stderr))
+	cmd.AddCommand(newFsLsCmd(opts, stdout))
 	cmd.AddCommand(newFsStatCmd(opts, stdout))
 	cmd.AddCommand(newFsGetCmd(opts, stdout))
 	cmd.AddCommand(newFsPutCmd(opts, stdout))
@@ -80,8 +80,10 @@ type place struct {
 }
 
 // splitSpec reads "<place>:<path>". A bare place means its root.
-func splitSpec(spec string) (string, string, error) {
-	placeName, rest, ok := strings.Cut(spec, ":")
+func splitSpec(spec string) (placeName, path string) {
+	var rest string
+	var ok bool
+	placeName, rest, ok = strings.Cut(spec, ":")
 	if !ok {
 		placeName = spec
 		rest = "/"
@@ -92,7 +94,7 @@ func splitSpec(spec string) (string, string, error) {
 	if rest == "" {
 		rest = "/"
 	}
-	return placeName, vfs.Clean(rest), nil
+	return placeName, vfs.Clean(rest)
 }
 
 // openPlace resolves a place name: local, a cloud profile, or an SSH host.
@@ -232,7 +234,7 @@ func writeJSON(stdout io.Writer, value any) error {
 	return encoder.Encode(value)
 }
 
-func newFsLsCmd(opts *Options, stdout, stderr io.Writer) *cobra.Command {
+func newFsLsCmd(opts *Options, stdout io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls <place>:<path>",
 		Short: "List a directory",
@@ -242,10 +244,7 @@ func newFsLsCmd(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, dir, err := splitSpec(args[0])
-			if err != nil {
-				return err
-			}
+			name, dir := splitSpec(args[0])
 			target, err := openPlace(opts, cfg, name)
 			if err != nil {
 				return err
@@ -296,10 +295,7 @@ func newFsStatCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, p, err := splitSpec(args[0])
-			if err != nil {
-				return err
-			}
+			name, p := splitSpec(args[0])
 			target, err := openPlace(opts, cfg, name)
 			if err != nil {
 				return err
@@ -335,10 +331,7 @@ func newFsGetCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, p, err := splitSpec(args[0])
-			if err != nil {
-				return err
-			}
+			name, p := splitSpec(args[0])
 			dest := "-"
 			if len(args) > 1 {
 				dest = args[1]
@@ -355,7 +348,7 @@ func newFsGetCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			}
 			defer func() { _ = file.Close() }()
 
-			var out io.Writer = stdout
+			out := stdout
 			if dest != "-" {
 				local, err := os.Create(dest)
 				if err != nil {
@@ -389,10 +382,7 @@ func newFsPutCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, p, err := splitSpec(args[1])
-			if err != nil {
-				return err
-			}
+			name, p := splitSpec(args[1])
 			if err := guard(opts, name, p, true); err != nil {
 				return err
 			}
@@ -452,10 +442,7 @@ func newFsRmCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, p, err := splitSpec(args[0])
-			if err != nil {
-				return err
-			}
+			name, p := splitSpec(args[0])
 			if err := guard(opts, name, p, true); err != nil {
 				return err
 			}
@@ -491,10 +478,7 @@ func newFsMkdirCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, p, err := splitSpec(args[0])
-			if err != nil {
-				return err
-			}
+			name, p := splitSpec(args[0])
 			if err := guard(opts, name, p, true); err != nil {
 				return err
 			}

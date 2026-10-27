@@ -1095,6 +1095,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 			m.openCloudForm("s3")
 		case secWebDAV:
 			m.openCloudForm("webdav")
+		case secAzure:
+			m.openCloudForm("azure")
 		case secOverview:
 			m.openAddChooser()
 		default:

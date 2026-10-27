@@ -43,6 +43,12 @@ type CloudProfile struct {
 	Username string `yaml:"username"`
 	// PathStyle forces path-style addressing; R2 always uses it.
 	PathStyle bool `yaml:"path_style"`
+	// Account is the Azure storage account name. It is not a secret, and it is
+	// part of the URL, so it belongs in the config.
+	Account string `yaml:"account"`
+	// Auth is how a provider that offers a choice says which one: Azure uses
+	// key, sas or entra. Empty means the provider's default.
+	Auth string `yaml:"auth"`
 }
 
 // Connections is the interface's memory about hosts. The hosts themselves live in
@@ -213,8 +219,20 @@ func (c Config) Validate() error {
 			if strings.TrimSpace(profile.Endpoint) == "" {
 				return fmt.Errorf("cloud.profiles.%s.endpoint: WebDAV needs a URL", name)
 			}
+		case "azure":
+			if strings.TrimSpace(profile.Bucket) == "" {
+				return fmt.Errorf("cloud.profiles.%s.bucket: cannot be empty", name)
+			}
+			switch strings.ToLower(strings.TrimSpace(profile.Auth)) {
+			case "", "key", "sas", "entra":
+			default:
+				return fmt.Errorf("cloud.profiles.%s.auth: got %q, want key, sas or entra", name, profile.Auth)
+			}
+			if strings.ToLower(strings.TrimSpace(profile.Auth)) != "entra" && strings.TrimSpace(profile.Account) == "" {
+				return fmt.Errorf("cloud.profiles.%s.account: key and sas need the storage account name", name)
+			}
 		default:
-			return fmt.Errorf("cloud.profiles.%s.provider: got %q, want s3, r2, b2, gcs, oss or webdav", name, profile.Provider)
+			return fmt.Errorf("cloud.profiles.%s.provider: got %q, want s3, r2, b2, gcs, oss, azure or webdav", name, profile.Provider)
 		}
 		if profile.Provider == "r2" && strings.TrimSpace(profile.Endpoint) == "" {
 			return fmt.Errorf("cloud.profiles.%s.endpoint: R2 needs https://<account>.r2.cloudflarestorage.com", name)

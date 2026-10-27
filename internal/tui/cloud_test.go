@@ -178,10 +178,13 @@ func TestConnectionSections(t *testing.T) {
 		t.Error("a planned screen has nothing to choose")
 	}
 
-	// Azure is planned too, and comes before WebDAV, which is last and real.
+	// Azure is real too, and comes before WebDAV, which is last.
 	press(t, m, keyNamed(tea.KeyTab))
-	if m.conn.section != secAzure || !m.conn.section.planned() {
-		t.Fatalf("Tab should reach the planned Azure screen, section is %v", m.conn.section)
+	if m.conn.section != secAzure {
+		t.Fatalf("Tab should reach the Azure screen, section is %v", m.conn.section)
+	}
+	if m.conn.section.planned() {
+		t.Error("Azure shipped and should not be marked planned")
 	}
 	press(t, m, keyNamed(tea.KeyTab))
 	if m.conn.section != secWebDAV {
@@ -211,8 +214,39 @@ func TestAddFromASectionSkipsTheChooser(t *testing.T) {
 	m.Overlay = OverlayNone
 	m.conn.section = secAzure
 	m.runAction("session.add")
-	if m.Overlay == OverlayForm {
-		t.Error("a planned section should not open a form it cannot save")
+	if m.Overlay != OverlayForm || m.form.provider != "azure" {
+		t.Fatalf("a in Azure should open an azure form, overlay=%v provider=%q", m.Overlay, m.form.provider)
+	}
+	// Entra needs no secret; key and sas do.
+	m.form.fields = append(m.form.fields, connField{key: "Name", label: "name"})
+	for i := range m.form.fields {
+		switch m.form.fields[i].key {
+		case "Name":
+			m.form.fields[i].in.Set("blobs")
+		case "Container":
+			m.form.fields[i].in.Set("site")
+		case "Account":
+			m.form.fields[i].in.Set("acct")
+		case "Auth":
+			m.form.fields[i].in.Set("key")
+		}
+	}
+	m.saveCloudForm()
+	if !strings.Contains(m.form.err, "account key") {
+		t.Errorf("key auth without a secret should say what is missing, err=%q", m.form.err)
+	}
+	// Entra needs no secret, so it saves without touching the keyring.
+	for i := range m.form.fields {
+		if m.form.fields[i].key == "Auth" {
+			m.form.fields[i].in.Set("entra")
+		}
+	}
+	m.saveCloudForm()
+	if m.form.err != "" {
+		t.Fatalf("the azure form should save: %v", m.form.err)
+	}
+	if got := m.cfg.Cloud.Profiles["blobs"]; got.Provider != "azure" || got.Bucket != "site" || got.Auth != "entra" {
+		t.Errorf("saved profile = %+v", got)
 	}
 
 	// WebDAV is real: a there opens its form directly, typed.

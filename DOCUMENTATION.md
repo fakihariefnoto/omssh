@@ -342,11 +342,26 @@ they differ in endpoint and addressing style, not in the operations omssh uses:
 | Backblaze B2 | `b2` | `https://s3.<region>.backblazeb2.com` (derived) |
 | Google Cloud Storage | `gcs` | `https://storage.googleapis.com`, HMAC keys |
 | Alibaba Cloud OSS | `oss` | `https://s3.oss-<region>.aliyuncs.com` (derived) |
+| Azure Blob Storage | `azure` | `https://<account>.blob.core.windows.net/` (overridable) |
 | WebDAV | `webdav` | any `https://…/dav/` collection (Nextcloud, Box, SharePoint, a NAS) |
 
 OSS rejects path-style requests, so it is always virtual-hosted; B2 and R2 are
 path-style. The form needs a bucket and a region for AWS/B2/OSS, an account
 endpoint for R2, and only a bucket for GCS.
+
+**Azure Blob Storage is a different client too**, because it is a different
+protocol: containers and a key-per-blob namespace, with three ways to prove access:
+
+| `auth` | What it needs | Where the secret goes |
+| --- | --- | --- |
+| `key` | the storage account key | the OS keyring |
+| `sas` | a shared access signature | the OS keyring |
+| `entra` (default) | nothing in the profile | the environment's credential chain (az login, managed identity, workload identity) |
+
+The account name and container live in the config; a custom `endpoint` covers
+Azurite (`http://127.0.0.1:10000/devstoreaccount1`) and sovereign clouds. Azure
+REST has no server-side copy that does not need the source authorized, so a rename
+streams the bytes through omssh and is not atomic — the same caveat as a bucket.
 
 **WebDAV is a different client**, because it is a different protocol: real
 directories, a real `MOVE` (an actual rename, not copy-then-delete), and ETags. It
@@ -377,6 +392,12 @@ cloud:
       provider: oss
       bucket: my-bucket
       region: cn-hangzhou
+    blob-site:                     # Azure Blob Storage
+      provider: azure
+      account: mystorageaccount
+      bucket: site                 # the container
+      auth: entra                  # key · sas · entra
+      # endpoint: https://mystorageaccount.blob.core.windows.net/
     nextcloud:                     # WebDAV
       provider: webdav
       endpoint: https://cloud.example.com/remote.php/dav/files/me/
@@ -396,7 +417,8 @@ of pretending it saved. `omssh cloud forget <profile>` removes the pair.
 **Adding one from the interface:** `Ctrl+O`, then `a` (or `a` on the S3 screen,
 which fills the type in for you). The form asks for a name, the type (`s3` or
 `r2`), the bucket, the region, the endpoint (R2 only) and an optional prefix;
-`Enter` writes it to the config. The profiles appear in the list
+`Enter` writes it to the config. The Azure screen asks for the account, the
+container and the auth mode instead of a region. The profiles appear in the list
 after your hosts and `Enter` opens one. `t` says there is no shell, because there
 is not.
 

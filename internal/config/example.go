@@ -89,6 +89,15 @@ cloud:
   #     bucket: my-bucket
   #     region: cn-hangzhou             # virtual-hosted only; the endpoint follows
   #
+  #   blob-site:                        # Azure Blob Storage
+  #     provider: azure
+  #     account: mystorageaccount       # the account name, not a secret
+  #     bucket: site                    # the container becomes "/"
+  #     auth: entra                     # key · sas · entra (Entra ID by default)
+  #     prefix: public                  # optional: root the pane inside it
+  #     endpoint: https://mystorageaccount.blob.core.windows.net/
+  #     # key and sas take their secret from the keyring, never from here
+  #
   #   nextcloud:                        # WebDAV
   #     provider: webdav
   #     endpoint: https://cloud.example.com/remote.php/dav/files/me/

@@ -148,26 +148,27 @@ configuration, not code.
 
 ---
 
-## M10 — Providers with their own protocol  (WebDAV shipped; Azure Blob remains)
+## M10 — Providers with their own protocol  (WebDAV and Azure Blob shipped; native GCS remains)
 
 Two of the services people ask for are not S3-shaped, and pretending otherwise
 would be the wrong kind of reuse.
+
+**Azure Blob — shipped** in `internal/vfs/azure`: containers as filesystems, a
+prefix as root, sync-blockblob uploads through a local buffer, and three auth
+modes (account key, SAS, Entra ID through the default credential chain). The
+endpoint is overridable for Azurite and sovereign clouds. A rename streams bytes
+because a server-side copy would need the source authorized, and the capability
+report says so.
 
 **WebDAV — shipped** in `internal/vfs/webdav`: PROPFIND with Depth 0 and 1, GET,
 PUT, MKCOL, DELETE and MOVE, with basic auth, passing the conformance suite. It is
 in the connection manager as its own screen and in the cloud form as its own
 provider.
 
-**Azure Blob Storage** — the native REST API:
-
-- Containers behave as buckets, blobs as objects, `/` in a name is a virtual
-  folder, and the listing is by prefix with XML paging.
-- Authentication: account key, SAS token, or Entra ID. All three end up in the
-  config as *a credential reference*, never a secret in plain text.
-- Large uploads use block lists (stage blocks, commit); a failed block retries
-  without restarting the object.
-- Azure Data Lake Storage Gen2 (hierarchical namespace) has real directories and
-  atomic rename; it is a separate capability, not an assumption.
+**Still missing: a native GCS client.** GCS works today through its S3-compatible
+XML API with HMAC keys. If HMAC keys are not enough, the remaining work is ADC,
+service-account JSON and impersonation — the same auth matrix Azure now has —
+plus the JSON API's own listing and resumable uploads.
 
 **WebDAV** — a protocol, not an API:
 
@@ -190,7 +191,8 @@ provider.
   else. (WebDAV half done: conformance passes; cross-protocol copy will be checked
   against a live server.)
 - A rename on WebDAV is one `MOVE`, not a copy and a delete.
-- Azure block upload above the multipart threshold survives one failed block.
+- A large Azure upload survives a failed request; the SDK's block upload retries
+  without restarting the blob. (Not yet checked against a live container.)
 - Delete and overwrite ask the same questions they ask on a server.
 
 **Risks**

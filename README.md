@@ -35,11 +35,11 @@ unpacked tree or a single archive instead of a pile of files.
 - **Archive handling on both sides.** Extract a tarball that lives on the server
   into a local folder; pack a local selection straight onto the server. No
   `tar`/`unzip` on either end.
-- **Buckets as places.** AWS S3 and Cloudflare R2 open in a pane like a host:
-  copy between a bucket and a server, extract an archive from a bucket, deploy
-  into one. Credentials come from the form (stored in the OS keyring) or the
-  standard AWS chain — never from the config file. B2, OSS, GCS, WebDAV and Azure
-  are on the [roadmap](ROADMAP.md).
+- **Buckets as places.** S3, Cloudflare R2, Backblaze B2, Alibaba OSS, GCS,
+  Azure Blob and WebDAV open in a pane like a host: copy between a bucket and a
+  server, extract an archive from a bucket, deploy into one. Credentials come
+  from the form (stored in the OS keyring) or the provider's own chain — never
+  from the config file. Azure takes an account key, a SAS token or Entra ID.
 - **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
   diff, and a sync mode that mirrors. A second run with nothing changed does
   nothing.

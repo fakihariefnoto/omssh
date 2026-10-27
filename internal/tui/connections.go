@@ -66,9 +66,9 @@ func (s connSection) title() string {
 // the plan is visible, and it says so instead of pretending to be empty.
 func (s connSection) planned() bool {
 	switch s {
-	case secGCP, secAzure:
+	case secGCP:
 		return true
-	case secOverview, secSSH, secS3, secWebDAV:
+	case secOverview, secSSH, secS3, secAzure, secWebDAV:
 		return false
 	}
 	return false
@@ -76,8 +76,6 @@ func (s connSection) planned() bool {
 
 func (s connSection) plannedNote() string {
 	switch s {
-	case secAzure:
-		return "Azure Blob arrives with M10: native REST, block uploads, SAS or Entra ID."
 	case secGCP:
 		return "GCS works through its S3-compatible XML API today; a native client arrives with M10 if HMAC keys are not enough."
 	default:
@@ -168,9 +166,13 @@ func (m *Model) loadConnections() {
 	// one. They are appended rather than merged, so the sort above keeps hosts
 	// first and buckets after them.
 	for name, profile := range m.cfg.Cloud.Profiles {
+		scheme := "s3://"
+		if strings.EqualFold(profile.Provider, "azure") {
+			scheme = "azure://"
+		}
 		entries = append(entries, connEntry{
 			Alias:    name,
-			HostName: "s3://" + profile.Bucket + "/" + strings.Trim(profile.Prefix, "/"),
+			HostName: scheme + profile.Bucket + "/" + strings.Trim(profile.Prefix, "/"),
 			User:     profile.Provider,
 			Source:   "cloud profile",
 			Cloud:    true,
@@ -241,7 +243,11 @@ func (m *Model) visibleConnections() []connEntry {
 				continue
 			}
 		case secS3:
-			if !e.Cloud || strings.EqualFold(e.User, "webdav") {
+			if !e.Cloud || strings.EqualFold(e.User, "webdav") || strings.EqualFold(e.User, "azure") {
+				continue
+			}
+		case secAzure:
+			if !e.Cloud || !strings.EqualFold(e.User, "azure") {
 				continue
 			}
 		case secWebDAV:
@@ -250,7 +256,7 @@ func (m *Model) visibleConnections() []connEntry {
 			}
 		case secOverview:
 			// everything
-		case secGCP, secAzure:
+		case secGCP:
 			continue
 		}
 		if !m.conn.showAll {
@@ -326,7 +332,11 @@ func (m *Model) renderConnections(l layout) string {
 					continue
 				}
 			case secS3:
-				if !entry.Cloud || strings.EqualFold(entry.User, "webdav") {
+				if !entry.Cloud || strings.EqualFold(entry.User, "webdav") || strings.EqualFold(entry.User, "azure") {
+					continue
+				}
+			case secAzure:
+				if !entry.Cloud || !strings.EqualFold(entry.User, "azure") {
 					continue
 				}
 			case secWebDAV:
@@ -334,7 +344,7 @@ func (m *Model) renderConnections(l layout) string {
 					continue
 				}
 			case secOverview:
-			case secGCP, secAzure:
+			case secGCP:
 				continue
 			}
 			count++
@@ -349,9 +359,11 @@ func (m *Model) renderConnections(l layout) string {
 	switch m.connSectionNow() {
 	case secS3:
 		place, noun = "config.yaml", plural(count, "bucket", "buckets")
+	case secAzure:
+		place, noun = "config.yaml", plural(count, "container", "containers")
 	case secOverview:
 		noun = plural(count, "connection", "connections")
-	case secSSH, secWebDAV, secGCP, secAzure:
+	case secSSH, secWebDAV, secGCP:
 	}
 	title := m.st.PaneTitle.Render(m.connSectionNow().title())
 	right := m.st.StatusMuted.Render(fmt.Sprintf("%s · %d %s", place, count, noun))
@@ -1016,13 +1028,23 @@ func (m *Model) openCloudForm(provider string) {
 		form.fields = append(form.fields, connField{key: key, label: label, hint: hint})
 	}
 	add("Name", "name", "profile name, shown in this list")
-	if provider == "webdav" {
+	switch provider {
+	case "azure":
+		// Azure is a container in an account, and there are three ways to prove
+		// you may open it. The form asks which, rather than guessing.
+		add("Account", "account", "the storage account name")
+		add("Container", "container", "the container name")
+		add("Auth", "auth", "key · sas · entra (blank means entra)")
+		add("Endpoint", "endpoint", "optional: Azurite or a sovereign cloud URL")
+		add("Prefix", "prefix", "optional: root the pane inside the container")
+		add("SecretKey", "secret", "account key or SAS token · stored in the OS keyring")
+	case "webdav":
 		// A WebDAV server has a URL and an account; a bucket and a region are
 		// words from a different protocol.
 		add("Endpoint", "url", "the collection URL, https://host/remote.php/dav/files/me/")
 		add("AccessKeyID", "username", "optional · the account on the server")
 		add("SecretKey", "password", "optional · stored in the OS keyring")
-	} else {
+	default:
 		add("Bucket", "bucket", "the bucket name")
 		add("Region", "region", "AWS/B2/OSS: the bucket's region · R2/GCS: blank")
 		add("Endpoint", "endpoint", "R2: https://<account>.r2.cloudflarestorage.com")
@@ -1058,6 +1080,12 @@ func (m *Model) saveCloudForm() tea.Cmd {
 			accessKey = value
 		case "SecretKey":
 			secretKey = value
+		case "Account":
+			profile.Account = value
+		case "Container":
+			profile.Bucket = value
+		case "Auth":
+			profile.Auth = strings.ToLower(value)
 		}
 	}
 	if name == "" {
@@ -1092,6 +1120,34 @@ func (m *Model) saveCloudForm() tea.Cmd {
 				return nil
 			}
 		}
+	case "azure":
+		if profile.Bucket == "" {
+			m.form.err = "an Azure container name is required"
+			return nil
+		}
+		switch profile.Auth {
+		case "":
+			profile.Auth = "entra"
+		case "key", "sas", "entra":
+		default:
+			m.form.err = "auth must be key, sas or entra"
+			return nil
+		}
+		if profile.Auth != "entra" {
+			if profile.Account == "" {
+				m.form.err = "key and sas need the storage account name"
+				return nil
+			}
+			if secretKey == "" {
+				m.form.err = "key and sas need " + map[string]string{"key": "the account key", "sas": "a SAS token"}[profile.Auth]
+				return nil
+			}
+			accessKey = profile.Account
+		}
+		if profile.Endpoint != "" && !strings.HasPrefix(profile.Endpoint, "http://") && !strings.HasPrefix(profile.Endpoint, "https://") {
+			m.form.err = "the endpoint must start with http:// or https://"
+			return nil
+		}
 	case "webdav":
 		if profile.Endpoint == "" {
 			m.form.err = "WebDAV needs a URL, like https://host/remote.php/dav/files/me/"
@@ -1105,7 +1161,7 @@ func (m *Model) saveCloudForm() tea.Cmd {
 		profile.Bucket = ""
 		profile.Prefix = ""
 	default:
-		m.form.err = "type must be s3, r2, b2, gcs, oss or webdav"
+		m.form.err = "type must be s3, r2, b2, gcs, oss, azure or webdav"
 		return nil
 	}
 	if (accessKey == "") != (secretKey == "") {
