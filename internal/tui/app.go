@@ -1092,11 +1092,13 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		case secSSH:
 			m.openConnectionForm("", sshconfig.Spec{})
 		case secS3:
-			m.openCloudForm("s3")
+			m.openCloudForm("s3", "")
+		case secGCP:
+			m.openCloudForm("gcs", "adc")
 		case secWebDAV:
-			m.openCloudForm("webdav")
+			m.openCloudForm("webdav", "")
 		case secAzure:
-			m.openCloudForm("azure")
+			m.openCloudForm("azure", "entra")
 		case secOverview:
 			m.openAddChooser()
 		default:
@@ -1105,6 +1107,15 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 
 	case "session.edit":
 		if entry, ok := m.currentConnection(); ok {
+			if entry.Cloud {
+				profile, exists := m.cfg.Cloud.Profiles[entry.Alias]
+				if !exists {
+					m.toastError(entry.Alias + " is not in the config")
+					break
+				}
+				m.openCloudProfile(entry.Alias, profile)
+				break
+			}
 			if !entry.Editable {
 				m.toastWarning(entry.Alias + " lives in " + entry.Source + "; edit that file")
 				break

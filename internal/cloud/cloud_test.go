@@ -92,3 +92,37 @@ func TestValidate(t *testing.T) {
 	}
 	_ = errors.New
 }
+
+// GCS is the one provider with two clients, and the auth field chooses between
+// them. Validation is where a profile is stopped before a client is built.
+func TestValidateGCS(t *testing.T) {
+	if err := Validate(config.CloudProfile{Provider: "gcs", Bucket: "b", Auth: "bogus"}); err == nil {
+		t.Error("an unknown GCS auth mode should be refused")
+	}
+	if err := Validate(config.CloudProfile{Provider: "gcs", Bucket: "b", Auth: "impersonate"}); err == nil {
+		t.Error("impersonation without an account should be refused")
+	}
+	for _, mode := range []string{"", "s3", "adc", "service_account"} {
+		if err := Validate(config.CloudProfile{Provider: "gcs", Bucket: "b", Auth: mode}); err != nil {
+			t.Errorf("auth %q should be valid: %v", mode, err)
+		}
+	}
+	if err := Validate(config.CloudProfile{Provider: "gcs", Bucket: "b", Auth: "impersonate",
+		ServiceAccount: "deployer@project.iam.gserviceaccount.com"}); err != nil {
+		t.Errorf("a complete impersonation profile was refused: %v", err)
+	}
+}
+
+// The HMAC path still reaches the object client: a gcs profile without a native
+// auth mode is the S3-compatible API, not a different filesystem name.
+func TestOpenGCSWithHMACKeys(t *testing.T) {
+	fsys, err := Open(context.Background(), "hmac", config.CloudProfile{
+		Provider: "gcs", Bucket: "backups", Auth: "s3",
+	}, Credentials{AccessKey: "id", Secret: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsys.String() != "s3://backups" {
+		t.Errorf("String = %q, want the S3-compatible client", fsys.String())
+	}
+}

@@ -22,6 +22,9 @@ import (
 // connEntry is one host in the connections screen.
 type connEntry struct {
 	Alias, HostName, User, Identity, ProxyJump, Source string
+	// Kind is "ssh" for a machine and the provider for a bucket: s3, r2, b2,
+	// gcs, oss, azure, webdav. The list has one type column, and this is it.
+	Kind string
 	// Cloud marks a bucket. It is not a host and has no shell: the same list, a
 	// different kind of place.
 	Cloud    bool
@@ -62,27 +65,6 @@ func (s connSection) title() string {
 	}
 }
 
-// planned is true for a section whose driver has not shipped. The tab exists so
-// the plan is visible, and it says so instead of pretending to be empty.
-func (s connSection) planned() bool {
-	switch s {
-	case secGCP:
-		return true
-	case secOverview, secSSH, secS3, secAzure, secWebDAV:
-		return false
-	}
-	return false
-}
-
-func (s connSection) plannedNote() string {
-	switch s {
-	case secGCP:
-		return "GCS works through its S3-compatible XML API today; a native client arrives with M10 if HMAC keys are not enough."
-	default:
-		return "This provider arrives with M10."
-	}
-}
-
 type connectionsState struct {
 	// section is the tab the screen is showing.
 	section connSection
@@ -116,6 +98,25 @@ type connForm struct {
 type connField struct {
 	key, label, hint string
 	in               input
+	// options makes the field a chooser: the value is one of them, and ←/→ (or
+	// space) cycles, so a provider is picked rather than typed from memory.
+	options []string
+}
+
+// cycle moves a chooser field to its next or previous option.
+func (f *connField) cycle(delta int) {
+	if len(f.options) == 0 {
+		return
+	}
+	at := 0
+	for i, option := range f.options {
+		if option == f.in.Value {
+			at = i
+			break
+		}
+	}
+	at = (at + delta + len(f.options)) % len(f.options)
+	f.in.Set(f.options[at])
 }
 
 // loadConnections parses ~/.ssh/config (and its includes, read-only).
@@ -152,6 +153,7 @@ func (m *Model) loadConnections() {
 			entries = append(entries, connEntry{
 				Alias:     spec.Alias,
 				HostName:  spec.HostName,
+				Kind:      "ssh",
 				User:      spec.User,
 				Port:      spec.Port,
 				Identity:  spec.IdentityFile,
@@ -166,14 +168,14 @@ func (m *Model) loadConnections() {
 	// one. They are appended rather than merged, so the sort above keeps hosts
 	// first and buckets after them.
 	for name, profile := range m.cfg.Cloud.Profiles {
-		scheme := "s3://"
-		if strings.EqualFold(profile.Provider, "azure") {
-			scheme = "azure://"
+		scheme := strings.ToLower(profile.Provider) + "://"
+		if strings.EqualFold(profile.Provider, "gcs") {
+			scheme = "gs://"
 		}
 		entries = append(entries, connEntry{
 			Alias:    name,
 			HostName: scheme + profile.Bucket + "/" + strings.Trim(profile.Prefix, "/"),
-			User:     profile.Provider,
+			Kind:     strings.ToLower(profile.Provider),
 			Source:   "cloud profile",
 			Cloud:    true,
 		})
@@ -243,21 +245,24 @@ func (m *Model) visibleConnections() []connEntry {
 				continue
 			}
 		case secS3:
-			if !e.Cloud || strings.EqualFold(e.User, "webdav") || strings.EqualFold(e.User, "azure") {
+			if !e.Cloud || strings.EqualFold(kindOf(e), "webdav") || strings.EqualFold(kindOf(e), "azure") ||
+				strings.EqualFold(kindOf(e), "gcs") {
+				continue
+			}
+		case secGCP:
+			if !e.Cloud || !strings.EqualFold(kindOf(e), "gcs") {
 				continue
 			}
 		case secAzure:
-			if !e.Cloud || !strings.EqualFold(e.User, "azure") {
+			if !e.Cloud || !strings.EqualFold(kindOf(e), "azure") {
 				continue
 			}
 		case secWebDAV:
-			if !e.Cloud || !strings.EqualFold(e.User, "webdav") {
+			if !e.Cloud || !strings.EqualFold(kindOf(e), "webdav") {
 				continue
 			}
 		case secOverview:
 			// everything
-		case secGCP:
-			continue
 		}
 		if !m.conn.showAll {
 			if m.hiddenByChoice(e.Alias) {
@@ -314,9 +319,6 @@ func (m *Model) currentConnection() (connEntry, bool) {
 // highlighted one's details. It is a table, so it looks like one — header row,
 // aligned columns, and a selected row you can see at a glance.
 func (m *Model) renderConnections(l layout) string {
-	if m.connSectionNow().planned() {
-		return m.renderPlanned(l)
-	}
 	width, height := l.Width, l.Height
 	rows := make([]string, 0, height)
 
@@ -332,20 +334,23 @@ func (m *Model) renderConnections(l layout) string {
 					continue
 				}
 			case secS3:
-				if !entry.Cloud || strings.EqualFold(entry.User, "webdav") || strings.EqualFold(entry.User, "azure") {
+				if !entry.Cloud || strings.EqualFold(kindOf(entry), "webdav") || strings.EqualFold(kindOf(entry), "azure") ||
+					strings.EqualFold(kindOf(entry), "gcs") {
+					continue
+				}
+			case secGCP:
+				if !entry.Cloud || !strings.EqualFold(kindOf(entry), "gcs") {
 					continue
 				}
 			case secAzure:
-				if !entry.Cloud || !strings.EqualFold(entry.User, "azure") {
+				if !entry.Cloud || !strings.EqualFold(kindOf(entry), "azure") {
 					continue
 				}
 			case secWebDAV:
-				if !entry.Cloud || !strings.EqualFold(entry.User, "webdav") {
+				if !entry.Cloud || !strings.EqualFold(kindOf(entry), "webdav") {
 					continue
 				}
 			case secOverview:
-			case secGCP:
-				continue
 			}
 			count++
 		}
@@ -361,9 +366,11 @@ func (m *Model) renderConnections(l layout) string {
 		place, noun = "config.yaml", plural(count, "bucket", "buckets")
 	case secAzure:
 		place, noun = "config.yaml", plural(count, "container", "containers")
+	case secGCP:
+		place, noun = "config.yaml", plural(count, "bucket", "buckets")
 	case secOverview:
 		noun = plural(count, "connection", "connections")
-	case secSSH, secWebDAV, secGCP:
+	case secSSH, secWebDAV:
 	}
 	title := m.st.PaneTitle.Render(m.connSectionNow().title())
 	right := m.st.StatusMuted.Render(fmt.Sprintf("%s · %d %s", place, count, noun))
@@ -573,6 +580,16 @@ func connKeyLegend(width int) string {
 	}
 }
 
+// hasField reports whether the form already asks a question by that key.
+func hasField(fields []connField, key string) bool {
+	for _, field := range fields {
+		if field.key == key {
+			return true
+		}
+	}
+	return false
+}
+
 // renderConnectionTabs is the row of management screens. The planned ones are
 // muted and marked, so the plan is visible without pretending they work.
 func (m *Model) renderConnectionTabs(width int) string {
@@ -591,17 +608,11 @@ func (m *Model) renderConnectionTabs(width int) string {
 	parts := make([]string, 0, len(tabs))
 	for _, t := range tabs {
 		label := t.label
-		if t.section.planned() {
-			label += "·soon"
-		}
-		switch {
-		case t.section == m.connSectionNow():
+		if t.section == m.connSectionNow() {
 			parts = append(parts, m.st.Accent.Bold(true).Render("["+label+"]"))
-		case t.section.planned():
-			parts = append(parts, m.st.StatusMuted.Render(label))
-		default:
-			parts = append(parts, m.st.CardText.Render(label))
+			continue
 		}
+		parts = append(parts, m.st.CardText.Render(label))
 	}
 	return padVisible(truncate(strings.Join(parts, "  "), width), width)
 }
@@ -631,27 +642,6 @@ func (m *Model) connSectionNow() connSection {
 		return secOverview
 	}
 	return m.conn.section
-}
-
-// renderPlanned is the whole screen for a section whose driver is not here yet.
-func (m *Model) renderPlanned(l layout) string {
-	width, height := l.Width, l.Height
-	rows := []string{
-		m.st.PaneTitle.Render(m.connSectionNow().title()),
-		m.renderConnectionTabs(width),
-		"",
-		m.st.PaneEmpty.Render(truncate(m.connSectionNow().plannedNote(), width-2)),
-		"",
-		m.st.StatusMuted.Render("Nothing to configure here yet · Tab to another screen · Esc back"),
-	}
-	out := make([]string, 0, height)
-	for _, row := range rows {
-		out = append(out, padVisible(truncate(row, width), width))
-	}
-	for len(out) < height {
-		out = append(out, spaces(width))
-	}
-	return strings.Join(out[:height], "\n")
 }
 
 // connHeaderRow labels the columns once, so the table explains itself.
@@ -699,7 +689,8 @@ func (m *Model) connCols(inner int) []connCol {
 	avail := inner - len(connMarkerPrefix)
 	state := func(e connEntry) string { return m.connState(e).label }
 
-	if m.connSectionNow() == secS3 {
+	if m.connSectionNow() == secS3 || m.connSectionNow() == secGCP ||
+		m.connSectionNow() == secAzure || m.connSectionNow() == secWebDAV {
 		// NAME · BUCKET · PREFIX · TYPE · STATE
 		gaps := 4
 		provW, stateW := 8, connStateWidth
@@ -716,13 +707,13 @@ func (m *Model) connCols(inner int) []connCol {
 			{title: "NAME", width: nameW, value: func(e connEntry) string { return e.Alias }},
 			{title: "BUCKET", width: bucketW, value: m.bucketOf},
 			{title: "PREFIX", width: prefixW, value: m.prefixOf},
-			{title: "TYPE", width: provW, value: func(e connEntry) string { return e.User }},
+			{title: "TYPE", width: provW, value: kindOf},
 			{title: "STATE", width: stateW, value: state},
 		}
 	}
 
-	// NAME · HOST · USER · PORT · STATE — the SSH table, and the overview, where a
-	// bucket fills HOST with its address and USER with its provider.
+	// NAME · TYPE · HOST · USER · PORT · STATE — the SSH table, and the overview,
+	// where a bucket fills HOST with its address and TYPE with its provider.
 	if avail < 56 {
 		gaps := 2
 		rest := avail - connStateWidth - gaps
@@ -733,11 +724,12 @@ func (m *Model) connCols(inner int) []connCol {
 			{title: "STATE", width: connStateWidth, value: state},
 		}
 	}
-	gaps := 4
+	gaps := 5
 	portW := 6
-	userW := clamp(inner/8, 6, 14)
+	typeW := 8
+	userW := clamp(inner/9, 6, 12)
 	nameW := clamp(inner/6, 12, 24)
-	hostW := avail - connStateWidth - portW - userW - nameW - gaps
+	hostW := avail - connStateWidth - portW - userW - nameW - typeW - gaps
 	if m.hasInclude() {
 		// The row has to say "· from include" as well as everything else; the host
 		// column is the one with room to give.
@@ -748,6 +740,7 @@ func (m *Model) connCols(inner int) []connCol {
 	}
 	return []connCol{
 		{title: "NAME", width: nameW, value: func(e connEntry) string { return e.Alias }},
+		{title: "TYPE", width: typeW, value: kindOf},
 		{title: "HOST", width: hostW, value: m.hostOf},
 		{title: "USER", width: userW, value: func(e connEntry) string { return e.User }},
 		{title: "PORT", width: portW, right: true, value: func(e connEntry) string {
@@ -758,6 +751,18 @@ func (m *Model) connCols(inner int) []connCol {
 		}},
 		{title: "STATE", width: connStateWidth, value: state},
 	}
+}
+
+// kindOf is the type column: a provider for a bucket, ssh for a machine. Entries
+// built before Kind existed fall back to the old field.
+func kindOf(e connEntry) string {
+	if e.Kind != "" {
+		return e.Kind
+	}
+	if e.Cloud {
+		return e.User
+	}
+	return "ssh"
 }
 
 // hasInclude reports whether any visible entry comes from an Include, which is
@@ -906,9 +911,14 @@ func (m *Model) connDetailRows(inner, rows int) []string {
 		return padVisible(first, column) + label(k2) + pick(truncate(v2, inner-column-11))
 	}
 
+	secondLabel, secondValue := "user", entry.User
+	if entry.Cloud {
+		// A bucket has no login user; its provider is the useful fact there.
+		secondLabel, secondValue = "type", kindOf(entry)
+	}
 	lines := []string{
 		spread(m.st.PaneTitle.Render(entry.Alias), m.st.StatusMuted.Render(m.connState(entry).label), inner),
-		pair("host", entry.HostName, "user", entry.User),
+		pair("host", entry.HostName, secondLabel, secondValue),
 		pair("port", itoaZero(entry.Port), "key", entry.Identity),
 		pair("jump", entry.ProxyJump, "", ""),
 		pair("source", source, "", ""),
@@ -1015,42 +1025,85 @@ func (m *Model) openConnectionForm(original string, spec sshconfig.Spec) {
 	m.Overlay = OverlayForm
 }
 
-// openCloudForm asks for the six things a bucket profile needs. It is the same
-// form machinery as a host block: one place to type into, one place to save.
-func (m *Model) openCloudForm(provider string) {
+// openCloudForm adds a profile. The type and auth come from the chooser or the
+// tab; editing an existing one goes through openCloudProfile.
+func (m *Model) openCloudForm(provider, auth string) {
+	m.openCloudProfile("", config.CloudProfile{Provider: provider, Auth: auth})
+}
+
+// openCloudProfile asks for the things a bucket profile needs, filled from an
+// existing profile when there is one. A stored secret is never shown: leaving the
+// secret field blank keeps it.
+func (m *Model) openCloudProfile(original string, profile config.CloudProfile) {
+	provider := strings.ToLower(strings.TrimSpace(profile.Provider))
 	if provider == "" {
 		provider = "s3"
 	}
-	form := connForm{kind: "cloud", provider: provider}
-	// A new profile starts empty: an add form that arrives pre-filled with a
-	// template is a form someone types over.
-	add := func(key, label, hint string) {
-		form.fields = append(form.fields, connField{key: key, label: label, hint: hint})
+	auth := strings.ToLower(strings.TrimSpace(profile.Auth))
+	form := connForm{kind: "cloud", provider: provider, original: original}
+	add := func(key, label, hint, value string) {
+		field := connField{key: key, label: label, hint: hint}
+		if original != "" {
+			field.in.SetForEditing(value)
+		} else {
+			field.in.Set("")
+			if value != "" {
+				field.in.Set(value)
+			}
+		}
+		form.fields = append(form.fields, field)
 	}
-	add("Name", "name", "profile name, shown in this list")
+	addSelect := func(key, label, hint string, options []string, value string) {
+		field := connField{key: key, label: label, hint: hint, options: options}
+		field.in.Set(value)
+		form.fields = append(form.fields, field)
+	}
+	if auth == "" {
+		switch provider {
+		case "azure":
+			auth = "entra"
+		case "gcs":
+			auth = "s3"
+		}
+	}
+	add("Name", "name", "profile name, shown in this list", original)
 	switch provider {
 	case "azure":
 		// Azure is a container in an account, and there are three ways to prove
 		// you may open it. The form asks which, rather than guessing.
-		add("Account", "account", "the storage account name")
-		add("Container", "container", "the container name")
-		add("Auth", "auth", "key · sas · entra (blank means entra)")
-		add("Endpoint", "endpoint", "optional: Azurite or a sovereign cloud URL")
-		add("Prefix", "prefix", "optional: root the pane inside the container")
-		add("SecretKey", "secret", "account key or SAS token · stored in the OS keyring")
+		add("Account", "account", "the storage account name", profile.Account)
+		add("Container", "container", "the container name", profile.Bucket)
+		addSelect("Auth", "auth", "how you prove access", []string{"key", "sas", "entra"}, auth)
+		add("Endpoint", "endpoint", "optional: Azurite or a sovereign cloud URL", profile.Endpoint)
+		add("Prefix", "prefix", "optional: root the pane inside the container", profile.Prefix)
+		add("SecretKey", "secret", "account key or SAS token · blank keeps the stored one", "")
 	case "webdav":
 		// A WebDAV server has a URL and an account; a bucket and a region are
 		// words from a different protocol.
-		add("Endpoint", "url", "the collection URL, https://host/remote.php/dav/files/me/")
-		add("AccessKeyID", "username", "optional · the account on the server")
-		add("SecretKey", "password", "optional · stored in the OS keyring")
+		add("Endpoint", "url", "the collection URL, https://host/remote.php/dav/files/me/", profile.Endpoint)
+		add("AccessKeyID", "username", "optional · the account on the server", profile.Username)
+		add("SecretKey", "password", "optional · blank keeps the stored password", "")
+	case "gcs":
+		// GCS can be entered four ways, and the profile says which: HMAC keys
+		// through the S3 API, the ambient ADC identity, a service-account JSON,
+		// or an account impersonated from ADC.
+		add("Bucket", "bucket", "the bucket name", profile.Bucket)
+		addSelect("Auth", "auth", "hmac keys, adc, service-account JSON, or impersonation",
+			[]string{"s3", "adc", "service_account", "impersonate"}, auth)
+		add("CredentialsFile", "json", "service_account: path to the JSON, or leave blank and store it in the keyring", profile.CredentialsFile)
+		add("ServiceAccount", "as", "impersonate: the account to become", profile.ServiceAccount)
+		add("Prefix", "prefix", "optional: root the pane inside the bucket", profile.Prefix)
+		add("AccessKeyID", "key id", "s3: HMAC key id · otherwise optional", "")
+		add("SecretKey", "secret", "s3: HMAC secret · service_account: the JSON document", "")
 	default:
-		add("Bucket", "bucket", "the bucket name")
-		add("Region", "region", "AWS/B2/OSS: the bucket's region · R2/GCS: blank")
-		add("Endpoint", "endpoint", "R2: https://<account>.r2.cloudflarestorage.com")
-		add("Prefix", "prefix", "optional: root the pane inside the bucket")
-		add("AccessKeyID", "key id", "optional: stored in the OS keyring, not here")
-		add("SecretKey", "secret", "optional · leave blank to use the AWS chain")
+		addSelect("Type", "type", "S3-compatible provider",
+			[]string{"s3", "r2", "b2", "oss"}, provider)
+		add("Bucket", "bucket", "the bucket name", profile.Bucket)
+		add("Region", "region", "AWS/B2/OSS: the bucket's region · R2: auto", profile.Region)
+		add("Endpoint", "endpoint", "R2: https://<account>.r2.cloudflarestorage.com", profile.Endpoint)
+		add("Prefix", "prefix", "optional: root the pane inside the bucket", profile.Prefix)
+		add("AccessKeyID", "key id", "optional: stored in the OS keyring, not here", "")
+		add("SecretKey", "secret", "optional · leave blank to use the AWS chain", "")
 	}
 	form.fields[len(form.fields)-1].in.Masked = true
 	m.form = form
@@ -1086,6 +1139,12 @@ func (m *Model) saveCloudForm() tea.Cmd {
 			profile.Bucket = value
 		case "Auth":
 			profile.Auth = strings.ToLower(value)
+		case "Type":
+			profile.Provider = strings.ToLower(value)
+		case "CredentialsFile":
+			profile.CredentialsFile = value
+		case "ServiceAccount":
+			profile.ServiceAccount = value
 		}
 	}
 	if name == "" {
@@ -1096,28 +1155,54 @@ func (m *Model) saveCloudForm() tea.Cmd {
 		profile.Provider = "s3"
 	}
 	switch profile.Provider {
-	case "s3", "r2", "b2", "gcs", "oss":
+	case "gcs":
 		if profile.Bucket == "" {
 			m.form.err = "a bucket name is required"
 			return nil
 		}
-		switch profile.Provider {
-		case "r2":
+		if profile.Auth == "" {
+			profile.Auth = "s3"
+		}
+		switch profile.Auth {
+		case "s3":
+			if profile.Region == "" {
+				profile.Region = "auto"
+			}
+		case "adc":
+		case "service_account":
+			if profile.CredentialsFile == "" && secretKey == "" {
+				m.form.err = "service_account needs a JSON path or the document in the secret field"
+				return nil
+			}
+			if secretKey != "" && accessKey == "" {
+				// The keyring holds one value per profile; the document is it.
+				accessKey = "service-account"
+			}
+		case "impersonate":
+			if profile.ServiceAccount == "" {
+				m.form.err = "impersonation needs the service account to become"
+				return nil
+			}
+		default:
+			m.form.err = "auth must be s3, adc, service_account or impersonate"
+			return nil
+		}
+	case "s3", "r2", "b2", "oss":
+		if profile.Bucket == "" {
+			m.form.err = "a bucket name is required"
+			return nil
+		}
+		if profile.Region == "" && profile.Provider != "r2" {
+			m.form.err = profile.Provider + " needs the bucket's region"
+			return nil
+		}
+		if profile.Provider == "r2" {
 			if profile.Endpoint == "" {
 				m.form.err = "R2 needs an endpoint, https://<account>.r2.cloudflarestorage.com"
 				return nil
 			}
 			if profile.Region == "" {
 				profile.Region = "auto"
-			}
-		case "gcs":
-			if profile.Region == "" {
-				profile.Region = "auto"
-			}
-		case "s3", "b2", "oss":
-			if profile.Region == "" {
-				m.form.err = profile.Provider + " needs the bucket's region"
-				return nil
 			}
 		}
 	case "azure":
@@ -1144,10 +1229,6 @@ func (m *Model) saveCloudForm() tea.Cmd {
 			}
 			accessKey = profile.Account
 		}
-		if profile.Endpoint != "" && !strings.HasPrefix(profile.Endpoint, "http://") && !strings.HasPrefix(profile.Endpoint, "https://") {
-			m.form.err = "the endpoint must start with http:// or https://"
-			return nil
-		}
 	case "webdav":
 		if profile.Endpoint == "" {
 			m.form.err = "WebDAV needs a URL, like https://host/remote.php/dav/files/me/"
@@ -1164,15 +1245,35 @@ func (m *Model) saveCloudForm() tea.Cmd {
 		m.form.err = "type must be s3, r2, b2, gcs, oss, azure or webdav"
 		return nil
 	}
-	if (accessKey == "") != (secretKey == "") {
+	// A WebDAV account name without a password means "keep the stored one"; the
+	// other providers treat half a pair as a mistake.
+	if profile.Provider != "webdav" && (accessKey == "") != (secretKey == "") {
 		m.form.err = "give both the key id and the secret, or neither"
+		return nil
+	}
+	if profile.Endpoint != "" && !strings.HasPrefix(profile.Endpoint, "http://") && !strings.HasPrefix(profile.Endpoint, "https://") {
+		m.form.err = "the endpoint must start with http:// or https://"
 		return nil
 	}
 	if m.cfg.Cloud.Profiles == nil {
 		m.cfg.Cloud.Profiles = map[string]config.CloudProfile{}
 	}
+	// A rename is a new key with the same secret: carry the stored pair across
+	// rather than leaving the credentials behind under a name nothing points at.
+	original := m.form.original
+	if original != "" && original != name {
+		if accessKey == "" && secretKey == "" {
+			if id, secret, ok := cloudcred.Load(m.credStore(), original); ok {
+				accessKey, secretKey = id, secret
+			}
+		}
+		delete(m.cfg.Cloud.Profiles, original)
+		_ = cloudcred.Forget(m.credStore(), original)
+	}
 	m.cfg.Cloud.Profiles[name] = profile
-	if accessKey != "" {
+	// The secret is the trigger: a username in a WebDAV form is not a reason to
+	// overwrite the password that is already stored.
+	if secretKey != "" {
 		if err := cloudcred.Store(m.credStore(), name, accessKey, secretKey); err != nil {
 			m.form.err = "cannot store the credentials: " + err.Error()
 			return nil
@@ -1279,13 +1380,17 @@ func (m *Model) deleteConnection() {
 	if !ok {
 		return
 	}
-	if !entry.Editable {
+	if !entry.Editable && !entry.Cloud {
 		m.toastWarning(entry.Alias + " lives in " + entry.Source + "; edit that file")
 		return
 	}
+	body := []string{entry.Alias + " will be removed from ~/.ssh/config.", "Nothing else in the file is touched."}
+	if entry.Cloud {
+		body = []string{entry.Alias + " will be removed from config.yaml.", "Its keyring credentials are forgotten."}
+	}
 	m.confirm = confirmState{
 		Title:  "Delete connection?",
-		Body:   []string{entry.Alias + " will be removed from ~/.ssh/config.", "Nothing else in the file is touched."},
+		Body:   body,
 		Danger: true,
 		Action: "session.delete",
 		Alias:  entry.Alias,
@@ -1294,8 +1399,19 @@ func (m *Model) deleteConnection() {
 	m.Overlay = OverlayConfirm
 }
 
-// applyDeleteConnection removes the confirmed host.
+// applyDeleteConnection removes the confirmed host or bucket profile.
 func (m *Model) applyDeleteConnection(alias string) {
+	if m.cfg.Cloud.Profiles != nil {
+		if _, isCloud := m.cfg.Cloud.Profiles[alias]; isCloud {
+			delete(m.cfg.Cloud.Profiles, alias)
+			_ = cloudcred.Forget(m.credStore(), alias)
+			m.saveConfig()
+			m.loadConnections()
+			m.conn.cursor = clamp(m.conn.cursor, 0, max(0, len(m.conn.entries)-1))
+			m.toastSuccess("Deleted " + alias)
+			return
+		}
+	}
 	if m.conn == nil || m.conn.main == nil {
 		return
 	}
@@ -1350,9 +1466,10 @@ func (m *Model) renderConnectionForm(l layout) string {
 		title = "Edit " + m.form.original
 	}
 	lines := []string{m.st.CardTitle.Render(title)}
-	if m.form.kind == "cloud" && m.form.provider != "" && m.form.provider != "webdav" {
-		// Chosen once, by the chooser or the tab. Shown, not typed. WebDAV is
-		// already named in the title, so its line would only repeat it.
+	if m.form.kind == "cloud" && m.form.provider != "" && m.form.provider != "webdav" && !hasField(m.form.fields, "Type") {
+		// A form without a type chooser states its type here instead: the tab or
+		// the chooser answered it, and repeating it as an editable field would
+		// only invite a second answer.
 		lines = append(lines, m.st.StatusMuted.Render("type  ")+m.st.Accent.Bold(true).Render(m.form.provider))
 	}
 	lines = append(lines, "")
@@ -1365,7 +1482,12 @@ func (m *Model) renderConnectionForm(l layout) string {
 		// Every field is a box, empty or not: a field you cannot see is a field
 		// you cannot find, and the focused one shows the cursor.
 		shown := field.in.Display()
-		if i == m.form.focus {
+		if len(field.options) > 0 {
+			shown = field.in.Value
+			if i == m.form.focus {
+				shown = "‹ " + shown + " ›"
+			}
+		} else if i == m.form.focus {
 			shown = field.in.Rendered()
 		}
 		value := m.st.PathInput.Width(valueWidth).Render(truncate(shown, valueWidth))
@@ -1374,7 +1496,11 @@ func (m *Model) renderConnectionForm(l layout) string {
 		} else {
 			lines = append(lines, "  "+label+" "+value)
 		}
-		lines = append(lines, spaces(indent)+m.st.CardMuted.Render(truncate(field.hint, valueWidth)))
+		hint := field.hint
+		if len(field.options) > 0 {
+			hint += " · ←/→"
+		}
+		lines = append(lines, spaces(indent)+m.st.CardMuted.Render(truncate(hint, valueWidth)))
 	}
 
 	if m.form.err != "" {
@@ -1390,6 +1516,19 @@ func (m *Model) renderConnectionForm(l layout) string {
 
 // handleFormKey edits the form fields.
 func (m *Model) handleFormKey(msg tea.KeyPressMsg) tea.Cmd {
+	if len(m.form.fields) > 0 {
+		field := &m.form.fields[m.form.focus]
+		if len(field.options) > 0 {
+			switch msg.String() {
+			case "left":
+				field.cycle(-1)
+				return nil
+			case "right", "space":
+				field.cycle(1)
+				return nil
+			}
+		}
+	}
 	switch msg.String() {
 	case "esc":
 		m.form = connForm{}

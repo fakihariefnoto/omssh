@@ -21,6 +21,9 @@ type addKind struct {
 	hint  string
 	// provider is empty for an SSH host, "s3" or "r2" for a bucket.
 	provider string
+	// auth narrows a provider that can be entered several ways: GCS is HMAC
+	// keys, ADC, a service account or impersonation.
+	auth string
 }
 
 // addKinds is the list, in the order the card shows it.
@@ -30,7 +33,10 @@ func addKinds() []addKind {
 		{label: "AWS S3 bucket", hint: "region, bucket, optional prefix", provider: "s3"},
 		{label: "Cloudflare R2 bucket", hint: "account endpoint, bucket", provider: "r2"},
 		{label: "Backblaze B2 bucket", hint: "region, bucket (S3 API)", provider: "b2"},
-		{label: "Google Cloud Storage", hint: "bucket, HMAC keys (S3 API)", provider: "gcs"},
+		{label: "GCS · HMAC keys", hint: "bucket, S3-compatible API", provider: "gcs", auth: "s3"},
+		{label: "GCS · application default", hint: "bucket, the identity this machine already has", provider: "gcs", auth: "adc"},
+		{label: "GCS · service account", hint: "bucket, a JSON key file", provider: "gcs", auth: "service_account"},
+		{label: "GCS · impersonation", hint: "bucket, become an account from ADC", provider: "gcs", auth: "impersonate"},
 		{label: "Alibaba Cloud OSS", hint: "region, bucket (S3 API)", provider: "oss"},
 		{label: "Azure Blob container", hint: "account key, SAS or Entra ID", provider: "azure"},
 		{label: "WebDAV server", hint: "Nextcloud, Box, SharePoint, a NAS", provider: "webdav"},
@@ -60,7 +66,7 @@ func (m *Model) handleAddKey(msg tea.KeyPressMsg) {
 			m.openConnectionForm("", sshconfig.Spec{})
 			return
 		}
-		m.openCloudForm(kind.provider)
+		m.openCloudForm(kind.provider, kind.auth)
 	}
 }
 

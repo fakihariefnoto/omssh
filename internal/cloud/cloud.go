@@ -11,6 +11,7 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 	"github.com/fakihariefnoto/omssh/internal/vfs/azure"
+	"github.com/fakihariefnoto/omssh/internal/vfs/gcs"
 	"github.com/fakihariefnoto/omssh/internal/vfs/object"
 	"github.com/fakihariefnoto/omssh/internal/vfs/webdav"
 )
@@ -29,6 +30,27 @@ type Credentials struct {
 // Open builds the filesystem a profile describes.
 func Open(ctx context.Context, name string, profile config.CloudProfile, creds Credentials) (vfs.FS, error) {
 	provider := strings.ToLower(strings.TrimSpace(profile.Provider))
+	if provider == "gcs" {
+		switch strings.ToLower(strings.TrimSpace(profile.Auth)) {
+		case "", "s3":
+			// HMAC keys through the S3-compatible XML API, the original path.
+		default:
+			opts := gcs.Options{
+				Bucket:          profile.Bucket,
+				Prefix:          profile.Prefix,
+				Auth:            profile.Auth,
+				CredentialsFile: profile.CredentialsFile,
+				ServiceAccount:  profile.ServiceAccount,
+				Label:           name,
+			}
+			// A service-account document kept in the keyring comes through the
+			// secret, exactly like every other provider's one secret.
+			if strings.EqualFold(opts.Auth, gcs.AuthServiceAccount) && strings.TrimSpace(opts.CredentialsFile) == "" {
+				opts.CredentialsJSON = creds.Secret
+			}
+			return gcs.New(opts)
+		}
+	}
 	if provider == "azure" {
 		opts := azure.Options{
 			Account:   profile.Account,
@@ -96,7 +118,21 @@ func Validate(profile config.CloudProfile) error {
 			return errors.New("an Azure container name is required")
 		}
 		return nil
-	case "s3", "r2", "b2", "gcs", "oss":
+	case "gcs":
+		if strings.TrimSpace(profile.Bucket) == "" {
+			return errors.New("a bucket name is required")
+		}
+		switch strings.ToLower(strings.TrimSpace(profile.Auth)) {
+		case "", "s3", "adc", "service_account":
+		case "impersonate":
+			if strings.TrimSpace(profile.ServiceAccount) == "" {
+				return errors.New("impersonation needs the service account to become")
+			}
+		default:
+			return errors.New("GCS auth must be s3, adc, service_account or impersonate")
+		}
+		return nil
+	case "s3", "r2", "b2", "oss":
 		if strings.TrimSpace(profile.Bucket) == "" {
 			return errors.New("a bucket name is required")
 		}

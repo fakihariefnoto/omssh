@@ -39,7 +39,8 @@ unpacked tree or a single archive instead of a pile of files.
   Azure Blob and WebDAV open in a pane like a host: copy between a bucket and a
   server, extract an archive from a bucket, deploy into one. Credentials come
   from the form (stored in the OS keyring) or the provider's own chain — never
-  from the config file. Azure takes an account key, a SAS token or Entra ID.
+  from the config file. Azure takes an account key, a SAS token or Entra ID; GCS
+  takes HMAC keys, ADC, a service-account JSON or impersonation.
 - **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
   diff, and a sync mode that mirrors. A second run with nothing changed does
   nothing.

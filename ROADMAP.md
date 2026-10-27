@@ -148,7 +148,7 @@ configuration, not code.
 
 ---
 
-## M10 — Providers with their own protocol  (WebDAV and Azure Blob shipped; native GCS remains)
+## M10 — Providers with their own protocol  (shipped: WebDAV, Azure Blob, native GCS)
 
 Two of the services people ask for are not S3-shaped, and pretending otherwise
 would be the wrong kind of reuse.
@@ -165,10 +165,13 @@ PUT, MKCOL, DELETE and MOVE, with basic auth, passing the conformance suite. It 
 in the connection manager as its own screen and in the cloud form as its own
 provider.
 
-**Still missing: a native GCS client.** GCS works today through its S3-compatible
-XML API with HMAC keys. If HMAC keys are not enough, the remaining work is ADC,
-service-account JSON and impersonation — the same auth matrix Azure now has —
-plus the JSON API's own listing and resumable uploads.
+**Google Cloud Storage — shipped** in `internal/vfs/gcs`: the JSON API rather than
+the S3-compatible one, with ADC, a service-account JSON and impersonation as auth
+modes. HMAC keys remain available as `provider: gcs, auth: s3`. GCS has a real
+server-side copy, so a rename is a copy and a delete with the bytes staying in the
+bucket; it is still two calls, and the capability report says copy, not atomic
+rename.
+
 
 **WebDAV** — a protocol, not an API:
 

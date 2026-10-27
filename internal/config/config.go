@@ -47,8 +47,14 @@ type CloudProfile struct {
 	// part of the URL, so it belongs in the config.
 	Account string `yaml:"account"`
 	// Auth is how a provider that offers a choice says which one: Azure uses
-	// key, sas or entra. Empty means the provider's default.
+	// key, sas or entra; GCS uses s3, adc, service_account or impersonate.
+	// Empty means the provider's default.
 	Auth string `yaml:"auth"`
+	// CredentialsFile is a service-account JSON path for GCS. The document is a
+	// secret; a path to it is not.
+	CredentialsFile string `yaml:"credentials_file"`
+	// ServiceAccount is the GCS account to become when Auth is impersonate.
+	ServiceAccount string `yaml:"service_account"`
 }
 
 // Connections is the interface's memory about hosts. The hosts themselves live in
@@ -211,13 +217,26 @@ func (c Config) Validate() error {
 	}
 	for name, profile := range c.Cloud.Profiles {
 		switch profile.Provider {
-		case "s3", "r2", "b2", "gcs", "oss":
+		case "s3", "r2", "b2", "oss":
 			if strings.TrimSpace(profile.Bucket) == "" {
 				return fmt.Errorf("cloud.profiles.%s.bucket: cannot be empty", name)
 			}
 		case "webdav":
 			if strings.TrimSpace(profile.Endpoint) == "" {
 				return fmt.Errorf("cloud.profiles.%s.endpoint: WebDAV needs a URL", name)
+			}
+		case "gcs":
+			if strings.TrimSpace(profile.Bucket) == "" {
+				return fmt.Errorf("cloud.profiles.%s.bucket: cannot be empty", name)
+			}
+			switch strings.ToLower(strings.TrimSpace(profile.Auth)) {
+			case "", "s3", "adc", "service_account":
+			case "impersonate":
+				if strings.TrimSpace(profile.ServiceAccount) == "" {
+					return fmt.Errorf("cloud.profiles.%s.service_account: impersonate needs the account to become", name)
+				}
+			default:
+				return fmt.Errorf("cloud.profiles.%s.auth: got %q, want s3, adc, service_account or impersonate", name, profile.Auth)
 			}
 		case "azure":
 			if strings.TrimSpace(profile.Bucket) == "" {

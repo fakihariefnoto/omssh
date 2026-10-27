@@ -67,7 +67,13 @@ func TestAddBucketForm(t *testing.T) {
 	if m.form.provider != "r2" {
 		t.Errorf("the form should be an r2 form, provider is %q", m.form.provider)
 	}
-	if out := ansi.Strip(render(m)); !strings.Contains(out, "type  r2") {
+	// The type is a chooser, not a typed value: focus it and the arrows show.
+	for i := range m.form.fields {
+		if m.form.fields[i].key == "Type" {
+			m.form.focus = i
+		}
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "‹ r2 ›") {
 		t.Errorf("the form should show the type it is adding:\n%s", out)
 	}
 	values := map[string]string{
@@ -165,17 +171,14 @@ func TestConnectionSections(t *testing.T) {
 		t.Errorf("the S3 screen should list the bucket:\n%s", out)
 	}
 
-	// GCP is planned and says so instead of looking empty.
+	// GCP is real: it lists gcs profiles and no longer says it is planned.
 	press(t, m, keyNamed(tea.KeyTab))
 	if m.conn.section != secGCP {
 		t.Fatalf("Tab should reach GCP, section is %v", m.conn.section)
 	}
 	out = ansi.Strip(render(m))
-	if !strings.Contains(out, "M10") {
-		t.Errorf("a planned screen should say when it arrives:\n%s", out)
-	}
-	if _, ok := m.currentConnection(); ok {
-		t.Error("a planned screen has nothing to choose")
+	if strings.Contains(out, "backups") {
+		t.Errorf("the GCP screen should not list an S3 bucket:\n%s", out)
 	}
 
 	// Azure is real too, and comes before WebDAV, which is last.
@@ -183,15 +186,9 @@ func TestConnectionSections(t *testing.T) {
 	if m.conn.section != secAzure {
 		t.Fatalf("Tab should reach the Azure screen, section is %v", m.conn.section)
 	}
-	if m.conn.section.planned() {
-		t.Error("Azure shipped and should not be marked planned")
-	}
 	press(t, m, keyNamed(tea.KeyTab))
 	if m.conn.section != secWebDAV {
 		t.Fatalf("Tab should end on WebDAV, section is %v", m.conn.section)
-	}
-	if m.conn.section.planned() {
-		t.Error("WebDAV shipped and should not be marked planned")
 	}
 }
 
@@ -335,9 +332,16 @@ func TestBucketSurvivesARestart(t *testing.T) {
 	m.runAction("session.add")
 	m.add.cursor = 1 // AWS S3
 	press(t, m, keyNamed(tea.KeyEnter))
-	m.form.fields[0].in.Set("backups")
-	m.form.fields[1].in.Set("my-backups")
-	m.form.fields[2].in.Set("eu-central-1")
+	for i := range m.form.fields {
+		switch m.form.fields[i].key {
+		case "Name":
+			m.form.fields[i].in.Set("backups")
+		case "Bucket":
+			m.form.fields[i].in.Set("my-backups")
+		case "Region":
+			m.form.fields[i].in.Set("eu-central-1")
+		}
+	}
 	m.handleFormKey(keyNamed(tea.KeyEnter))
 
 	cfg, err := config.Load(m.configPath)
@@ -365,5 +369,143 @@ func TestBucketSurvivesARestart(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("the restarted interface should list the bucket: %+v", next.visibleConnections())
+	}
+}
+
+// The S3 screen's form is not an S3 form: its type is a chooser, and cycling it
+// changes the provider that gets saved.
+func TestBucketFormChoosesTheProvider(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.configPath = t.TempDir() + "/config.yaml"
+	m.conn.section = secS3
+	m.runAction("session.add")
+	if m.Overlay != OverlayForm || m.form.provider != "s3" {
+		t.Fatalf("the S3 section should open its form, overlay=%v provider=%q", m.Overlay, m.form.provider)
+	}
+
+	typeAt := -1
+	for i := range m.form.fields {
+		if m.form.fields[i].key == "Type" {
+			typeAt = i
+		}
+	}
+	if typeAt < 0 {
+		t.Fatal("the bucket form should let the provider be chosen")
+	}
+	m.form.focus = typeAt
+	press(t, m, keyNamed(tea.KeyRight))
+	if got := m.form.fields[typeAt].in.Value; got != "r2" {
+		t.Fatalf("→ should move s3 to r2, got %q", got)
+	}
+	press(t, m, keyNamed(tea.KeyLeft))
+	press(t, m, keyNamed(tea.KeyLeft))
+	if got := m.form.fields[typeAt].in.Value; got != "oss" {
+		t.Fatalf("← from s3 should wrap to oss, got %q", got)
+	}
+	// oss → s3 → r2 → b2
+	press(t, m, keyNamed(tea.KeyRight))
+	press(t, m, keyNamed(tea.KeyRight))
+	press(t, m, keyNamed(tea.KeyRight))
+	if got := m.form.fields[typeAt].in.Value; got != "b2" {
+		t.Fatalf("→ should reach b2, got %q", got)
+	}
+
+	for i := range m.form.fields {
+		switch m.form.fields[i].key {
+		case "Name":
+			m.form.fields[i].in.Set("archive")
+		case "Bucket":
+			m.form.fields[i].in.Set("my-archive")
+		case "Region":
+			m.form.fields[i].in.Set("us-west-004")
+		}
+	}
+	m.handleFormKey(keyNamed(tea.KeyEnter))
+	if got := m.cfg.Cloud.Profiles["archive"].Provider; got != "b2" {
+		t.Fatalf("the chosen provider should be saved, got %q", got)
+	}
+}
+
+// The native GCS modes are separate entries in the chooser, and ADC needs nothing
+// but a bucket.
+func TestGCSNativeFormSaves(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.configPath = t.TempDir() + "/config.yaml"
+
+	m.runAction("session.add")
+	at := -1
+	for i, kind := range addKinds() {
+		if kind.provider == "gcs" && kind.auth == "adc" {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatal("the chooser should offer GCS with application default credentials")
+	}
+	m.add.cursor = at
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.Overlay != OverlayForm || m.form.provider != "gcs" {
+		t.Fatalf("choosing ADC should open the GCS form, overlay=%v provider=%q", m.Overlay, m.form.provider)
+	}
+	for i := range m.form.fields {
+		switch m.form.fields[i].key {
+		case "Name":
+			m.form.fields[i].in.Set("gcs-backups")
+		case "Bucket":
+			m.form.fields[i].in.Set("my-backups")
+		}
+	}
+	m.handleFormKey(keyNamed(tea.KeyEnter))
+	profile, ok := m.cfg.Cloud.Profiles["gcs-backups"]
+	if !ok {
+		t.Fatalf("the profile should be saved: %+v", m.cfg.Cloud.Profiles)
+	}
+	if profile.Provider != "gcs" || profile.Auth != "adc" {
+		t.Errorf("saved profile = %+v, want gcs/adc", profile)
+	}
+}
+
+// A bucket profile is editable from the manager. A bad R2 endpoint is exactly the
+// case: the form opens filled, the fix is one field, and the secret stays put.
+func TestEditCloudProfile(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.configPath = t.TempDir() + "/config.yaml"
+	m.cfg.Cloud.Profiles = map[string]config.CloudProfile{
+		"assets": {Provider: "r2", Bucket: "assets", Region: "auto", Prefix: "2026/"},
+	}
+	m.loadConnections()
+
+	for i, entry := range m.visibleConnections() {
+		if entry.Alias == "assets" {
+			m.conn.cursor = i
+		}
+	}
+	m.runAction("session.edit")
+	if m.Overlay != OverlayForm || m.form.original != "assets" {
+		t.Fatalf("e on a bucket should open its profile, overlay=%v original=%q", m.Overlay, m.form.original)
+	}
+	values := map[string]string{}
+	for _, field := range m.form.fields {
+		values[field.key] = field.in.Value
+	}
+	if values["Type"] != "r2" || values["Bucket"] != "assets" || values["Prefix"] != "2026/" {
+		t.Fatalf("the form should be filled from the profile: %+v", values)
+	}
+
+	for i := range m.form.fields {
+		if m.form.fields[i].key == "Endpoint" {
+			m.form.fields[i].in.Set("https://acct.r2.cloudflarestorage.com")
+		}
+	}
+	m.handleFormKey(keyNamed(tea.KeyEnter))
+	profile, ok := m.cfg.Cloud.Profiles["assets"]
+	if !ok {
+		t.Fatalf("the profile should still exist: %+v", m.cfg.Cloud.Profiles)
+	}
+	if profile.Endpoint != "https://acct.r2.cloudflarestorage.com" {
+		t.Errorf("the endpoint was not saved: %+v", profile)
+	}
+	if profile.Prefix != "2026/" || profile.Bucket != "assets" {
+		t.Errorf("editing one field should keep the rest: %+v", profile)
 	}
 }

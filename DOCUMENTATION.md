@@ -259,7 +259,7 @@ terminal. Transfers run off the update loop; the interface keeps answering.
 
 `Alt+J` opens the transfer screen: one block per job with a bar, the file being
 copied, bytes done of total, average speed and elapsed time. It also opens by
-itself when a paste is large — 50 files or 100 MB — unless something else is
+itself when a paste is large — five files or 100 MB — unless something else is
 already open. `Esc` closes it and the copy keeps going.
 
 Copies run several files at once, as many as `transfers.workers` says (four by
@@ -268,7 +268,10 @@ what makes a folder of small files over a slow link bearable.
 
 ## Connections
 
-`Ctrl+O` opens the connection manager. It has one screen per kind of place, and
+`Ctrl+O` opens the connection manager. A bucket profile is edited in place with
+`e` — the form opens filled, and leaving the secret blank keeps the stored one —
+and deleted with `x`; editing `config.yaml` by hand is never required. The manager
+has one screen per kind of place, and
 `Tab` / `Shift+Tab` moves between them:
 
 ```
@@ -340,7 +343,7 @@ they differ in endpoint and addressing style, not in the operations omssh uses:
 | AWS S3 | `s3` | regional, from the SDK |
 | Cloudflare R2 | `r2` | `https://<account>.r2.cloudflarestorage.com` (required) |
 | Backblaze B2 | `b2` | `https://s3.<region>.backblazeb2.com` (derived) |
-| Google Cloud Storage | `gcs` | `https://storage.googleapis.com`, HMAC keys |
+| Google Cloud Storage | `gcs` | `https://storage.googleapis.com` (HMAC keys) or the native client |
 | Alibaba Cloud OSS | `oss` | `https://s3.oss-<region>.aliyuncs.com` (derived) |
 | Azure Blob Storage | `azure` | `https://<account>.blob.core.windows.net/` (overridable) |
 | WebDAV | `webdav` | any `https://…/dav/` collection (Nextcloud, Box, SharePoint, a NAS) |
@@ -348,6 +351,20 @@ they differ in endpoint and addressing style, not in the operations omssh uses:
 OSS rejects path-style requests, so it is always virtual-hosted; B2 and R2 are
 path-style. The form needs a bucket and a region for AWS/B2/OSS, an account
 endpoint for R2, and only a bucket for GCS.
+
+**Google Cloud Storage has two clients.** `auth: s3` (the default) uses HMAC
+keys through the S3-compatible XML API. The native client is chosen by a different
+auth value and needs no HMAC key at all:
+
+| `auth` | What it needs | Where the credential comes from |
+| --- | --- | --- |
+| `s3` (default) | an HMAC key id and secret | the OS keyring |
+| `adc` | nothing in the profile | Application Default Credentials: `gcloud auth application-default login`, a metadata server, workload identity |
+| `service_account` | `credentials_file` (a JSON path) or the JSON in the keyring | the file, or the profile's stored secret |
+| `impersonate` | `service_account` (the target email) | ADC proves who you are; GCS sees the target account |
+
+`credentials_file` and `service_account` are not secrets and live in the config;
+a JSON key kept in the keyring is one value, like every other secret here.
 
 **Azure Blob Storage is a different client too**, because it is a different
 protocol: containers and a key-per-blob namespace, with three ways to prove access:
@@ -385,9 +402,14 @@ cloud:
       provider: b2
       bucket: my-archive
       region: us-west-004
-    gcs-backups:                   # Google Cloud Storage (S3 XML API, HMAC keys)
+    gcs-hmac:                      # Google Cloud Storage (S3 XML API, HMAC keys)
       provider: gcs
       bucket: my-backups
+      auth: s3
+    gcs-backups:                   # Google Cloud Storage (native client)
+      provider: gcs
+      bucket: my-backups
+      auth: adc
     oss-cn:                        # Alibaba Cloud OSS
       provider: oss
       bucket: my-bucket
@@ -417,8 +439,9 @@ of pretending it saved. `omssh cloud forget <profile>` removes the pair.
 **Adding one from the interface:** `Ctrl+O`, then `a` (or `a` on the S3 screen,
 which fills the type in for you). The form asks for a name, the type (`s3` or
 `r2`), the bucket, the region, the endpoint (R2 only) and an optional prefix;
-`Enter` writes it to the config. The Azure screen asks for the account, the
-container and the auth mode instead of a region. The profiles appear in the list
+`Enter` writes it to the config. The type is a chooser in the form — S3, R2, B2,
+OSS — so the S3 screen is not an S3-only form. The GCS and Azure screens ask for
+their auth mode instead of a region. The profiles appear in the list
 after your hosts and `Enter` opens one. `t` says there is no shell, because there
 is not.
 

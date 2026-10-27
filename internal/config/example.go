@@ -79,10 +79,18 @@ cloud:
   #     bucket: my-archive
   #     region: us-west-004             # the bucket's region; the endpoint follows
   #
-  #   gcs-backups:                      # Google Cloud Storage (S3 XML API)
+  #   gcs-hmac:                         # Google Cloud Storage, HMAC keys (S3 XML API)
   #     provider: gcs
   #     bucket: my-backups
-  #     region: auto                    # HMAC keys, not a service account
+  #     auth: s3                        # the default for gcs
+  #     region: auto
+  #
+  #   gcs-backups:                      # Google Cloud Storage, native client
+  #     provider: gcs
+  #     bucket: my-backups
+  #     auth: adc                       # adc · service_account · impersonate
+  #     # auth: service_account takes a credentials_file (a JSON key path)
+  #     # auth: impersonate needs service_account: deployer@project.iam.gserviceaccount.com
   #
   #   oss-cn:                           # Alibaba Cloud OSS (S3-compatible)
   #     provider: oss
