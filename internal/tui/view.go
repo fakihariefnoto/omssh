@@ -40,6 +40,14 @@ func (m *Model) render() string {
 	case screenFiles:
 		// Already rendered above; named so the switch is exhaustive.
 	}
+	switch m.Overlay {
+	case OverlayTerminal:
+		return m.fitFrame(m.renderEmbedded(l), l)
+	case OverlayReplay:
+		return m.fitFrame(m.renderReplay(l), l)
+	default:
+		// Every other overlay is a card over the screen, below.
+	}
 	if card := m.renderOverlay(l); card != "" {
 		// The session chooser is a wall of cards, not a dialog: it owns the
 		// screen, so the panes behind it are cleared rather than peeking through.

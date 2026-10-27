@@ -16,6 +16,7 @@ require (
 	github.com/aws/smithy-go v1.28.5
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/charmbracelet/x/vt v0.1.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/pkg/sftp v1.13.11
 	github.com/spf13/cobra v1.10.2
@@ -54,6 +55,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect
+	github.com/charmbracelet/x/exp/ordered v0.1.0 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect

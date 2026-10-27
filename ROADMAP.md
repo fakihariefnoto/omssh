@@ -225,7 +225,7 @@ Only after M8 and M9 are honest.
 
 ---
 
-## M12 — Sessions that can be read back
+## M12 — Sessions that can be read back  (shipped: embedded PTY, .cast recording, replay player)
 
 Today the terminal is `ssh` handed the real terminal (`T`). That is the right
 default: vim, top and tmux work because nothing stands in their way. It also means
@@ -242,10 +242,13 @@ This milestone makes a *recorded* session an option rather than the only way.
   output frames. It replays with timing, colour and window size — a plain `.txt`
   transcript cannot, and a recording nobody can replay is a log, not a session.
   A `.txt` transcript is exported beside it for grep and for people who want text.
-- Replay: play, pause, scrub, speed, and a text search that seeks. Recordings are
-  listed from the launcher ("Recordings") and from the session's own menu.
-- After connecting, the launcher gains a section for the live session: files,
-  terminal, recordings, tunnels, disconnect.
+- ~~Replay: play, pause, scrub, speed, and a text search that seeks. Recordings
+  are listed from the launcher ("Recordings") and from the session's own menu.~~
+  Shipped: `Alt+R` plays the newest, `Alt+L` lists them; the player has
+  play/pause, seek, speed and search.
+- ~~After connecting, the launcher gains a section for the live session: files,
+  terminal, recordings, tunnels, disconnect.~~ Shipped except tunnels, which are
+  M13: live sessions are rows, and a Recordings row appears when one exists.
 - Input is recorded too, with one exception that matters: anything the SSH layer
   knows is a secret (a password or passphrase prompt) is not written. The recorder
   is told when a prompt is a secret, not left to guess from the text.
@@ -257,7 +260,7 @@ This milestone makes a *recorded* session an option rather than the only way.
 - A session that runs vim and top replays both, including alternate-screen
   switches and resizes.
 - Recordings live under the state directory, mode 0600, with a configured
-  retention (default: keep, with a size cap).
+  retention: `keep_days` by age and `max_mb` by size (512 MB by default).
 - The external terminal still works and records nothing, and the interface says
   which mode is which.
 

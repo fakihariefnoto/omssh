@@ -154,6 +154,12 @@ type Model struct {
 	activePrompt *promptRequest
 	// connecting is the set of hosts with a connection in flight.
 	connecting map[string]bool
+	// embedded is the embedded terminal, when one is open; replay is a recording
+	// being played. Both own the screen, so only one can exist at a time.
+	embedded   *embeddedState
+	replay     *replayState
+	recordings recordingsState
+
 	// live is the sessions this interface is showing, by alias, so switching tabs
 	// does not have to ask the manager.
 	live map[string]*session.Session
@@ -431,6 +437,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.resizeEmbedded(msg.Width, msg.Height)
 		if !m.started {
 			m.started = true
 		}
@@ -438,6 +445,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The preview needs a width before it can be fetched, and this is the
 		// first message that has one.
 		cmd := m.previewCmd()
+		return m, cmd
+
+	case embeddedExitMsg:
+		wasOpen := m.embedded != nil
+		m.endEmbedded()
+		if !wasOpen {
+			// Detached before the remote shell noticed; nothing to report.
+			return m, nil
+		}
+		if msg.err != nil {
+			m.toastWarning("Session ended: " + msg.err.Error())
+		} else {
+			m.toastInfo("Session ended")
+		}
+		return m, nil
+
+	case replayTickMsg:
+		cmd := m.advanceReplay(msg)
 		return m, cmd
 
 	case heartbeatMsg:
@@ -866,6 +891,18 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		}
 		return true
 
+	case OverlayTerminal:
+		m.handleEmbeddedKey(msg)
+		return true
+
+	case OverlayReplay:
+		m.overlayCmd = m.handleReplayKey(msg)
+		return true
+
+	case OverlayRecordings:
+		m.handleRecordingsKey(msg)
+		return true
+
 	case OverlayStaged:
 		switch msg.String() {
 		case "esc":
@@ -1266,6 +1303,14 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openPanes()
 	case "terminal.new":
 		return m.openTerminalForPane()
+	case "session.embedded":
+		return m.openEmbedded()
+	case "session.replay":
+		m.openReplayPrompt()
+		return nil
+	case "session.recordings":
+		m.openRecordings()
+		return nil
 	case "session.disconnect":
 		if m.screen == screenConnections {
 			if entry, ok := m.currentConnection(); ok {
@@ -1476,7 +1521,7 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayAdd, OverlayTransfers:
+	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
@@ -1549,6 +1594,12 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 		return m.makeSymlink(value)
 	case "prompt.link":
 		return m.copyLink(value)
+	case "prompt.replay":
+		m.openReplay(value)
+		return nil
+	case "prompt.replay-search":
+		m.searchReplay(value)
+		return nil
 	case "prompt.link-show":
 		// The URL is on screen to be read or selected; Enter just dismisses it.
 		return nil

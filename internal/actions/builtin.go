@@ -186,6 +186,14 @@ func standardPreset() []Action {
 			Desc: "Move to the previous session tab", Enabled: func(Context) bool { return true }},
 		{ID: "session.tab-next", Label: "Next tab", Category: CatSession, Default: "tab", Keys: []string{"]", "ctrl+pgdown"},
 			Desc: "Move to the next session tab", Enabled: func(Context) bool { return true }},
+		{ID: "session.embedded", Label: "Embedded terminal", Category: CatSession, Default: "U",
+			Desc: "A terminal inside omssh, recordable and replayable; Ctrl+] detaches", Enabled: f(func(ctx Context) bool {
+				return ctx.Connected
+			})},
+		{ID: "session.replay", Label: "Replay a recording", Category: CatSession, Default: "alt+r",
+			Desc: "Play back a .cast recording", Enabled: f(always)},
+		{ID: "session.recordings", Label: "Recordings", Category: CatSession, Default: "alt+l",
+			Desc: "List recorded sessions", Enabled: f(always)},
 		{ID: "terminal.new", Label: "Terminal", Category: CatSession, Default: "T",
 			Desc:    "Open a full SSH shell on this host, and come back when you exit it",
 			Enabled: f(func(ctx Context) bool { return ctx.Connected || ctx.Local })},

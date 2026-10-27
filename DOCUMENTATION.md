@@ -493,6 +493,45 @@ and refreshes the panes.
 The alias is passed as-is, so ports, keys, users and jump hosts come from
 `~/.ssh/config` rather than from a second, drifting implementation.
 
+### The embedded terminal, and replay
+
+`U` opens an **embedded** terminal on the focused pane's host: the same SSH
+connection the pane uses, a real PTY, and a terminal emulator drawing the server's
+answers inside omssh. `Ctrl+]` detaches; the connection and the other panes stay
+open. `T` is unchanged, and remains the right choice when you want the terminal
+handed over entirely.
+
+The embedded terminal is the one that can be **recorded**. Set
+
+```yaml
+sessions:
+  record: true
+  record_input: true     # keystrokes in the recording; false records output only
+  keep_days: 0           # 0 keeps every recording
+  max_mb: 512            # oldest go first when the folder exceeds this
+```
+
+and every embedded session writes an asciinema v2 `.cast` file to
+`<state>/recordings/<host>-<timestamp>.cast`, mode `0600`. The folder is pruned
+before a new recording starts: `keep_days` deletes by age, `max_mb` by total size,
+oldest first.
+
+**A recording contains what the remote side printed and, with `record_input`, what
+you typed.** A password typed into the embedded shell is therefore in the file;
+the same warning applies to any terminal recorder. omssh's own password prompts
+happen outside the shell and are never recorded. The external terminal records
+nothing, because omssh never sees those bytes.
+
+`Alt+L` lists recordings, newest first, from anywhere — including the launcher
+row that appears once one exists. `Alt+R` replays the newest directly, or asks for
+a path.
+
+`Alt+R` replays a recording, defaulting to the newest one. The player takes
+`space` to play or pause, `←`/`→` to seek five seconds, `+`/`-` to change speed
+from 0.25× to 8×, `/` to find text later in the file, `0` to restart, and `q` to
+close. `.cast` files also play in `asciinema play` and in any asciinema-compatible
+player — the format is the point, not a private log.
+
 ## Deploy
 
 A deploy is a copy with an opinion: this local tree goes to that remote root.
@@ -640,6 +679,12 @@ connections:
 transfers:
   workers: 4
 
+sessions:
+  record: false         # embedded terminals write asciinema .cast files
+  record_input: true    # include keystrokes
+  keep_days: 0          # 0 keeps recordings; otherwise delete older ones
+  max_mb: 512           # folder cap, oldest first
+
 deploy:
   profiles: {}
 ```
@@ -761,7 +806,10 @@ with `omssh keys`. The grammar is small:
 | `1`…`9` | Jump to a session |
 | `[` / `]` | Previous / next session |
 | `w` | Switch pane |
-| `T` | Terminal on this host |
+| `T` | Terminal on this host, handed over to ssh |
+| `U` | Embedded terminal on this host (recordable) |
+| `Alt+R` | Replay the newest recording, or choose a path |
+| `Alt+L` | List recordings |
 | `Q` | Disconnect, keeping the tab |
 | `Ctrl+W` | Close the tab |
 | `Esc` | Tab strip (with several tabs), then the launcher |

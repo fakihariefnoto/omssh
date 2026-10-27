@@ -14,6 +14,7 @@ type Config struct {
 	UI        UI        `yaml:"ui"`
 	Keys      Keys      `yaml:"keys"`
 	Transfers Transfers `yaml:"transfers"`
+	Sessions  Sessions  `yaml:"sessions"`
 	Deploy    Deploy    `yaml:"deploy"`
 	// Connections remembers what makes the host list quick to use: the ones kept
 	// close, the ones not worth showing, and the ones used last.
@@ -21,6 +22,21 @@ type Config struct {
 	// Cloud holds object-storage profiles. They are not hosts and do not belong in
 	// ~/.ssh/config; each one becomes a pane like a session does.
 	Cloud Cloud `yaml:"cloud"`
+}
+
+// Sessions covers the embedded terminal and its recordings.
+type Sessions struct {
+	// Record writes each embedded session to an asciinema .cast file under the
+	// state directory. Off by default: a recording contains everything shown.
+	Record bool `yaml:"record"`
+	// RecordInput includes keystrokes in the recording. It is on by default
+	// because a replay without it does not show what was asked; a secret typed
+	// into the embedded shell is then part of the log, and the docs say so.
+	RecordInput bool `yaml:"record_input"`
+	// KeepDays deletes recordings older than this many days; zero keeps them.
+	KeepDays int `yaml:"keep_days"`
+	// MaxMB caps the recordings directory; the oldest go first. Zero means 512.
+	MaxMB int `yaml:"max_mb"`
 }
 
 // Cloud is the object-storage configuration.
@@ -190,6 +206,7 @@ func Default() Config {
 			Overrides: map[string]string{},
 		},
 		Transfers: Transfers{Workers: 4},
+		Sessions:  Sessions{RecordInput: true, MaxMB: 512},
 		Deploy:    Deploy{Profiles: map[string]Profile{}},
 	}
 }
@@ -282,6 +299,12 @@ func (c Config) Validate() error {
 	}
 	if c.Keys.Quit == "esc" || c.Keys.Quit == "escape" {
 		return fmt.Errorf("keys.quit: Esc cannot quit; it dismisses, cancels and goes back")
+	}
+	if c.Sessions.KeepDays < 0 {
+		return fmt.Errorf("sessions.keep_days: must not be negative")
+	}
+	if c.Sessions.MaxMB < 0 {
+		return fmt.Errorf("sessions.max_mb: must not be negative")
 	}
 	if c.Transfers.Workers < 1 {
 		return fmt.Errorf("transfers.workers: got %d, want at least 1", c.Transfers.Workers)

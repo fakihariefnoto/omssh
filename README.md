@@ -41,6 +41,9 @@ unpacked tree or a single archive instead of a pile of files.
   from the form (stored in the OS keyring) or the provider's own chain — never
   from the config file. Azure takes an account key, a SAS token or Entra ID; GCS
   takes HMAC keys, ADC, a service-account JSON or impersonation.
+- **Recorded sessions.** `U` opens an embedded terminal; with
+  `sessions.record: true` it writes an asciinema `.cast`, and `Alt+R` replays it
+  with play, seek, speed and search. `T` still hands the terminal to `ssh`.
 - **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
   diff, and a sync mode that mirrors. A second run with nothing changed does
   nothing.

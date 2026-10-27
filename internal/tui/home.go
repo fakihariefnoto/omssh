@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -82,7 +83,7 @@ func (m *Model) homeItems() []homeItem {
 		label := tab.Host
 		hint := tab.State.Label()
 		if tab.State == StateReady {
-			hint = "connected"
+			hint = "connected · U terminal"
 		}
 		if isCloudHost(tab.Host) {
 			// A bucket's tab is keyed "cloud:<profile>"; the prefix is an
@@ -96,6 +97,10 @@ func (m *Model) homeItems() []homeItem {
 	}
 	if len(items) > 0 {
 		items = append(items, homeItem{ID: "app.files", Icon: "~", Label: "Back to the files", Hint: "Enter"})
+	}
+	if count := len(recordingFiles()); count > 0 {
+		items = append(items, homeItem{ID: "session.recordings", Icon: "@",
+			Label: "Recordings", Hint: fmt.Sprintf("%d · Alt+L", count)})
 	}
 	return append(items,
 		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},

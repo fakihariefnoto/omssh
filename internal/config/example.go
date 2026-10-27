@@ -118,6 +118,18 @@ keys:
   # overrides:
   #   file.delete: "ctrl+d"
 
+sessions:
+  # Record embedded terminals (U) to asciinema .cast files under the state
+  # directory, mode 0600. Replay them with alt+r. Nothing is recorded from the
+  # external terminal, T, because omssh never sees those bytes.
+  record: false
+  # Keystrokes go into the recording too, so a replay shows the whole exchange.
+  record_input: true
+  # Delete recordings older than this; 0 keeps them all. max_mb caps the folder,
+  # oldest first. 0 means 512 MB.
+  keep_days: 0
+  max_mb: 512
+
 transfers:
   # Files copied in parallel.
   workers: 4
