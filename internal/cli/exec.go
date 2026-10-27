@@ -164,14 +164,19 @@ func isPlainWord(word string) bool {
 
 // cliPrompter answers what a connection needs when there is no interface.
 type cliPrompter struct {
-	in  *os.File
-	err io.Writer
+	in    *os.File
+	err   io.Writer
+	batch bool
 }
 
 // ConsentHostKey prints the fingerprint and asks. A key that has never been seen
 // is a decision, so the answer is a word rather than a keystroke: "yes" stores it,
 // "once" does not, anything else refuses.
 func (p *cliPrompter) ConsentHostKey(unknown *omssh.UnknownHostError) (omssh.Consent, error) {
+	if p.batch {
+		// An agent cannot answer, and a hang is worse than an exit code.
+		return omssh.ConsentRefuse, &exitCodeError{code: exitHostKey, err: unknown}
+	}
 	fmt.Fprintf(p.err, "The authenticity of %s cannot be established.\n%s key fingerprint is %s.\n"+
 		"Trust it? [y]es, [o]nce, [N]o: ", unknown.Host, unknown.KeyType, unknown.Fingerprint)
 	answer, err := readLine(p.in)
@@ -190,6 +195,10 @@ func (p *cliPrompter) ConsentHostKey(unknown *omssh.UnknownHostError) (omssh.Con
 
 // Password reads a password without echoing it.
 func (p *cliPrompter) Password(target omssh.Target, retry bool) (log.Secret, bool, error) {
+	if p.batch {
+		return "", false, &exitCodeError{code: exitPermission,
+			err: fmt.Errorf("%s needs a password and none is stored", target.Alias)}
+	}
 	prefix := target.User + "@" + target.Host + "'s password: "
 	if retry {
 		prefix = "Permission denied, try again. " + prefix
@@ -203,6 +212,10 @@ func (p *cliPrompter) Password(target omssh.Target, retry bool) (log.Secret, boo
 
 // Passphrase reads the passphrase for an encrypted key.
 func (p *cliPrompter) Passphrase(keyPath string) (log.Secret, bool, error) {
+	if p.batch {
+		return "", false, &exitCodeError{code: exitPermission,
+			err: fmt.Errorf("%s needs its passphrase and the agent could not supply it", keyPath)}
+	}
 	value, err := readSecret("Passphrase for " + keyPath + ": ")
 	if err != nil {
 		return "", false, err

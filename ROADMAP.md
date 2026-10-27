@@ -311,7 +311,7 @@ the traffic can be recorded.
 
 ---
 
-## M14 — An interface for agents
+## M14 — An interface for agents  (shipped: `omssh fs`, `--json`, `--batch`, `--allow-write`, allowlists, audit log; still missing: `--json-lines`, `omssh mcp`)
 
 A person drives a screen. An agent cannot: it needs a command that does not ask
 questions, output it can parse, and a safety model that fails closed. This is the

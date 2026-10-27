@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -27,11 +28,33 @@ type Options struct {
 	// WidthMargin is -1 unless the flag was given, so the config's value wins by
 	// default and a flag always beats a file.
 	WidthMargin int
+	// JSON makes commands print one document with stable field names.
+	JSON bool
+	// Batch forbids prompting: an agent cannot answer a dialog, and a hang is
+	// worse than an exit code.
+	Batch bool
+	// AllowWrite is read-only's opposite. A write needs it for the run, not a
+	// flag per call, because the flag per call is the one an agent sets itself.
+	AllowWrite bool
+	// AllowHosts and AllowPaths narrow what may be touched at all. Empty means
+	// no restriction, which is what a person at a terminal expects.
+	AllowHosts []string
+	AllowPaths []string
+	// err is where prompts and progress go, kept so helpers can reach it.
+	err io.Writer
+}
+
+// stderr is the writer prompts use.
+func (o *Options) stderr() io.Writer {
+	if o.err == nil {
+		return os.Stderr
+	}
+	return o.err
 }
 
 // Execute runs the command line and returns the process exit code.
 func Execute(args []string, stdout, stderr io.Writer) int {
-	opts := &Options{}
+	opts := &Options{err: stderr}
 	root := newRoot(opts, stdout, stderr)
 	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
@@ -74,12 +97,18 @@ func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "disable colour entirely")
 	root.PersistentFlags().BoolVar(&opts.ASCII, "no-icons", false, "use plain ASCII glyphs instead of Nerd Font icons")
 	root.PersistentFlags().IntVar(&opts.WidthMargin, "width-margin", -1, "columns to keep free at the right edge (0-8); try 1 if the layout shifts while typing")
+	root.PersistentFlags().BoolVar(&opts.JSON, "json", false, "print one JSON document (for scripts and agents)")
+	root.PersistentFlags().BoolVar(&opts.Batch, "batch", false, "never prompt: fail with an exit code instead")
+	root.PersistentFlags().BoolVar(&opts.AllowWrite, "allow-write", false, "permit changes (without it, omssh only reads)")
+	root.PersistentFlags().StringArrayVar(&opts.AllowHosts, "allow-host", nil, "only these places (repeatable)")
+	root.PersistentFlags().StringArrayVar(&opts.AllowPaths, "allow-path", nil, "only paths under these prefixes (repeatable)")
 
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 
 	root.AddCommand(newExecCmd(opts, stdout, stderr))
 	root.AddCommand(newCloudCmd(opts, stdout))
+	root.AddCommand(newFsCmd(opts, stdout, stderr))
 	root.AddCommand(newConfigCmd(opts, stdout))
 	root.AddCommand(newKeysCmd(opts, stdout))
 	root.AddCommand(newVersionCmd(stdout))

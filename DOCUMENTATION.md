@@ -257,6 +257,15 @@ stays visible for ten seconds saying `done`. The first running job also appears 
 the status bar (`copy → contabo 30%`), so it is never invisible on a narrow
 terminal. Transfers run off the update loop; the interface keeps answering.
 
+`Alt+J` opens the transfer screen: one block per job with a bar, the file being
+copied, bytes done of total, average speed and elapsed time. It also opens by
+itself when a paste is large — 50 files or 100 MB — unless something else is
+already open. `Esc` closes it and the copy keeps going.
+
+Copies run several files at once, as many as `transfers.workers` says (four by
+default). One file is still one stream; the parallelism is across files, which is
+what makes a folder of small files over a slow link bearable.
+
 ## Connections
 
 `Ctrl+O` opens the connection manager. It has one screen per kind of place, and
@@ -476,6 +485,66 @@ omssh version
 side for commands that want one. It exits with the remote command's status, so it
 composes in a script. An unknown host key prints its fingerprint and asks before
 trusting it; passwords are read with echo off.
+
+### Files from a script, or an agent
+
+`omssh fs` is the same file manager with no screen around it. One grammar for
+every place — `local`, a cloud profile, or an SSH host:
+
+```sh
+omssh fs ls prod:/srv/app
+omssh fs ls local:~/Downloads --json
+omssh fs stat site:/var/www/index.html
+omssh fs get prod:/srv/app/dump.sql ./dump.sql
+omssh fs put ./dist/index.html site:/var/www/index.html
+omssh fs mkdir site:/var/www/releases/2026-10
+omssh fs rm site:/var/www/releases/2025-01
+```
+
+A bare place means its root (`omssh fs ls prod`). `get` writes to stdout with
+`-`; `put` reads stdin with `-`. `put` creates missing parent directories.
+
+`--json` prints one document with stable field names:
+
+```json
+{
+  "entries": [{"name": "index.html", "dir": false, "size": 5124,
+               "modified": "2026-10-27T07:09:00Z"}],
+  "path": "/var/www",
+  "place": "site"
+}
+```
+
+**Reads are free; writes are not.** Without `--allow-write` the mutating verbs
+(`put`, `rm`, `mkdir`) exit `77` and change nothing — the flag belongs to the run,
+not to the call, so nothing an agent passes in can grant it. `--allow-host` and
+`--allow-path` narrow further, and are checked before a filesystem is opened:
+
+```sh
+omssh fs put ./build.tar.gz prod:/srv/app/build.tar.gz \
+  --allow-write --allow-host prod --allow-path /srv/app
+```
+
+`--batch` never prompts. On an unknown host key it exits `65` with the
+fingerprint on stderr instead of waiting; a password that is needed but not stored
+exits `77`. The codes:
+
+| code | meaning                                             |
+| ---- | --------------------------------------------------- |
+| 0    | success                                             |
+| 1    | the operation failed                                |
+| 64   | the command line was wrong                          |
+| 65   | the host is not trusted yet (`--batch`)             |
+| 77   | refused: no `--allow-write`, allowlist, credentials |
+
+Every change appends a line to `audit.jsonl` in the state directory
+(`omssh config path` shows where configuration lives; the state directory is its
+sibling under `~/.local/state/omssh`):
+
+```json
+{"time":"2026-10-27T07:10:00Z","action":"put","place":"prod",
+ "path":"/srv/app/build.tar.gz","bytes":24813,"ok":true}
+```
 
 ## Configuration
 
