@@ -810,11 +810,11 @@ func TestLauncherDashboardAndLocalFiles(t *testing.T) {
 // A transfer large enough to watch gets a screen; a routine copy stays in the
 // sidebar.
 func TestBigTransfersGetAScreen(t *testing.T) {
-	if bigTransfer(3, 2<<20) {
-		t.Error("a small copy should stay in the sidebar")
+	if bigTransfer(4, 2<<20) {
+		t.Error("a four-file copy should stay in the sidebar")
 	}
-	if !bigTransfer(50, 1) {
-		t.Error("fifty files is worth watching")
+	if !bigTransfer(5, 1) {
+		t.Error("five files is worth watching")
 	}
 	if !bigTransfer(1, 200<<20) {
 		t.Error("two hundred megabytes is worth watching")
@@ -857,9 +857,9 @@ func TestBigPasteOpensTheTransferScreen(t *testing.T) {
 		Selected: map[string]bool{}, History: []string{"/"}}
 	m.Focused = 1
 
-	// Sixty tiny files: the count threshold, without writing sixty files.
-	names := make([]string, 0, 60)
-	for i := 0; i < 60; i++ {
+	// Eight tiny files: past the five-file threshold, without writing many.
+	names := make([]string, 0, 8)
+	for i := 0; i < 8; i++ {
 		names = append(names, fmt.Sprintf("f%02d", i))
 	}
 	m.staged = stagedState{Paths: names, From: 0, Sizes: map[string]int64{}, Dir: m.Panes[0].Path}
@@ -867,12 +867,12 @@ func TestBigPasteOpensTheTransferScreen(t *testing.T) {
 		t.Fatalf("paste should start: %v", m.toasts)
 	}
 	if m.Overlay != OverlayTransfers {
-		t.Errorf("a 60-file paste should open the transfer screen, overlay=%v", m.Overlay)
+		t.Errorf("an eight-file paste should open the transfer screen, overlay=%v", m.Overlay)
 	}
 
 	// With a dialog open, the screen does not steal it.
 	m.Overlay = OverlayPrompt
-	m.openTransfersIfBig(60, 0)
+	m.openTransfersIfBig(8, 0)
 	if m.Overlay != OverlayPrompt {
 		t.Error("an open dialog should not be replaced by the transfer screen")
 	}

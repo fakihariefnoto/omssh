@@ -34,7 +34,7 @@ type api interface {
 	// where prefixes become directories; the empty delimiter means everything.
 	List(ctx context.Context, prefix, delimiter string) ([]blobMeta, error)
 	// Open starts a download.
-	Open(ctx context.Context, key string) (io.ReadCloser, int64, error)
+	Open(ctx context.Context, key string) (io.ReadCloser, blobMeta, error)
 	// Put uploads a whole blob.
 	Put(ctx context.Context, key string, body io.Reader) error
 	// Delete removes one blob.
@@ -162,16 +162,19 @@ func (a *azureAPI) List(ctx context.Context, prefix, delimiter string) ([]blobMe
 	return out, nil
 }
 
-func (a *azureAPI) Open(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+func (a *azureAPI) Open(ctx context.Context, key string) (io.ReadCloser, blobMeta, error) {
 	response, err := a.container.NewBlobClient(key).DownloadStream(ctx, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, blobMeta{}, err
 	}
-	size := int64(0)
+	meta := blobMeta{key: key}
 	if response.ContentLength != nil {
-		size = *response.ContentLength
+		meta.size = *response.ContentLength
 	}
-	return response.Body, size, nil
+	if response.LastModified != nil {
+		meta.modified = *response.LastModified
+	}
+	return response.Body, meta, nil
 }
 
 func (a *azureAPI) Put(ctx context.Context, key string, body io.Reader) error {

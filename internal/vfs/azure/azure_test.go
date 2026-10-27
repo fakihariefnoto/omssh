@@ -2,7 +2,9 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"sort"
 	"strings"
 	"testing"
@@ -59,12 +61,13 @@ func (f *fakeAPI) List(_ context.Context, prefix, delimiter string) ([]blobMeta,
 	return out, nil
 }
 
-func (f *fakeAPI) Open(_ context.Context, key string) (io.ReadCloser, int64, error) {
+func (f *fakeAPI) Open(_ context.Context, key string) (io.ReadCloser, blobMeta, error) {
 	body, ok := f.objects[key]
 	if !ok {
-		return nil, 0, vfs.ErrNotExist
+		return nil, blobMeta{}, vfs.ErrNotExist
 	}
-	return io.NopCloser(strings.NewReader(string(body))), int64(len(body)), nil
+	return io.NopCloser(strings.NewReader(string(body))),
+		blobMeta{key: key, size: int64(len(body)), modified: f.times[key]}, nil
 }
 
 func (f *fakeAPI) Put(_ context.Context, key string, body io.Reader) error {
@@ -175,5 +178,66 @@ func TestPrefixRootsTheFilesystem(t *testing.T) {
 	}
 	if _, err := fsys.Stat("/../secret"); err == nil {
 		t.Error("a path above the prefix must not resolve")
+	}
+}
+
+// A prefix is not a path boundary: removing /site must leave /site2 alone, and
+// an empty folder is its marker, which Remove must delete rather than call empty
+// a directory that is not.
+func TestRemoveRespectsPathBoundaries(t *testing.T) {
+	fake := newFake()
+	fsys, err := New(Options{Account: "a", Container: "c", Auth: AuthEntra, API: fake})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"/site", "/site2"} {
+		if err := fsys.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"/site/a.txt", "/site2/keep.txt"} {
+		if err := vfs.WriteFile(fsys, name, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := fsys.RemoveAll("/site"); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+	if _, err := fsys.Stat("/site/a.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the tree should be gone, got %v", err)
+	}
+	if _, err := fsys.Stat("/site2/keep.txt"); err != nil {
+		t.Errorf("a sibling sharing the prefix must survive: %v", err)
+	}
+
+	// An empty folder exists only as a marker, and Remove deletes that marker.
+	if err := fsys.Mkdir("/empty", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.Remove("/empty"); err != nil {
+		t.Fatalf("Remove of an empty folder: %v", err)
+	}
+	if _, err := fsys.Stat("/empty"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the folder should be gone, got %v", err)
+	}
+
+	// A folder with children is refused, as on a real filesystem.
+	if err := fsys.MkdirAll("/full/sub", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.Remove("/full"); err == nil {
+		t.Error("Remove of a non-empty folder should fail")
+	}
+}
+
+// An account is needed for the URL even with entra, unless an endpoint stands in
+// for it.
+func TestAccountOrEndpoint(t *testing.T) {
+	if _, err := New(Options{Container: "c", Auth: AuthEntra}); err == nil {
+		t.Error("entra without an account or endpoint has no URL to call")
+	}
+	if _, err := New(Options{Container: "c", Auth: AuthEntra,
+		Endpoint: "http://127.0.0.1:10000/devstoreaccount1", API: newFake()}); err != nil {
+		t.Errorf("an endpoint should stand in for the account: %v", err)
 	}
 }

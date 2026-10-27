@@ -151,10 +151,10 @@ func (m *Model) openTransfersIfBig(items int, bytes int64) {
 }
 
 // bigTransfer is when a copy deserves the screen rather than a line in the
-// sidebar: many files, or a lot of bytes. The numbers are a heuristic, not a
-// promise, and they are deliberately high enough that a routine copy stays quiet.
+// sidebar. Five files is already a copy someone wants to watch, and so is a
+// hundred megabytes; either is enough to take the screen.
 func bigTransfer(items int, bytes int64) bool {
-	return items >= 50 || bytes >= 100<<20
+	return items >= 5 || bytes >= 100<<20
 }
 
 // renderTransfersScreen is the transfer screen: every job, its bar, its current

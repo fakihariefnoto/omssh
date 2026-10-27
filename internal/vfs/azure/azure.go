@@ -71,6 +71,11 @@ func New(opts Options) (*FS, error) {
 	if opts.Auth == "" {
 		opts.Auth = AuthEntra
 	}
+	// The account is part of the URL unless an endpoint supplies one, so entra
+	// needs it just as much as key and SAS do.
+	if opts.Account == "" && strings.TrimSpace(opts.Endpoint) == "" {
+		return nil, errors.New("azure: a storage account name (or an endpoint) is required")
+	}
 	if opts.Auth != AuthEntra && opts.Account == "" {
 		return nil, errors.New("azure: a storage account name is required")
 	}
@@ -176,11 +181,13 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		return nil, f.wrap(name, err)
 	}
 	entries := make([]fs.DirEntry, 0, len(children))
+	seen := make(map[string]bool, len(children))
 	for _, meta := range children {
 		base := path.Base(strings.TrimSuffix(meta.key, "/"))
-		if base == "" || base == "." || meta.key == prefix {
-			continue // the directory marker itself
+		if base == "" || base == "." || meta.key == prefix || seen[base] {
+			continue // the directory marker itself, or a prefix listed twice
 		}
+		seen[base] = true
 		entries = append(entries, dirEntry{info: fileInfo{
 			name: base, size: meta.size, modified: meta.modified, dir: meta.dir,
 		}})
@@ -200,14 +207,14 @@ func (f *FS) Open(name string) (fs.File, error) {
 	if clean == "/" {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: vfs.ErrNotExist}
 	}
-	body, size, err := f.api.Open(context.Background(), f.key(clean))
+	body, meta, err := f.api.Open(context.Background(), f.key(clean))
 	if err != nil {
 		return nil, f.wrap(name, err)
 	}
 	return &blobFile{
 		name: path.Base(clean),
 		body: body,
-		info: fileInfo{name: path.Base(clean), size: size},
+		info: fileInfo{name: path.Base(clean), size: meta.size, modified: meta.modified},
 	}, nil
 }
 
@@ -302,16 +309,22 @@ func (f *FS) Remove(name string) error {
 	if err != nil {
 		return &fs.PathError{Op: "remove", Path: name, Err: vfs.ErrNotExist}
 	}
+	prefix := f.key(clean)
 	if info.IsDir() {
-		children, listErr := f.api.List(context.Background(), f.key(clean)+"/", "/")
+		marker := prefix + "/"
+		children, listErr := f.api.List(context.Background(), marker, "/")
 		if listErr != nil {
 			return f.wrap(name, listErr)
 		}
-		if len(children) > 0 {
-			return &fs.PathError{Op: "remove", Path: name, Err: errors.New("directory not empty")}
+		for _, child := range children {
+			if child.key != marker {
+				return &fs.PathError{Op: "remove", Path: name, Err: errors.New("directory not empty")}
+			}
 		}
+		// A folder's own existence is its marker, not the name without a slash.
+		prefix = marker
 	}
-	if err := f.api.Delete(context.Background(), f.key(clean)); err != nil {
+	if err := f.api.Delete(context.Background(), prefix); err != nil {
 		return f.wrap(name, err)
 	}
 	return nil
@@ -328,13 +341,24 @@ func (f *FS) RemoveAll(name string) error {
 	if err != nil {
 		return f.wrap(name, err)
 	}
+	// A flat listing matches by prefix, not by path boundary: "site" would also
+	// return "site2/index.html". Only this object and the names under it belong
+	// to this removal.
 	for _, meta := range children {
-		if err := f.api.Delete(context.Background(), meta.key); err != nil {
+		if meta.key != prefix && !strings.HasPrefix(meta.key, prefix+"/") {
+			continue
+		}
+		if err := f.api.Delete(context.Background(), meta.key); err != nil && !errors.Is(classify(err), vfs.ErrNotExist) {
 			return f.wrap(name, err)
 		}
 	}
-	// The marker itself, which a flat listing includes, or the object itself.
-	if err := f.api.Delete(context.Background(), prefix); err != nil && !errors.Is(classify(err), vfs.ErrNotExist) {
+	// The object itself, or the folder's marker, when the listing did not show
+	// it: a deleted blob is not a failure of the removal.
+	leftover := prefix
+	if info, statErr := f.Stat(clean); statErr == nil && info.IsDir() {
+		leftover = prefix + "/"
+	}
+	if err := f.api.Delete(context.Background(), leftover); err != nil && !errors.Is(classify(err), vfs.ErrNotExist) {
 		return f.wrap(name, err)
 	}
 	return nil
