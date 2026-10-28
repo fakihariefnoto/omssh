@@ -149,19 +149,19 @@ func (f *tunnelFormState) enterFields(kind tunnel.Kind) {
 		// Bastion is the CLI's name for a local forward with metadata intent; the
 		// interface only offers L, R and D, but the switch stays exhaustive.
 		port := suggestPort("127.0.0.1", 8080)
-		add("bind", "bind", "127.0.0.1 keeps it private; 0.0.0.0 exposes it", "127.0.0.1")
-		add("port", "port", fmt.Sprintf("%d is free on this machine", port), strconv.Itoa(port))
+		add("bind", "local bind", "127.0.0.1 keeps it private; 0.0.0.0 exposes it", "127.0.0.1")
+		add("port", "local port", fmt.Sprintf("%d is free on this machine", port), strconv.Itoa(port))
 		add("host", "target host", "resolved by the server, not by you", "localhost")
 		add("port2", "target port", "the service on the target", "80")
 	case tunnel.Remote:
-		add("bind", "server bind", "where the server listens; loopback is private", "127.0.0.1")
-		add("port", "server port", "the port to open on the server", "9000")
+		add("bind", "server bind", "127.0.0.1 is server-only; 0.0.0.0 needs GatewayPorts", "127.0.0.1")
+		add("port", "server port", "the public side; the port to reach on the server", "9000")
 		add("host", "local host", "resolved on this machine", "localhost")
-		add("port2", "local port", "the service here to reach", "3000")
+		add("port2", "local port", "the app on this machine to reach", "3000")
 	case tunnel.Dynamic:
 		port := suggestPort("127.0.0.1", 1080)
-		add("bind", "bind", "the SOCKS5 listener on this machine", "127.0.0.1")
-		add("port", "port", fmt.Sprintf("%d is free; a SOCKS5 client connects here", port), strconv.Itoa(port))
+		add("bind", "local bind", "the SOCKS5 listener on this machine", "127.0.0.1")
+		add("port", "local port", fmt.Sprintf("%d is free; a SOCKS5 client connects here", port), strconv.Itoa(port))
 	}
 }
 
@@ -391,13 +391,22 @@ func (f tunnelFormState) preview(alias string) (diagram, explanation []string) {
 	target := net.JoinHostPort(valueOr(host, "host"), valueOr(port2, "port"))
 	switch f.kind {
 	case tunnel.Remote:
-		return []string{
-				fmt.Sprintf("%s  ◀──SSH──  %s", target, local),
-				fmt.Sprintf("on %s: %s", alias, local),
-			}, []string{
-				fmt.Sprintf("A program on %s connecting to %s reaches %s here.", alias, local, target),
-				"localhost on the server side would mean the server; here it means this machine.",
-			}
+		lines := []string{
+			fmt.Sprintf("%s  ◀──SSH──  %s", target, local),
+			fmt.Sprintf("on %s: %s", alias, local),
+		}
+		explanation := []string{
+			fmt.Sprintf("A program on %s connecting to %s reaches %s here.", alias, local, target),
+			"localhost on the server side would mean the server; here it means this machine.",
+		}
+		if bind == "127.0.0.1" || bind == "localhost" || bind == "::1" {
+			explanation = append(explanation,
+				"Only the server itself can reach that address. For a public IP, bind 0.0.0.0.")
+		} else {
+			explanation = append(explanation,
+				"The server must allow it: sshd GatewayPorts clientspecified (or yes), and the firewall open.")
+		}
+		return lines, explanation
 	case tunnel.Dynamic:
 		return []string{
 				fmt.Sprintf("SOCKS5 %s  ───SSH──▶  any target", local),
@@ -447,6 +456,11 @@ func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	started, err := tunnel.Start(context.Background(), options)
 	if err != nil {
 		return err
+	}
+	if spec.Kind == tunnel.Remote {
+		if host, _, err := net.SplitHostPort(spec.Listen); err == nil && (host == "0.0.0.0" || host == "::") {
+			m.toastInfo("Remote bind on the server · GatewayPorts and the firewall decide if it is public")
+		}
 	}
 	m.tunnelSeq++
 	active.id, active.tunnel = m.tunnelSeq, started

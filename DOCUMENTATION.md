@@ -98,6 +98,20 @@ under it. Ports are suggested after probing for a free one, and a busy port is
 caught before anything starts, with the next free port named in the error. A
 remote forward's port is checked by the server and reported when it answers.
 
+**Remote forwards and the public internet.** A remote forward listens on the
+server, not here. With the default bind `127.0.0.1` only the server itself can
+connect — `http://<server-ip>:9000/` will not work. To publish it:
+
+1. set the server bind to `0.0.0.0`;
+2. on the server, allow it in `/etc/ssh/sshd_config` with `GatewayPorts
+   clientspecified` (or `yes`) and reload sshd;
+3. open the port in the provider's firewall/security group and in the server's
+   own firewall.
+
+omssh cannot override sshd: it asks the server to listen, and the server decides
+whether that is loopback or public. The form says which case you are in, and a
+wildcard bind shows a reminder after starting.
+
 Below the fields is the **simulation**: the path the bytes take and what
 `localhost` means at each end. For a local forward it reads like
 `127.0.0.1:8080 ───SSH──▶ db.internal:5432`, with the sentence "localhost in the
