@@ -102,10 +102,6 @@ func (m *Model) homeItems() []homeItem {
 	if len(items) > 0 {
 		items = append(items, homeItem{ID: "app.files", Icon: "~", Label: "Back to the files", Hint: "Enter"})
 	}
-	if count := len(recordingFiles()); count > 0 {
-		items = append(items, homeItem{ID: "session.recordings", Icon: "@",
-			Label: "Recordings", Hint: fmt.Sprintf("%d · Alt+L", count)})
-	}
 	return append(items,
 		// Connections first, then the things that use them: Terminal and Tunnel
 		// only make sense once there is somewhere to run them.

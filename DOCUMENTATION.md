@@ -606,9 +606,8 @@ the same warning applies to any terminal recorder. omssh's own password prompts
 happen outside the shell and are never recorded. The external terminal records
 nothing, because omssh never sees those bytes.
 
-`Alt+L` lists recordings, newest first, from anywhere — including the launcher
-row that appears once one exists. `Alt+R` replays the newest directly, or asks for
-a path.
+Recordings are the **Terminal** tab of **History** on the launcher. `Alt+R`
+replays the newest directly, or asks for a path.
 
 `Alt+R` replays a recording, defaulting to the newest one. The player takes
 `space` to play or pause, `←`/`→` to seek five seconds, `+`/`-` to change speed
@@ -1001,7 +1000,7 @@ with `omssh keys`. The grammar is small:
 | `Alt+Y` | Watch or stop running tunnels |
 | `Alt+M` | MCP configuration for agents |
 | `Alt+R` | Replay the newest recording, or choose a path |
-| `Alt+L` | List recordings |
+
 | `Q` | Disconnect, keeping the tab |
 | `Ctrl+W` | Close the tab |
 | `Esc` | Tab strip (with several tabs), then the launcher; on the launcher, quit |

@@ -159,7 +159,6 @@ type Model struct {
 	embedded     *embeddedState
 	detached     []*embeddedState
 	replay       *replayState
-	recordings   recordingsState
 	tunnels      []*activeTunnel
 	tunnelSeq    int
 	tunnelCursor int
@@ -920,10 +919,6 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.overlayCmd = m.handleReplayKey(msg)
 		return true
 
-	case OverlayRecordings:
-		m.handleRecordingsKey(msg)
-		return true
-
 	case OverlayTunnels:
 		m.handleTunnelsKey(msg)
 		return true
@@ -1388,9 +1383,6 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "app.session-tools":
 		m.openSessionKind()
 		return nil
-	case "session.recordings":
-		m.openRecordings()
-		return nil
 	case "session.disconnect":
 		if m.screen == screenConnections {
 			if entry, ok := m.currentConnection(); ok {
@@ -1639,7 +1631,7 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings,
+	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay,
 		OverlayTunnels, OverlayMCP, OverlaySessionChoose, OverlayLocalChoose,
 		OverlayTunnelForm, OverlayHistoryDetail, OverlaySessionKind:
 		// These have no text field.

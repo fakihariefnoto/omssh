@@ -122,12 +122,12 @@ func TestRecordingsListAndReplay(t *testing.T) {
 	}
 
 	m := newTestModel(t)
-	m.openRecordings()
-	if m.Overlay != OverlayRecordings {
-		t.Fatalf("recordings should open, overlay=%v", m.Overlay)
+	m.openHistory(0)
+	if m.screen != screenHistory {
+		t.Fatalf("recordings belong to History, screen=%v", m.screen)
 	}
-	if out := ansi.Strip(render(m)); !strings.Contains(out, "contabo-20260101-120000") {
-		t.Errorf("the list should name the recording:\n%s", out)
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "contabo") {
+		t.Errorf("the Terminal tab should name the recording:\n%s", out)
 	}
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayReplay || m.replay == nil {

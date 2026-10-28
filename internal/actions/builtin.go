@@ -192,8 +192,6 @@ func standardPreset() []Action {
 			})},
 		{ID: "session.replay", Label: "Replay a recording", Category: CatSession, Default: "alt+r",
 			Desc: "Play back a .cast recording", Enabled: f(always)},
-		{ID: "session.recordings", Label: "Recordings", Category: CatSession, Default: "alt+l",
-			Desc: "List recorded sessions", Enabled: f(always)},
 		{ID: "session.tunnel", Label: "Start a tunnel", Category: CatSession, Default: "alt+t",
 			Desc: "Forward a port through this host: L, R or D", Enabled: f(always)},
 		{ID: "session.tunnels", Label: "Tunnels", Category: CatSession, Default: "alt+y",

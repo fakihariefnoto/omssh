@@ -189,3 +189,27 @@ func TestHistoryEmptyExplainsRecording(t *testing.T) {
 		t.Errorf("with recording on, history should say how to make one:\n%s", out)
 	}
 }
+
+// Recordings are not a second launcher row: they are History's Terminal tab, and
+// opening History from the launcher keeps the launcher behind it.
+func TestRecordingsBelongToHistory(t *testing.T) {
+	historyFixture(t)
+	m := newTestModel(t)
+	m.screen = screenHome
+	for _, item := range m.homeItems() {
+		if string(item.ID) == "session.recordings" {
+			t.Error("Recordings should not be its own launcher row")
+		}
+	}
+	m.runAction("app.history")
+	if m.screen != screenHistory {
+		t.Fatalf("History should be a screen, got %v", m.screen)
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "contabo") {
+		t.Errorf("the Terminal tab should list the recording:\n%s", out)
+	}
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.screen != screenHome {
+		t.Errorf("Esc should return to the launcher, screen=%v", m.screen)
+	}
+}

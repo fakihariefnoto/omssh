@@ -50,8 +50,6 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderAddChooser(l)
 	case OverlayTransfers:
 		return m.renderTransfersScreen(l)
-	case OverlayRecordings:
-		return m.renderRecordings(l)
 	case OverlayTunnels:
 		return m.renderTunnels(l)
 	case OverlayMCP:
