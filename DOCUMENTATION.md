@@ -102,15 +102,48 @@ remote forward's port is checked by the server and reported when it answers.
 server, not here. With the default bind `127.0.0.1` only the server itself can
 connect — `http://<server-ip>:9000/` will not work. To publish it:
 
-1. set the server bind to `0.0.0.0`;
-2. on the server, allow it in `/etc/ssh/sshd_config` with `GatewayPorts
-   clientspecified` (or `yes`) and reload sshd;
-3. open the port in the provider's firewall/security group and in the server's
-   own firewall.
+1. set the server bind to `0.0.0.0`, the server port to the public port
+   (`9000`), and the local port to the app on this machine (`8080`);
+2. on the server, allow it:
+
+   ```sh
+   # /etc/ssh/sshd_config.d/omssh.conf
+   AllowTcpForwarding yes
+   GatewayPorts clientspecified     # or "yes" to force wildcard binds
+   ```
+
+   ```sh
+   sudo sshd -t                     # validate before reloading
+   sudo systemctl reload ssh        # or sshd, depending on the distribution
+   ```
+
+   `clientspecified` lets this client ask for `0.0.0.0`; `yes` makes every remote
+   forward wildcard whether asked or not. `no` (the default) forces loopback.
+   `AllowTcpForwarding` must not be `no`; `local` and `remote` are the useful
+   middle grounds (`local` would block this direction entirely).
+3. open the port in the provider's firewall/security group **and** in the
+   server's own firewall:
+
+   ```sh
+   sudo ufw allow 9000/tcp                                    # ufw
+   sudo firewall-cmd --permanent --add-port=9000/tcp &&      sudo firewall-cmd --reload                               # firewalld
+   ```
+
+4. confirm what the server actually bound after the tunnel connects:
+
+   ```sh
+   ss -ltn 'sport = :9000'
+   # 0.0.0.0:9000   means public (GatewayPorts took effect)
+   # 127.0.0.1:9000 means loopback only
+   ```
+
+   Then test from outside with `curl -v http://<server-ip>:9000/`.
 
 omssh cannot override sshd: it asks the server to listen, and the server decides
 whether that is loopback or public. The form says which case you are in, and a
-wildcard bind shows a reminder after starting.
+wildcard bind shows a reminder after starting. Exposing a port this way publishes a
+service on the internet; leave `GatewayPorts no` and use a local forward from the
+client when you only need access for yourself.
 
 Below the fields is the **simulation**: the path the bytes take and what
 `localhost` means at each end. For a local forward it reads like

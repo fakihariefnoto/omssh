@@ -79,18 +79,13 @@ const (
 // could be connected, plus the ways out.
 func (m *Model) sessionChooserRows() []sessionRow {
 	rows := make([]sessionRow, 0, len(m.live)+8)
-	if m.sessionChoose.mode == "tunnel" && len(m.tunnels) > 0 {
-		rows = append(rows, sessionRow{key: rowTunnels, label: "Running tunnels",
-			hint: fmt.Sprintf("%d · watch", len(m.tunnels))})
-	}
-	if m.sessionChoose.mode == "tunnel" && len(m.cfg.Tunnels.Profiles) > 0 {
-		rows = append(rows, sessionRow{key: rowSaved, label: "Saved tunnels",
-			hint: fmt.Sprintf("%d · start, edit or delete", len(m.cfg.Tunnels.Profiles))})
-	}
 	live := make(map[string]bool, len(m.live))
 	for _, host := range m.liveSSHHosts() {
 		live[host] = true
 		hint := "connected"
+		if m.sessionChoose.mode == "tunnel" && m.hasTunnelChoices(host) {
+			hint = m.hostTunnelStatus(host)
+		}
 		if m.sessionChoose.mode == "terminal" && m.detachedState(host) != nil {
 			hint = "terminal detached · Enter reattaches"
 		}
@@ -104,6 +99,16 @@ func (m *Model) sessionChooserRows() []sessionRow {
 		}
 		rows = append(rows, sessionRow{key: entry.Alias, label: entry.Alias,
 			hint: "not connected · Enter connects"})
+	}
+	// Hosts first: the per-host menu is where saved and running tunnels live.
+	// The global rows below are a second way in, not the first question.
+	if m.sessionChoose.mode == "tunnel" && len(m.tunnels) > 0 {
+		rows = append(rows, sessionRow{key: rowTunnels, label: "All running tunnels",
+			hint: fmt.Sprintf("%d · watch", len(m.tunnels))})
+	}
+	if m.sessionChoose.mode == "tunnel" && len(m.cfg.Tunnels.Profiles) > 0 {
+		rows = append(rows, sessionRow{key: rowSaved, label: "All saved tunnels",
+			hint: fmt.Sprintf("%d · start, edit or delete", len(m.cfg.Tunnels.Profiles))})
 	}
 	return append(rows, sessionRow{key: rowConnections, label: "Manage connections…", hint: "Ctrl+O"})
 }
@@ -145,7 +150,7 @@ func (m *Model) handleSessionChooserKey(msg tea.KeyPressMsg) tea.Cmd {
 			return m.connectForChooser(row.key)
 		}
 		if m.sessionChoose.mode == "tunnel" {
-			m.openTunnelPromptHost(row.key)
+			m.openTunnelForHost(row.key)
 			return nil
 		}
 		return m.openEmbeddedHost(row.key)

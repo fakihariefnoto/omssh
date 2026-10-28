@@ -705,7 +705,9 @@ func (m *Model) startSavedTunnel(name string) {
 func (m *Model) deleteTunnelProfile(name string) {
 	delete(m.cfg.Tunnels.Profiles, name)
 	m.saveConfig()
-	if len(m.cfg.Tunnels.Profiles) > 0 {
+	if m.tunnelHostMenu.host != "" {
+		m.openTunnelHostMenu(m.tunnelHostMenu.host)
+	} else if len(m.cfg.Tunnels.Profiles) > 0 {
 		m.tunnelSaved = clamp(m.tunnelSaved, 0, len(m.cfg.Tunnels.Profiles)-1)
 		m.Overlay = OverlayTunnelSaved
 	} else {
@@ -727,10 +729,8 @@ func (m *Model) renderTunnelSaved(l layout) string {
 	for i, name := range names {
 		profile := m.cfg.Tunnels.Profiles[name]
 		arrow := "→"
-		if strings.EqualFold(profile.Kind, "remote") {
-			arrow = "←"
-		}
-		line := fmt.Sprintf("%-18s %s %s %s %s", name, profile.Kind, profile.Listen, arrow, profile.Target)
+		_ = arrow
+		line := fmt.Sprintf("%-18s %s", name, describeTunnel(profile))
 		hostLine := m.st.CardMuted.Render(truncate("  via "+profile.Host, content))
 		if i == m.tunnelSaved {
 			lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible("▸ "+truncate(line, content-2), content)), hostLine)

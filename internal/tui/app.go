@@ -176,6 +176,7 @@ type Model struct {
 	tunnelForm      tunnelFormState
 	tunnelSaved     int
 	tunnelDash      int
+	tunnelHostMenu  tunnelHostState
 	history         historyState
 	historyDetail   historyDetailState
 	historyPending  historyEntry
@@ -948,6 +949,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.handleTunnelSavedKey(msg)
 		return true
 
+	case OverlayTunnelHost:
+		m.handleTunnelHostKey(msg)
+		return true
+
 	case OverlayMCP:
 		if msg.String() == "esc" || msg.String() == "q" {
 			m.Overlay = OverlayNone
@@ -1644,7 +1649,8 @@ func (m *Model) focusedInput() *input {
 		return &m.secretInput
 	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay,
 		OverlayMCP, OverlaySessionChoose, OverlayLocalChoose,
-		OverlayTunnelForm, OverlayHistoryDetail, OverlaySessionKind, OverlayTunnelSaved:
+		OverlayTunnelForm, OverlayHistoryDetail, OverlaySessionKind, OverlayTunnelSaved,
+		OverlayTunnelHost:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
