@@ -46,8 +46,9 @@ unpacked tree or a single archive instead of a pile of files.
   with play, seek, speed and search. `T` still hands the terminal to `ssh`.
 - **Tunnels.** `-L`, `-R` and SOCKS `-D` over the pooled connection, with a
   reconnect on the next connection and metadata-only auditing in
-  `<state>/tunnels.jsonl`. From the launcher: **Terminal** and **Tunnel** choose
-  a connected host, and **Tunnel** shows what is listening and how much has moved.
+  `<state>/tunnels.jsonl`. From the launcher: **Terminal** and **Tunnel** choose a host —
+  connecting it first if needed — and **Tunnel** shows what is listening and how
+  much has moved.
   `bastion` names the forward that exists to be watched.
 - **An agent interface.** `omssh fs` and `omssh mcp`: one path grammar, JSON
   output, `--json-lines` progress, and a safety model — read-only by default,

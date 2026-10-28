@@ -102,14 +102,11 @@ func (m *Model) homeItems() []homeItem {
 		items = append(items, homeItem{ID: "session.recordings", Icon: "@",
 			Label: "Recordings", Hint: fmt.Sprintf("%d · Alt+L", count)})
 	}
-	if len(m.liveSSHHosts()) > 0 {
-		items = append(items, homeItem{ID: "session.terminal-choose", Icon: "t",
-			Label: "Terminal", Hint: "choose a connected host"})
-	}
-	if len(m.liveSSHHosts()) > 0 || len(m.tunnels) > 0 {
-		items = append(items, homeItem{ID: "session.tunnel-choose", Icon: "n",
-			Label: "Tunnel", Hint: tunnelMenuHint(m)})
-	}
+	items = append(items,
+		homeItem{ID: "session.terminal-choose", Icon: "t", Label: "Terminal",
+			Hint: "choose a host"},
+		homeItem{ID: "session.tunnel-choose", Icon: "n", Label: "Tunnel",
+			Hint: tunnelMenuHint(m)})
 	return append(items,
 		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},
 		homeItem{ID: "app.dashboard", Icon: "=", Label: "Dashboard", Hint: "choose panes"},

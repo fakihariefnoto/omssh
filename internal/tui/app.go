@@ -166,6 +166,10 @@ type Model struct {
 	tunnelHost    string
 	sessionChoose sessionChooseState
 	mcpLog        []mcpLogEntry
+	// pendingAfterConnect is what to open once a chooser-initiated connection
+	// lands: "terminal" or "tunnel".
+	pendingAfterConnect string
+	pendingHost         string
 
 	// live is the sessions this interface is showing, by alias, so switching tabs
 	// does not have to ask the manager.

@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/fakihariefnoto/omssh/internal/ssh"
+	"github.com/fakihariefnoto/omssh/internal/sshconfig"
 )
 
 // A chooser for places that only exist once a connection does. The launcher can
@@ -45,24 +48,55 @@ func (m *Model) liveSSHHosts() []string {
 	return append(hosts, rest...)
 }
 
-// openSessionChooser asks which connected host a terminal or a tunnel is for.
+// openSessionChooser asks which host a terminal or a tunnel is for. Connected
+// hosts are opened; the rest are connected on the way, so the chooser is also the
+// answer to "I have not connected yet".
 func (m *Model) openSessionChooser(mode string) {
-	if len(m.liveSSHHosts()) == 0 {
-		m.toastInfo("Connect to a host first · Ctrl+O manages connections")
-		return
-	}
 	m.sessionChoose = sessionChooseState{mode: mode}
+	// Read ~/.ssh/config once, when the chooser opens; rendering runs on every
+	// frame and must not touch the disk.
+	m.loadConnections()
 	m.Overlay = OverlaySessionChoose
 }
 
-// sessionChooserRows is the hosts plus the two ways out: watch running tunnels
-// when there are any, and go add a connection when there are not enough.
-func (m *Model) sessionChooserRows() []string {
-	rows := m.liveSSHHosts()
+// sessionRow is one line of the chooser. A live host is opened; an offline one is
+// connected first, which is what makes this the launcher's answer to "combine the
+// chooser with adding a connection".
+type sessionRow struct {
+	key   string // host alias, or a sentinel
+	label string
+	hint  string
+	live  bool
+}
+
+const (
+	rowTunnels     = "\x00tunnels"
+	rowConnections = "\x00connections"
+)
+
+// sessionChooserRows is live sessions first, then the hosts in ~/.ssh/config that
+// could be connected, plus the ways out.
+func (m *Model) sessionChooserRows() []sessionRow {
+	rows := make([]sessionRow, 0, len(m.live)+8)
 	if m.sessionChoose.mode == "tunnel" && len(m.tunnels) > 0 {
-		rows = append(rows, "\x00tunnels")
+		rows = append(rows, sessionRow{key: rowTunnels, label: "Running tunnels",
+			hint: fmt.Sprintf("%d · watch", len(m.tunnels))})
 	}
-	return append(rows, "\x00connections")
+	live := make(map[string]bool, len(m.live))
+	for _, host := range m.liveSSHHosts() {
+		live[host] = true
+		rows = append(rows, sessionRow{key: host, label: host, hint: "connected", live: true})
+	}
+	// The connections manager already knows how to list hosts and which ones are
+	// not for browsing; reuse that answer.
+	for _, entry := range m.visibleConnections() {
+		if entry.Cloud || live[entry.Alias] {
+			continue
+		}
+		rows = append(rows, sessionRow{key: entry.Alias, label: entry.Alias,
+			hint: "not connected · Enter connects"})
+	}
+	return append(rows, sessionRow{key: rowConnections, label: "Manage connections…", hint: "Ctrl+O"})
 }
 
 // handleSessionChooserKey picks a row. It returns a command only for the external
@@ -81,25 +115,29 @@ func (m *Model) handleSessionChooserKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		row := rows[m.sessionChoose.cursor]
-		switch row {
-		case "\x00tunnels":
+		switch row.key {
+		case rowTunnels:
 			m.Overlay = OverlayTunnels
 			m.tunnelCursor = 0
 			return nil
-		case "\x00connections":
+		case rowConnections:
 			m.Overlay = OverlayNone
 			return m.runAction("session.open")
 		}
 		m.Overlay = OverlayNone
+		if msg.String() == "t" {
+			// t keeps ssh's own terminal; it works whether or not the session is
+			// open here, because ssh does its own dialling.
+			return m.openTerminal(row.key)
+		}
+		if !row.live {
+			return m.connectForChooser(row.key)
+		}
 		if m.sessionChoose.mode == "tunnel" {
-			m.openTunnelPromptHost(row)
+			m.openTunnelPromptHost(row.key)
 			return nil
 		}
-		if msg.String() == "t" {
-			// t keeps ssh's own terminal: the key that always worked.
-			return m.openTerminal(row)
-		}
-		return m.openEmbeddedHost(row)
+		return m.openEmbeddedHost(row.key)
 	}
 	return nil
 }
@@ -121,15 +159,7 @@ func (m *Model) renderSessionChooser(l layout) string {
 	}
 	rows := m.sessionChooserRows()
 	for i, row := range rows {
-		label := row
-		hint := "connected"
-		switch row {
-		case "\x00tunnels":
-			label, hint = "Running tunnels", fmt.Sprintf("%d · watch", len(m.tunnels))
-		case "\x00connections":
-			label, hint = "Manage connections…", "Ctrl+O"
-		}
-		text := fmt.Sprintf("%-24s %s", truncate(label, 24), hint)
+		text := fmt.Sprintf("%-24s %s", truncate(row.label, 24), row.hint)
 		if i == m.sessionChoose.cursor {
 			lines = append(lines, m.st.Accent.Bold(true).Render(truncate("▸ "+text, content)))
 			continue
@@ -142,6 +172,34 @@ func (m *Model) renderSessionChooser(l layout) string {
 	}
 	lines = append(lines, "", m.st.CardMuted.Render(footer))
 	return m.card(width, lines)
+}
+
+// connectForChooser connects a host the chooser picked and remembers what to do
+// when it lands. The connection itself is the normal path, so prompts, host keys
+// and errors are the ones the rest of the interface uses.
+func (m *Model) connectForChooser(host string) tea.Cmd {
+	var entry *connEntry
+	for i := range m.conn.entries {
+		if m.conn.entries[i].Alias == host {
+			entry = &m.conn.entries[i]
+			break
+		}
+	}
+	if entry == nil || entry.Cloud {
+		m.toastError("No SSH host named " + host)
+		return nil
+	}
+	m.pendingAfterConnect = m.sessionChoose.mode
+	m.pendingHost = host
+	target, err := ssh.TargetFrom(sshconfig.Spec{
+		Alias: entry.Alias, HostName: entry.HostName, User: entry.User, Port: entry.Port,
+		IdentityFile: entry.Identity, ProxyJump: entry.ProxyJump,
+	})
+	if err != nil {
+		m.toastError(err.Error())
+		return nil
+	}
+	return m.connect(target)
 }
 
 // mcpLogEntry is one call an agent made, as the card shows it.

@@ -67,25 +67,27 @@ connections screen from anywhere, and `Esc` always takes you one step back.
 appear above the menu, so returning to the launcher also offers the way back to
 where you were.
 
-Once a host is connected the launcher also grows:
+The launcher also has:
 
 ```
-   [t] Terminal        choose a connected host
-   [n] Tunnel          choose a connected host
+   [t] Terminal        choose a host
+   [n] Tunnel          choose a host
    [m] MCP for agents  setup and log
 ```
 
-**Terminal** opens the session chooser: every live SSH connection, in tab order,
-with `Enter` opening the embedded terminal and `t` handing over to `ssh`. **Tunnel**
-uses the same chooser, then asks for the spec; if forwards are already running its
-first row is **Running tunnels**, which opens the watcher. **MCP** shows the stdio
-configuration, copies it with `c`, and lists the last agent calls with `r` to
-refresh.
+**Terminal** opens the session chooser: connected hosts first, then the rest of
+`~/.ssh/config` marked *not connected*. `Enter` opens the embedded terminal, `t`
+hands over to `ssh` (which works whether or not the session is open here), and
+choosing an offline host **connects it first** and then opens what you asked for.
+**Tunnel** uses the same chooser and then asks for the spec; if forwards are
+already running its first row is **Running tunnels**, which opens the watcher.
+**MCP** shows the stdio configuration, copies it with `c`, and lists the last agent
+calls with `r` to refresh.
 
-The chooser is the same question the dashboard asks — which live place — so it
-only ever lists sessions that are actually connected. When none are, the launcher
-does not show the rows at all, and "Manage connections…" in the chooser is the way
-to fix that.
+The chooser is the dashboard's question — which place — with the connect step
+folded in, so "I have not connected yet" is not a dead end: pick the host and the
+right thing happens. "Manage connections…" at the bottom is still the way to add
+or edit one.
 
 ## The dashboard
 
@@ -621,7 +623,7 @@ omssh tunnel contabo -D 1080                      # SOCKS5 on 127.0.0.1:1080
 omssh tunnel contabo -L 8080:db:5432 --json-lines # events as they happen
 ```
 
-In the interface, `Alt+T` on a connected host asks for the same spec with a kind
+In the interface, **Tunnel** on the launcher (or `Alt+T`) asks for the same spec with a kind
 prefix — `L:8080:db:5432`, `R:9000:localhost:3000`, `D:1080` — and `Alt+Y` opens
 the list of running forwards with connection counts and bytes each way. `x`
 stops one; `Esc` closes the list and leaves the tunnels running. Both actions are
@@ -725,7 +727,7 @@ network, no token to leak. It exposes the same places and the same safety model:
 }
 ```
 
-In the interface, `Alt+M` opens an **MCP** card with this snippet; `c` copies it.
+In the interface, **MCP for agents** on the launcher (or `Alt+M`) opens the card with this snippet; `c` copies it.
 The server is a stdio process the agent starts, so it is configured outside omssh
 — the card exists so the flags are not something to remember.
 

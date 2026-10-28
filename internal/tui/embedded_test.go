@@ -240,18 +240,15 @@ func TestLauncherChoosesConnectedSessions(t *testing.T) {
 		}
 		return false
 	}
-	if has("session.terminal-choose") || has("session.tunnel-choose") {
-		t.Error("Terminal and Tunnel need a live session")
+	// The rows are always there: the chooser can connect a host that is not open
+	// yet, which is what "choose a connection" means.
+	for _, id := range []string{"session.terminal-choose", "session.tunnel-choose", "app.mcp"} {
+		if !has(id) {
+			t.Errorf("the launcher should offer %q", id)
+		}
 	}
-	if !has("app.mcp") {
-		t.Error("MCP is useful before anything is connected")
-	}
-
 	m.tabs = []Tab{{Title: "contabo", Host: "contabo", State: StateReady}}
 	m.live = map[string]*session.Session{"contabo": {}}
-	if !has("session.terminal-choose") || !has("session.tunnel-choose") {
-		t.Fatal("a live session should add both rows")
-	}
 
 	m.runAction("session.tunnel-choose")
 	if m.Overlay != OverlaySessionChoose {
@@ -291,5 +288,23 @@ func TestMCPCardShowsRecentCalls(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the card should show %q:\n%s", want, out)
 		}
+	}
+}
+
+// An offline host is in the chooser too: picking it connects, then opens what was
+// asked for. That is the "choose a connection" half the launcher was missing.
+func TestSessionChooserIncludesOfflineHosts(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.screen = screenHome
+	m.runAction("session.terminal-choose")
+	if m.Overlay != OverlaySessionChoose {
+		t.Fatalf("the chooser should open with no live session, overlay=%v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "prod") || !strings.Contains(out, "not connected") {
+		t.Errorf("an offline host should be offered with its state:\n%s", out)
+	}
+	if !strings.Contains(out, "Manage connections") {
+		t.Errorf("the way to add a host should be there too:\n%s", out)
 	}
 }

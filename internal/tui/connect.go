@@ -139,6 +139,10 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 	delete(m.connecting, msg.target.Alias)
 	if msg.err != nil {
 		m.tabState(msg.target.Alias, StateError)
+		if m.pendingHost == msg.target.Alias {
+			// The chooser's second half never runs if the first half failed.
+			m.pendingAfterConnect, m.pendingHost = "", ""
+		}
 		m.toastError(connectionMessage(msg.target, msg.err))
 		return nil
 	}
@@ -163,6 +167,17 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 		m.toastInfo("Four panes are full · V chooses which sessions are shown")
 	}
 	m.toastSuccess("Connected to " + msg.target.Alias)
+	// A connection the chooser started has a second half: the terminal or tunnel
+	// the person actually asked for. Do it now, when the session exists.
+	if m.pendingAfterConnect != "" && m.pendingHost == msg.target.Alias {
+		mode := m.pendingAfterConnect
+		m.pendingAfterConnect, m.pendingHost = "", ""
+		if mode != "tunnel" {
+			cmd := m.openEmbeddedHost(msg.target.Alias)
+			return tea.Batch(cmd, m.loadPaneAsync(index))
+		}
+		m.openTunnelPromptHost(msg.target.Alias)
+	}
 	// The listing goes off the update loop: a home directory on a slow link is
 	// many round trips, and the interface has just become usable.
 	return m.loadPaneAsync(index)
