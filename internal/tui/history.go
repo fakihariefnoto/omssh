@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
@@ -220,57 +221,100 @@ func agentHistory() []historyEntry {
 	return out
 }
 
-// renderHistory draws the screen: tabs, list, footer.
+// renderHistory draws the screen: a title, tab pills, a table with a type badge,
+// and a footer that names the keys. It is deliberately quiet — history is
+// something to scan, not a dashboard to admire.
 func (m *Model) renderHistory(l layout) string {
+	entries := m.historyEntries()
+	width := l.Width
 	rows := make([]string, 0, l.Height)
-	title := m.st.PaneTitle.Render("History")
-	right := m.st.StatusMuted.Render(fmt.Sprintf("%d entries", len(m.historyEntries())))
-	rows = append(rows, spread(title, right, l.Width))
 
-	tabs := make([]string, 0, len(historyTabs))
+	title := m.st.Accent.Bold(true).Render("History")
+	right := m.st.StatusMuted.Render(fmt.Sprintf("%d %s", len(entries), plural(len(entries), "entry", "entries")))
+	rows = append(rows, spread(title, right, width), "")
+
+	// Tabs are pills: the active one is filled, the rest are quiet words.
+	pills := make([]string, 0, len(historyTabs))
 	for i, tab := range historyTabs {
 		if i == m.history.tab {
-			tabs = append(tabs, m.st.Accent.Bold(true).Render("["+tab.label+"]"))
+			pills = append(pills, m.st.PaletteItemActive.Render(" "+tab.label+" "))
 			continue
 		}
-		tabs = append(tabs, m.st.CardText.Render(tab.label))
+		pills = append(pills, m.st.CardMuted.Render(" "+tab.label+" "))
 	}
-	rows = append(rows, padVisible(strings.Join(tabs, "  "), l.Width), "")
+	rows = append(rows, "  "+strings.Join(pills, " "), "")
 
-	entries := m.historyEntries()
+	const badge = 7
+	rightW := clamp(width/3, 22, 38)
+	leftW := max(12, width-badge-2-rightW-3)
+	header := "  " + padRight("TYPE", badge) + " " + padRight("ENTRY", leftW) +
+		" " + padLeft("WHEN · DETAIL", rightW)
+	rows = append(rows,
+		m.st.PaneHeader.Render(truncate(header, width)),
+		m.st.CardMuted.Render(spaces(2)+strings.Repeat("─", max(1, width-4))),
+	)
+
+	listRows := max(1, l.Height-len(rows)-4)
 	m.history.cursor = clamp(m.history.cursor, 0, max(0, len(entries)-1))
-	listRows := max(1, l.Height-5)
 	if m.history.cursor < m.history.offset {
 		m.history.offset = m.history.cursor
 	}
 	if m.history.cursor >= m.history.offset+listRows {
 		m.history.offset = m.history.cursor - listRows + 1
 	}
-	badge := map[historyKind]string{
+	badgeStyle := map[historyKind]lipgloss.Style{
+		historyTerminal: m.st.Accent,
+		historyTunnel:   m.st.CardText,
+		historyAgent:    m.st.StatusKey,
+	}
+	badgeText := map[historyKind]string{
 		historyTerminal: "term", historyTunnel: "tunnel", historyAgent: "agent",
 	}
-	for i := m.history.offset; i < len(entries) && len(rows) < 2+listRows; i++ {
+	for i := m.history.offset; i < len(entries) && i < m.history.offset+listRows; i++ {
 		entry := entries[i]
-		left := fmt.Sprintf("%-6s %s", badge[entry.kind], entry.label)
-		detail := entry.detail
+		meta := entry.detail
 		if !entry.when.IsZero() {
-			detail = entry.when.Format("Jan 02 15:04") + " · " + detail
+			meta = entry.when.Format("Jan 02 15:04") + " · " + meta
 		}
-		line := spread(m.st.CardText.Render(truncate(left, l.Width/2)), m.st.CardMuted.Render(truncate(detail, l.Width/2)), l.Width)
+		label := truncate(entry.label, leftW)
+		line := "  " + badgeStyle[entry.kind].Render(padRight(badgeText[entry.kind], badge)) +
+			" " + m.st.CardText.Render(padRight(label, leftW)) +
+			" " + m.st.CardMuted.Render(padLeft(truncate(meta, rightW), rightW))
 		if i == m.history.cursor {
-			line = m.st.PaletteItemActive.Width(l.Width).Render(padVisible("▸ "+truncate(left, l.Width/2)+"  "+detail, l.Width))
+			line = m.st.PaletteItemActive.Width(width).Render(padVisible(
+				"▸ "+badgeStyle[entry.kind].Bold(true).Render(padRight(badgeText[entry.kind], badge))+
+					" "+m.st.Accent.Bold(true).Render(padRight(label, leftW))+
+					" "+m.st.CardMuted.Render(padLeft(truncate(meta, rightW), rightW)), width))
 		}
 		rows = append(rows, line)
 	}
 	if len(entries) == 0 {
-		rows = append(rows, m.st.PaneEmpty.Render("Nothing here yet"))
+		rows = append(rows, "", "  "+m.st.PaneEmpty.Render(truncate(m.historyEmpty(), width-4)))
 	}
-	for len(rows) < l.Height-1 {
+	for len(rows) < l.Height-2 {
 		rows = append(rows, "")
 	}
-	rows = append(rows, m.st.StatusMuted.Render(truncate(
-		"Tab filter · ↑↓ choose · Enter open · v log · d delete · Esc back", l.Width)))
+	footer := "Tab filter · ↑↓ choose · Enter open · v conversation log · d delete · Esc back"
+	rows = append(rows, "", m.st.StatusMuted.Render(truncate(footer, width)))
 	return strings.Join(rows, "\n")
+}
+
+// historyEmpty explains the tab, and the one setting that is usually the reason
+// terminal history is empty.
+func (m *Model) historyEmpty() string {
+	switch historyTabs[m.history.tab].kind {
+	case historyTerminal:
+		if !m.cfg.Sessions.Record {
+			return "No recordings — sessions.record is off. Turn it on to keep embedded terminals."
+		}
+		return "No recordings yet — open an embedded terminal with U."
+	case historyTunnel:
+		return "No tunnels yet — Terminal & Tunnel on the launcher forwards a port."
+	case historyAgent:
+		return "No agent calls yet — run an MCP client against omssh mcp."
+	default:
+		return "Nothing recorded yet. Terminals, tunnels and agent calls appear here."
+	}
 }
 
 // handleHistoryKey drives the history screen.

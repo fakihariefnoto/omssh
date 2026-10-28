@@ -136,6 +136,51 @@ func (m *Model) sampleSessions() tea.Cmd {
 	return tea.Batch(commands...)
 }
 
+// samplePanes refreshes the numbers the dashboard shows beside each remote pane.
+// It samples only hosts that are on screen, once every few heartbeats, because a
+// shell command per host per frame would be a load of its own.
+func (m *Model) samplePanes() tea.Cmd {
+	commands := make([]tea.Cmd, 0, m.paneCount())
+	seen := make(map[string]bool, m.paneCount())
+	for i := 0; i < m.paneCount(); i++ {
+		pane := m.Panes[i]
+		if pane.Side != SideRemote || pane.Host == "" || isCloudHost(pane.Host) || seen[pane.Host] {
+			continue
+		}
+		live := m.live[pane.Host]
+		if live == nil || live.Client == nil {
+			continue
+		}
+		seen[pane.Host] = true
+		alias := pane.Host
+		path := pane.Path
+		if path == "" {
+			path = live.Base
+		}
+		if path == "" {
+			path = "/"
+		}
+		sessionLive := live
+		commands = append(commands, func() tea.Msg {
+			client := sessionLive.Client.SSH()
+			run := func(command string) (string, error) {
+				session, err := client.NewSession()
+				if err != nil {
+					return "", err
+				}
+				defer func() { _ = session.Close() }()
+				output, err := session.CombinedOutput(command)
+				return string(output), err
+			}
+			return sessionSampleMsg{alias: alias, info: remoteinfo.Sample(run, path)}
+		})
+	}
+	if len(commands) == 0 {
+		return nil
+	}
+	return tea.Batch(commands...)
+}
+
 // handlePanesKey drives the chooser: space ticks, Enter applies, Escape keeps
 // what was there.
 func (m *Model) handlePanesKey(msg tea.KeyPressMsg) {
@@ -389,7 +434,9 @@ func (m *Model) renderSessionCard(card sessionCard, selected bool, width int) st
 	}
 	title := m.st.CardText.Render(card.title)
 	if selected {
-		title = m.st.Accent.Bold(true).Render(card.title)
+		// Reverse puts the accent foreground behind the name: with three or four
+		// cards, "accent text" alone was too easy to lose.
+		title = m.st.Accent.Bold(true).Reverse(true).Render(card.title)
 	}
 	body := []string{
 		line(title, m.st.CardMuted.Render(tick)),
@@ -427,7 +474,8 @@ func (m *Model) renderSessionCard(card sessionCard, selected bool, width int) st
 
 	style := m.st.Card
 	if selected {
-		style = m.st.Card.BorderForeground(m.st.Accent.GetForeground())
+		style = m.st.Card.Border(lipgloss.DoubleBorder()).
+			BorderForeground(m.st.Accent.GetForeground())
 	}
 	return style.Width(width).Render(strings.Join(body, "\n"))
 }

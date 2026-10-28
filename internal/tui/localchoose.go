@@ -60,7 +60,9 @@ func (m *Model) renderLocalChooser(l layout) string {
 	for i, row := range rows {
 		text := spread(m.st.CardText.Render(row.label), m.st.CardMuted.Render(row.hint), content)
 		if i == m.localChoose.cursor {
-			text = spread(m.st.Accent.Bold(true).Render("▸ "+row.label), m.st.CardMuted.Render(row.hint), content)
+			lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible(
+				"▸ "+spread(row.label, row.hint, content-2), content)))
+			continue
 		}
 		lines = append(lines, text)
 	}

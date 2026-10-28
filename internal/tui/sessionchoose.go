@@ -161,7 +161,7 @@ func (m *Model) renderSessionChooser(l layout) string {
 	for i, row := range rows {
 		text := fmt.Sprintf("%-24s %s", truncate(row.label, 24), row.hint)
 		if i == m.sessionChoose.cursor {
-			lines = append(lines, m.st.Accent.Bold(true).Render(truncate("▸ "+text, content)))
+			lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible("▸ "+text, content)))
 			continue
 		}
 		lines = append(lines, m.st.CardText.Render(truncate("  "+text, content)))

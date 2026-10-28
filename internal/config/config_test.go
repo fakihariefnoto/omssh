@@ -20,8 +20,14 @@ func writeConfig(t *testing.T, body string) string {
 // The defaults must be valid, because they are what a first run uses and what
 // every file is merged onto.
 func TestDefaultsAreValid(t *testing.T) {
-	if err := Default().Validate(); err != nil {
+	cfg := Default()
+	if err := cfg.Validate(); err != nil {
 		t.Fatalf("the defaults are invalid: %v", err)
+	}
+	// The embedded terminal exists to be recorded; history that is never written
+	// is history nobody can read.
+	if !cfg.Sessions.Record {
+		t.Error("recording should be on by default")
 	}
 }
 

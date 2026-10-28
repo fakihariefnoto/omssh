@@ -178,6 +178,7 @@ type Model struct {
 	history         historyState
 	historyDetail   historyDetailState
 	historyPending  historyEntry
+	sessionKind     sessionKindState
 
 	// live is the sessions this interface is showing, by alias, so switching tabs
 	// does not have to ask the manager.
@@ -216,8 +217,9 @@ type Model struct {
 	pendingDeploy string
 	// samples are the numbers on the session cards, and sampleSeq is the
 	// repeating read while the chooser is open.
-	samples   map[string]remoteinfo.Info
-	sampleSeq tea.Cmd
+	samples    map[string]remoteinfo.Info
+	lastSample time.Time
+	sampleSeq  tea.Cmd
 	// autoConnect is the host named on the command line, opened by Init.
 	autoConnect string
 
@@ -491,6 +493,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Anything that changed the cursor or a listing without going through the
 		// keyboard lands here within half a second; the keyboard path asks at once.
 		cmd := m.previewCmd()
+		if m.screen == screenFiles && m.Overlay == OverlayNone && time.Since(m.lastSample) > 10*time.Second {
+			m.lastSample = time.Now()
+			cmd = tea.Batch(cmd, m.samplePanes())
+		}
 		return m, tea.Batch(heartbeat(), cmd)
 
 	case tea.KeyboardEnhancementsMsg:
@@ -803,7 +809,8 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		// The rows after the themes: background mode, hidden files, icons, help.
 		backgroundRow := len(options)
 		hiddenRow := backgroundRow + 1
-		iconsRow := hiddenRow + 1
+		recordRow := hiddenRow + 1
+		iconsRow := recordRow + 1
 		helpRow := iconsRow + 1
 		last := helpRow
 		switch msg.String() {
@@ -815,6 +822,8 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 				m.cycleBackground()
 			case hiddenRow:
 				m.overlayCmd = m.toggleShowHidden()
+			case recordRow:
+				m.toggleRecording()
 			case iconsRow:
 				m.cycleIcons()
 			case helpRow:
@@ -943,6 +952,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlayHistoryDetail:
 		m.handleHistoryDetailKey(msg)
+		return true
+
+	case OverlaySessionKind:
+		m.handleSessionKindKey(msg)
 		return true
 
 	case OverlayMCP:
@@ -1383,11 +1396,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.loadMCPLog()
 		m.Overlay = OverlayMCP
 		return nil
-	case "session.terminal-choose":
-		m.openSessionChooser("terminal")
-		return nil
-	case "session.tunnel-choose":
-		m.openSessionChooser("tunnel")
+	case "app.session-tools":
+		m.openSessionKind()
 		return nil
 	case "session.recordings":
 		m.openRecordings()
@@ -1604,7 +1614,7 @@ func (m *Model) focusedInput() *input {
 		return &m.secretInput
 	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings,
 		OverlayTunnels, OverlayMCP, OverlaySessionChoose, OverlayLocalChoose,
-		OverlayTunnelForm, OverlayHistoryDetail:
+		OverlayTunnelForm, OverlayHistoryDetail, OverlaySessionKind:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is

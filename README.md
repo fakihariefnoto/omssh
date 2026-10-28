@@ -41,8 +41,8 @@ unpacked tree or a single archive instead of a pile of files.
   from the form (stored in the OS keyring) or the provider's own chain — never
   from the config file. Azure takes an account key, a SAS token or Entra ID; GCS
   takes HMAC keys, ADC, a service-account JSON or impersonation.
-- **Recorded sessions.** `U` opens an embedded terminal; with
-  `sessions.record: true` it writes an asciinema `.cast`, and `Alt+R` replays it
+- **Recorded sessions.** `U` opens an embedded terminal, recorded to an asciinema
+  `.cast` by default (Ctrl+, turns that off); History lists them, `Alt+R` replays
   with play, seek, speed and search. `T` still hands the terminal to `ssh`.
 - **History.** Terminal recordings, tunnel sessions and agent calls in one screen
   with tabs, a conversation log for terminals, an event tail for tunnels, and

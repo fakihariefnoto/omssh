@@ -27,7 +27,9 @@ type Config struct {
 // Sessions covers the embedded terminal and its recordings.
 type Sessions struct {
 	// Record writes each embedded session to an asciinema .cast file under the
-	// state directory. Off by default: a recording contains everything shown.
+	// state directory. On by default: the embedded terminal exists to be recorded,
+	// and history that is never written is history nobody can read. Turn it off
+	// with sessions.record: false.
 	Record bool `yaml:"record"`
 	// RecordInput includes keystrokes in the recording. It is on by default
 	// because a replay without it does not show what was asked; a secret typed
@@ -206,7 +208,7 @@ func Default() Config {
 			Overrides: map[string]string{},
 		},
 		Transfers: Transfers{Workers: 4},
-		Sessions:  Sessions{RecordInput: true, MaxMB: 512},
+		Sessions:  Sessions{Record: true, RecordInput: true, MaxMB: 512},
 		Deploy:    Deploy{Profiles: map[string]Profile{}},
 	}
 }

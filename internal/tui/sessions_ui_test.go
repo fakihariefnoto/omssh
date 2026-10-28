@@ -190,10 +190,33 @@ func TestSettingsCarriesTheKeymap(t *testing.T) {
 
 	// Put the cursor on the keymap row (after the themes and the background row)
 	// and open it.
-	m.settings.cursor = len(m.settingsOptions()) + 3
+	m.settings.cursor = len(m.settingsOptions()) + 4
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayHelp {
 		t.Errorf("Enter on the keymap row should open help, overlay is %v", m.Overlay)
+	}
+}
+
+// The recording toggle is a real setting: it flips the config and saves it, so a
+// terminal recorded tomorrow still lands in History.
+func TestSettingsToggleRecording(t *testing.T) {
+	m := newTestModel(t)
+	m.configPath = t.TempDir() + "/config.yaml"
+	m.cfg.Sessions.Record = true
+	m.toggleRecording()
+	if m.cfg.Sessions.Record {
+		t.Error("the toggle should turn recording off")
+	}
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sessions.Record {
+		t.Error("the saved config should say recording is off")
+	}
+	m.toggleRecording()
+	if !m.cfg.Sessions.Record {
+		t.Error("a second toggle should turn it back on")
 	}
 }
 

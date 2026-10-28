@@ -173,3 +173,19 @@ func TestTunnelFormIsIllustrated(t *testing.T) {
 		}
 	}
 }
+
+// An empty terminal tab says why it is empty, including the setting.
+func TestHistoryEmptyExplainsRecording(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	m := newTestModel(t)
+	m.cfg.Sessions.Record = false
+	m.openHistory(0)
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "sessions.record") {
+		t.Errorf("with recording off, history should say so:\n%s", out)
+	}
+	m.cfg.Sessions.Record = true
+	m.openHistory(0)
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "embedded terminal") {
+		t.Errorf("with recording on, history should say how to make one:\n%s", out)
+	}
+}

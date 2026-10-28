@@ -64,6 +64,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderTunnelForm(l)
 	case OverlayHistoryDetail:
 		return m.renderHistoryDetail(l)
+	case OverlaySessionKind:
+		return m.renderSessionKind(l)
 	default:
 		return ""
 	}
@@ -357,8 +359,19 @@ func (m *Model) renderSettings(l layout) string {
 		lines = append(lines, m.st.PaletteItem.Render(hiddenRow))
 	}
 
-	iconsRow := m.listRow("Icons: "+m.cfg.UI.Icons, "Enter", content)
+	record := "off"
+	if m.cfg.Sessions.Record {
+		record = "on"
+	}
+	recordRow := m.listRow("Record sessions: "+record, "Enter", content)
 	if m.settings.cursor == len(options)+2 {
+		lines = append(lines, m.st.PaletteItemActive.Render(recordRow))
+	} else {
+		lines = append(lines, m.st.PaletteItem.Render(recordRow))
+	}
+
+	iconsRow := m.listRow("Icons: "+m.cfg.UI.Icons, "Enter", content)
+	if m.settings.cursor == len(options)+3 {
 		lines = append(lines, m.st.PaletteItemActive.Render(iconsRow))
 	} else {
 		lines = append(lines, m.st.PaletteItem.Render(iconsRow))
@@ -367,7 +380,7 @@ func (m *Model) renderSettings(l layout) string {
 	// The keys live here too: "how does this behave" and "what can I press" are
 	// the same question asked at different moments.
 	helpRow := m.listRow("Keyboard and help", "?", content)
-	if m.settings.cursor == len(options)+3 {
+	if m.settings.cursor == len(options)+4 {
 		lines = append(lines, m.st.PaletteItemActive.Render(helpRow))
 	} else {
 		lines = append(lines, m.st.PaletteItem.Render(helpRow))
@@ -386,6 +399,18 @@ func (m *Model) renderSettings(l layout) string {
 		m.st.CardMuted.Render("↑↓ choose · Enter apply · ? opens the keymap · Ctrl+, close"),
 	)
 	return m.card(width, lines)
+}
+
+// toggleRecording turns terminal recording on or off and saves it, because a
+// setting that forgets is a setting that did not happen.
+func (m *Model) toggleRecording() {
+	m.cfg.Sessions.Record = !m.cfg.Sessions.Record
+	m.saveConfig()
+	if m.cfg.Sessions.Record {
+		m.toastSuccess("Recording embedded terminals")
+	} else {
+		m.toastInfo("Recording off · existing recordings stay in History")
+	}
 }
 
 // renderConfirm draws the confirmation for a destructive action. v1 has no trash

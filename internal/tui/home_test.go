@@ -364,12 +364,13 @@ func TestLauncherOrderAndLocalRow(t *testing.T) {
 		}
 		return -1
 	}
-	manage, terminal, tunnel := index("session.open"), index("session.terminal-choose"), index("session.tunnel-choose")
-	if manage < 0 || terminal < 0 || tunnel < 0 {
-		t.Fatalf("expected Manage connections, Terminal and Tunnel, got %v", ids)
+	manage, dashboard := index("session.open"), index("app.dashboard")
+	tools, history, mcp := index("app.session-tools"), index("app.history"), index("app.mcp")
+	if manage < 0 || dashboard < 0 || tools < 0 || history < 0 || mcp < 0 {
+		t.Fatalf("expected Manage, Dashboard, Terminal & Tunnel, History and MCP, got %v", ids)
 	}
-	if manage >= terminal || terminal >= tunnel {
-		t.Errorf("Terminal and Tunnel should follow Manage connections: %v", ids)
+	if manage >= dashboard || dashboard >= tools || tools >= history || history >= mcp {
+		t.Errorf("launcher order should be Manage, Dashboard, tools, History, MCP: %v", ids)
 	}
 	if index("app.local") < 0 {
 		t.Errorf("one Local files row should be offered: %v", ids)

@@ -409,6 +409,27 @@ func (m *Model) renderBreadcrumb(pane *Pane, width int, focused bool) string {
 	if pane.Loading {
 		right = m.st.StatusMuted.Render("loading…")
 	}
+	if pane.Side == SideRemote && pane.Host != "" && !isCloudHost(pane.Host) {
+		if info, ok := m.samples[pane.Host]; ok {
+			stats := "load — · mem — · disk —"
+			if info.Known {
+				// Two shorter forms before the labels are dropped: a pane header is
+				// narrow, and load/mem/disk are worth more than the spaces between
+				// them.
+				switch {
+				case width >= 58:
+					stats = fmt.Sprintf("L %.2f · M %d%% · D %d%%", info.Load,
+						info.MemPercent(), info.DiskPercent())
+				case width >= 44:
+					stats = fmt.Sprintf("L%.1f M%d%% D%d%%", info.Load,
+						info.MemPercent(), info.DiskPercent())
+				default:
+					stats = fmt.Sprintf("M%d%% D%d%%", info.MemPercent(), info.DiskPercent())
+				}
+			}
+			right = m.st.StatusMuted.Render(stats + " · " + fmt.Sprintf("%d items", len(pane.Visible())))
+		}
+	}
 	gap := width - lipgloss.Width(line) - lipgloss.Width(right)
 	if gap < 1 {
 		// The breadcrumb shares its row with the pane beside it, so it is

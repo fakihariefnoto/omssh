@@ -110,10 +110,10 @@ func (m *Model) homeItems() []homeItem {
 		// Connections first, then the things that use them: Terminal and Tunnel
 		// only make sense once there is somewhere to run them.
 		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},
-		homeItem{ID: "session.terminal-choose", Icon: "t", Label: "Terminal", Hint: "choose a host"},
-		homeItem{ID: "session.tunnel-choose", Icon: "n", Label: "Tunnel", Hint: tunnelMenuHint(m)},
-		homeItem{ID: "app.history", Icon: "H", Label: "History", Hint: "terminals, tunnels, agent calls"},
 		homeItem{ID: "app.dashboard", Icon: "=", Label: "Dashboard", Hint: "choose panes"},
+		homeItem{ID: "app.session-tools", Icon: "t", Label: "Terminal & Tunnel",
+			Hint: sessionToolsHint(m)},
+		homeItem{ID: "app.history", Icon: "H", Label: "History", Hint: "terminals, tunnels, agent calls"},
 		// One way into the local machine: browse here, or go somewhere first; the
 		// remote panes are the dashboard's question and follow either answer.
 		homeItem{ID: "app.local", Icon: "~", Label: "Local files", Hint: "browse or go to a folder"},
@@ -125,12 +125,12 @@ func (m *Model) homeItems() []homeItem {
 	)
 }
 
-// tunnelMenuHint says what the Tunnel row will do right now: watch, or start.
-func tunnelMenuHint(m *Model) string {
+// sessionToolsHint says what the combined Terminal & Tunnel row will offer.
+func sessionToolsHint(m *Model) string {
 	if len(m.tunnels) > 0 {
-		return fmt.Sprintf("%d running · watch", len(m.tunnels))
+		return fmt.Sprintf("terminal or tunnel · %d running", len(m.tunnels))
 	}
-	return "choose a connected host"
+	return "choose terminal or tunnel"
 }
 
 // homeGeometry reports where the launcher's rows land, so a click and a key press

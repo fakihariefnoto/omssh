@@ -243,7 +243,7 @@ func TestLauncherChoosesConnectedSessions(t *testing.T) {
 	}
 	// The rows are always there: the chooser can connect a host that is not open
 	// yet, which is what "choose a connection" means.
-	for _, id := range []string{"session.terminal-choose", "session.tunnel-choose", "app.mcp"} {
+	for _, id := range []string{"app.session-tools", "app.history", "app.mcp"} {
 		if !has(id) {
 			t.Errorf("the launcher should offer %q", id)
 		}
@@ -251,7 +251,12 @@ func TestLauncherChoosesConnectedSessions(t *testing.T) {
 	m.tabs = []Tab{{Title: "contabo", Host: "contabo", State: StateReady}}
 	m.live = map[string]*session.Session{"contabo": {}}
 
-	m.runAction("session.tunnel-choose")
+	m.runAction("app.session-tools")
+	if m.Overlay != OverlaySessionKind {
+		t.Fatalf("the combined menu should ask terminal or tunnel, overlay=%v", m.Overlay)
+	}
+	press(t, m, keyNamed(tea.KeyDown))
+	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlaySessionChoose {
 		t.Fatalf("the chooser should open, overlay=%v", m.Overlay)
 	}
@@ -297,7 +302,8 @@ func TestMCPCardShowsRecentCalls(t *testing.T) {
 func TestSessionChooserIncludesOfflineHosts(t *testing.T) {
 	m, _ := newConnectionsModel(t, connFixture)
 	m.screen = screenHome
-	m.runAction("session.terminal-choose")
+	m.runAction("app.session-tools")
+	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlaySessionChoose {
 		t.Fatalf("the chooser should open with no live session, overlay=%v", m.Overlay)
 	}
@@ -327,7 +333,8 @@ func TestConnectedSessionIsRememberedWithAnExistingTab(t *testing.T) {
 
 	// And the chooser must say so.
 	m.tabs = []Tab{{Title: "contabo", Host: "contabo", State: StateReady}}
-	m.runAction("session.terminal-choose")
+	m.runAction("app.session-tools")
+	press(t, m, keyNamed(tea.KeyEnter))
 	out := ansi.Strip(render(m))
 	if !strings.Contains(out, "contabo") || !strings.Contains(out, "connected") {
 		t.Errorf("the chooser should mark the host connected:\n%s", out)

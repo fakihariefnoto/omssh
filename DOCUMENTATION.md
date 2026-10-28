@@ -58,10 +58,9 @@ connections screen from anywhere, and `Esc` always takes you one step back.
     Oh My SSH — SSH/SFTP with terminal UI
 
  ▸ [>] Manage connections        Ctrl+O
-   [t] Terminal                  choose a host
-   [n] Tunnel                    choose a host
-   [H] History                   terminals, tunnels, agent calls
    [=] Dashboard                 choose panes
+   [t] Terminal & Tunnel         choose terminal or tunnel
+   [H] History                   terminals, tunnels, agent calls
    [~] Local files               browse or go to a folder
    [M] MCP for agents            setup and log
    [+] Settings, theme and keys  Ctrl+,
@@ -72,12 +71,13 @@ connections screen from anywhere, and `Esc` always takes you one step back.
 appear above the menu, so returning to the launcher also offers the way back to
 where you were.
 
-**Terminal** opens the session chooser: connected hosts first, then the rest of
-`~/.ssh/config` marked *not connected*. `Enter` opens the embedded terminal, `t`
-hands over to `ssh` (which works whether or not the session is open here), and
-choosing an offline host **connects it first** and then opens what you asked for.
-**Tunnel** uses the same chooser and then opens a form that teaches the three
-shapes instead of assuming ssh's syntax:
+**Terminal & Tunnel** asks which job first — a shell, or a port forward — and
+only then which host. The host chooser lists connected hosts first, then the rest
+of `~/.ssh/config` marked *not connected*. For a terminal, `Enter` opens the
+embedded one, `t` hands over to `ssh` (which works whether or not the session is
+open here), and choosing an offline host **connects it first** and then opens what
+you asked for. A tunnel opens the form that teaches the three shapes instead of
+assuming ssh's syntax:
 
 ```
 L local    this machine listens; the server dials the target   8080:db.internal:5432
@@ -98,7 +98,7 @@ the last agent calls with `r` to refresh.
 ## History
 
 **History** is one launcher row and one screen, split by tab: Terminal, Tunnel,
-Agent, All. `Tab` changes the filter, `↑↓`
+Agent, All. The launcher opens it on Terminal; Tab moves across. `Tab` changes the filter, `↑↓`
 chooses, `Enter` opens the record, `v` reads a terminal conversation log, `d`
 deletes the selected record after asking, and `Esc` returns to the launcher. The
 rows are newest first.
@@ -131,6 +131,10 @@ and `Ctrl+L` still jumps to a path directly.
 
 Each connection lives in a pane. One or two panes sit side by side; three or four
 lay out 2×2 on terminals at least 140 columns wide.
+
+Remote pane headers carry the host's **load, memory and disk** percentages
+beside the item count, refreshed every ten seconds. The numbers are sampled in
+the background; a pane never waits on a shell command to draw.
 
 ```
 sessions  │  1 localhost  │  ● 2 contabo  │  ● ▸ 3 ovh
@@ -562,7 +566,9 @@ answers inside omssh. `Ctrl+]` detaches; the connection and the other panes stay
 open. `T` is unchanged, and remains the right choice when you want the terminal
 handed over entirely.
 
-The embedded terminal is the one that can be **recorded**. Set
+The embedded terminal is **recorded by default**: every session lands in
+**History**, and `Ctrl+,` has a *Record sessions* toggle for turning it off. The
+settings are
 
 ```yaml
 sessions:
@@ -835,7 +841,7 @@ transfers:
   workers: 4
 
 sessions:
-  record: false         # embedded terminals write asciinema .cast files
+  record: true          # embedded terminals write asciinema .cast files
   record_input: true    # include keystrokes
   keep_days: 0          # 0 keeps recordings; otherwise delete older ones
   max_mb: 512           # folder cap, oldest first

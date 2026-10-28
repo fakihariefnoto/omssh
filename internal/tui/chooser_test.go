@@ -9,6 +9,7 @@ import (
 
 	"github.com/fakihariefnoto/omssh/internal/remoteinfo"
 	"github.com/fakihariefnoto/omssh/internal/session"
+	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
 
 // The chooser is a wall of cards: each session says where it is, what it is
@@ -126,4 +127,26 @@ func TestFailedConnectDoesNotInventTabs(t *testing.T) {
 		t.Error("connect should create the tab before dialing")
 	}
 	_ = keyNamed(tea.KeyEnter)
+}
+
+// The dashboard header carries the host's numbers, compactly when narrow.
+func TestPaneHeaderShowsHostStats(t *testing.T) {
+	m := newTestModel(t)
+	local, err := vfs.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Panes[0] = Pane{Side: SideRemote, Host: "contabo", FS: local, Home: "/", Path: "/",
+		Selected: map[string]bool{}, History: []string{"/"}}
+	m.samples = map[string]remoteinfo.Info{"contabo": {
+		Known: true, Load: 1.5, CPUs: 2,
+		MemTotal: 100, MemUsed: 75, DiskTotal: 100, DiskFree: 40,
+	}}
+	resize(t, m, 140, 30)
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"L1.5", "M75%", "D60%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the pane header should show %q:\n%s", want, out)
+		}
+	}
 }

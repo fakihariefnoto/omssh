@@ -120,9 +120,10 @@ keys:
 
 sessions:
   # Record embedded terminals (U) to asciinema .cast files under the state
-  # directory, mode 0600. Replay them with alt+r. Nothing is recorded from the
-  # external terminal, T, because omssh never sees those bytes.
-  record: false
+  # directory, mode 0600. They appear in History. Set false to record nothing;
+  # nothing is recorded from the external terminal, T, because omssh never sees
+  # those bytes.
+  record: true
   # Keystrokes go into the recording too, so a replay shows the whole exchange.
   record_input: true
   # Delete recordings older than this; 0 keeps them all. max_mb caps the folder,
