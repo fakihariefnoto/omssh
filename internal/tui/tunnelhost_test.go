@@ -79,3 +79,26 @@ func TestTunnelHostWithoutChoicesOpensForm(t *testing.T) {
 		t.Errorf("an empty host should go to the form, overlay=%v", m.Overlay)
 	}
 }
+
+// The server check reads sshd and the listening socket, and says which fact
+// decided the outcome.
+func TestServerCheckLines(t *testing.T) {
+	loopback := tunnelCheckMsg{host: "ovh", port: "9000", output: "gatewayports no\nallowtcpforwarding yes\n---\n" +
+		"LISTEN 0 128 127.0.0.1:9000 0.0.0.0:*"}
+	out := strings.Join(serverCheckLines(loopback), "\n")
+	for _, want := range []string{"GatewayPorts is no", "loopback only", "GatewayPorts clientspecified"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("loopback check should say %q:\n%s", want, out)
+		}
+	}
+
+	public := tunnelCheckMsg{host: "ovh", port: "9000", output: "gatewayports clientspecified\nallowtcpforwarding yes\n---\n" +
+		"LISTEN 0 128 0.0.0.0:9000 0.0.0.0:*"}
+	out = strings.Join(serverCheckLines(public), "\n")
+	if !strings.Contains(out, "listening publicly") {
+		t.Errorf("public check should say it is listening publicly:\n%s", out)
+	}
+	if !strings.Contains(out, "does not change sshd") {
+		t.Errorf("the check should say it is read-only:\n%s", out)
+	}
+}

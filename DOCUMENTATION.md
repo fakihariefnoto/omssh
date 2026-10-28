@@ -139,6 +139,13 @@ connect — `http://<server-ip>:9000/` will not work. To publish it:
 
    Then test from outside with `curl -v http://<server-ip>:9000/`.
 
+**The server check (`c`) is read-only.** For a running remote forward it asks the
+server `sshd -T` for `GatewayPorts`/`AllowTcpForwarding` and `ss -ltn` for the port,
+then says which fact decided the outcome and prints the two lines that would change
+it. It runs after the tunnel is up, when the question is answerable, and it never
+edits sshd or the firewall: that needs root on the server, and a file manager is
+not the place to take that permission silently.
+
 omssh cannot override sshd: it asks the server to listen, and the server decides
 whether that is loopback or public. The form says which case you are in, and a
 wildcard bind shows a reminder after starting. Exposing a port this way publishes a
@@ -171,8 +178,8 @@ Starting one opens the **Tunnels dashboard**, a screen of its own rather than a
 card over the launcher. The left column is every running forward with its live
 counters; the right column is the selected one: where it listens, where it goes,
 connections, bytes received and sent, and the recent connections with the address
-that used it. `↑↓` chooses, `x` stops, `n` starts another on the same host, `p`
-starts the same tunnel on **another free port** (useful when one service is already
+that used it. `↑↓` chooses, `x` stops, `n` starts another on the same host, `c` runs a
+**server check**, `p` starts the same tunnel on **another free port** (useful when one service is already
 forwarded), `h` opens History, and `Esc` returns to the launcher while the tunnels
 keep running. **MCP** shows the stdio configuration, copies it with `c`, and lists
 the last agent calls with `r` to refresh.
@@ -673,7 +680,12 @@ The alias is passed as-is, so ports, keys, users and jump hosts come from
 
 `U` opens an **embedded** terminal on the focused pane's host: the same SSH
 connection the pane uses, a real PTY, and a terminal emulator drawing the server's
-answers inside omssh. `Ctrl+]` **detaches**: the shell, its scrollback and its
+answers inside omssh. **Copy and paste work in the embedded terminal.** Drag with the mouse to select
+cells; releasing puts the text on the system clipboard. `Ctrl+V` pastes the
+clipboard into the shell, with newlines turned into Enter. The selection is drawn
+reversed, and the remote program still gets the mouse outside a drag.
+
+`Ctrl+]` **detaches**: the shell, its scrollback and its
 recording keep running, and **Terminal & Tunnel** → Terminal marks the host
 `terminal detached · Enter reattaches`. `T` is unchanged, and remains the right
 choice when you want the terminal handed over entirely.

@@ -705,12 +705,13 @@ func (m *Model) startSavedTunnel(name string) {
 func (m *Model) deleteTunnelProfile(name string) {
 	delete(m.cfg.Tunnels.Profiles, name)
 	m.saveConfig()
-	if m.tunnelHostMenu.host != "" {
+	switch {
+	case m.tunnelHostMenu.host != "":
 		m.openTunnelHostMenu(m.tunnelHostMenu.host)
-	} else if len(m.cfg.Tunnels.Profiles) > 0 {
+	case len(m.cfg.Tunnels.Profiles) > 0:
 		m.tunnelSaved = clamp(m.tunnelSaved, 0, len(m.cfg.Tunnels.Profiles)-1)
 		m.Overlay = OverlayTunnelSaved
-	} else {
+	default:
 		m.Overlay = OverlayNone
 	}
 	m.toastSuccess("Deleted saved tunnel " + name)
@@ -756,7 +757,7 @@ func (m *Model) openTunnelDashboard(cursor int) {
 }
 
 // handleTunnelDashboardKey drives stop, another port, a new tunnel and the way out.
-func (m *Model) handleTunnelDashboardKey(msg tea.KeyPressMsg) {
+func (m *Model) handleTunnelDashboardKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc", "q":
 		m.screen = screenHome
@@ -781,7 +782,7 @@ func (m *Model) handleTunnelDashboardKey(msg tea.KeyPressMsg) {
 		// services can share one target without editing the first."
 		active := m.selectedTunnel()
 		if active == nil {
-			return
+			return nil
 		}
 		form := tunnelFormState{host: active.host, kind: active.kind}
 		form.enterFields(active.kind)
@@ -809,7 +810,97 @@ func (m *Model) handleTunnelDashboardKey(msg tea.KeyPressMsg) {
 		m.history.all = m.loadHistory()
 		m.history.cursor = 0
 		m.mode = "HISTORY"
+	case "c":
+		return m.checkTunnelServer()
 	}
+	return nil
+}
+
+// tunnelCheckMsg carries the server's answer to a read-only forwarding check.
+type tunnelCheckMsg struct {
+	host   string
+	port   string
+	output string
+	err    error
+}
+
+// checkTunnelServer asks the server what sshd allows and what it actually bound.
+// It changes nothing: sshd's configuration is the server owner's decision, and
+// changing it needs root.
+func (m *Model) checkTunnelServer() tea.Cmd {
+	active := m.selectedTunnel()
+	if active == nil {
+		return nil
+	}
+	if active.kind != tunnel.Remote {
+		m.toastInfo("Server check is for remote forwards: the listen is on the server")
+		return nil
+	}
+	live := m.live[active.host]
+	if live == nil || live.Client == nil {
+		m.toastInfo("Connect to " + active.host + " to check it")
+		return nil
+	}
+	_, port, _ := net.SplitHostPort(active.listen)
+	client := live.Client.SSH()
+	host := active.host
+	name := port
+	return func() tea.Msg {
+		sessionLive, err := client.NewSession()
+		if err != nil {
+			return tunnelCheckMsg{host: host, port: name, err: err}
+		}
+		defer func() { _ = sessionLive.Close() }()
+		command := fmt.Sprintf("sshd -T 2>/dev/null | grep -Ei '^(gatewayports|allowtcpforwarding)'; "+
+			"echo '---'; ss -ltn 2>/dev/null | grep ':%s '", name)
+		output, err := sessionLive.CombinedOutput(command)
+		return tunnelCheckMsg{host: host, port: name, output: string(output), err: err}
+	}
+}
+
+// serverCheckLines turns the check into a card, with the one sentence that
+// matters for each answer.
+func serverCheckLines(msg tunnelCheckMsg) []string {
+	lines := []string{
+		fmt.Sprintf("port %s on %s", msg.port, msg.host),
+		"",
+	}
+	if msg.err != nil && strings.TrimSpace(msg.output) == "" {
+		lines = append(lines, "The server did not answer: "+msg.err.Error(),
+			"", "Run these by hand on the server:")
+	} else {
+		lines = append(lines, strings.Split(strings.TrimSpace(msg.output), "\n")...)
+		lines = append(lines, "")
+	}
+	output := strings.ToLower(msg.output)
+	switch {
+	case strings.Contains(output, "gatewayports no"):
+		lines = append(lines, "GatewayPorts is no: remote forwards bind loopback, so a public IP cannot reach them.")
+	case !strings.Contains(output, "gatewayports"):
+		lines = append(lines, "sshd -T did not report GatewayPorts (it may need root). If it is no, a public IP cannot reach the forward.")
+	default:
+		lines = append(lines, "GatewayPorts allows a non-loopback bind; the address in the listening line decides what is public.")
+	}
+	if strings.Contains(output, "allowtcpforwarding no") || strings.Contains(output, "allowtcpforwarding local") {
+		lines = append(lines, "AllowTcpForwarding blocks remote forwards on this server.")
+	}
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, ":"+msg.port) {
+			if strings.Contains(line, "127.0.0.1") || strings.Contains(line, "[::1]") {
+				lines = append(lines, "It is listening on loopback only. For a public IP, bind 0.0.0.0 and set GatewayPorts clientspecified.")
+			} else if strings.Contains(line, "0.0.0.0") || strings.Contains(line, "[::]") {
+				lines = append(lines, "It is listening publicly; if the IP still does not answer, open the port in the provider and host firewall.")
+			}
+		}
+	}
+	lines = append(lines, "",
+		"omssh does not change sshd: that needs root on the server.",
+		"To allow it, add to /etc/ssh/sshd_config.d/omssh.conf:",
+		"  AllowTcpForwarding yes",
+		"  GatewayPorts clientspecified",
+		"then: sudo sshd -t && sudo systemctl reload ssh",
+	)
+	return lines
 }
 
 func (m *Model) selectedTunnel() *activeTunnel {
@@ -905,7 +996,7 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 		m.card(leftW, list), " ", m.card(rightW, detail))
 	header := spread(m.st.Accent.Bold(true).Render("Tunnels"),
 		m.st.StatusMuted.Render(fmt.Sprintf("%d running", len(m.tunnels))), width)
-	footer := "↑↓ choose · x stop/disconnect · p another port · n new tunnel · h history · Esc launcher"
+	footer := "↑↓ choose · x stop · p another port · n new · c server check · h history · Esc launcher"
 	return header + "\n" + panels + "\n" + m.st.StatusMuted.Render(truncate(footer, width))
 }
 

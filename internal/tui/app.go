@@ -481,6 +481,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.advanceReplay(msg)
 		return m, cmd
 
+	case tunnelCheckMsg:
+		m.openHistoryDetail("Server check · "+msg.host, serverCheckLines(msg))
+		return m, nil
+
 	case heartbeatMsg:
 		m.expireToasts()
 		m.pruneTransfers(time.Now())
@@ -659,6 +663,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toastWarning("Clipboard unavailable: " + msg.err.Error())
 			return m, nil
 		}
+		// The embedded terminal wants the text, not the file-paste staging.
+		if m.Overlay == OverlayTerminal && m.embedded != nil {
+			m.pasteEmbedded(msg.text)
+			return m, nil
+		}
 		m.handlePaste(msg.text)
 		return m, nil
 
@@ -686,10 +695,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKeyNow(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	// Ctrl+V pastes into a text field when one has focus. In the file manager no
-	// field has focus, so Ctrl+V keeps its documented meaning there: stage the
-	// selection for pasting into the other pane.
+	// Ctrl+V pastes into a text field when one has focus, and into an embedded
+	// terminal when one is open. In the file manager no field has focus, so it
+	// keeps its documented meaning there: stage the selection for the other pane.
 	if key == "ctrl+v" && m.focusedInput() != nil {
+		return m, pasteClipboard()
+	}
+	if key == "ctrl+v" && m.Overlay == OverlayTerminal && m.embedded != nil {
 		return m, pasteClipboard()
 	}
 
@@ -729,8 +741,8 @@ func (m *Model) handleKeyNow(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleHistoryKey(msg)
 	}
 	if m.screen == screenTunnels {
-		m.handleTunnelDashboardKey(msg)
-		return m, nil
+		cmd := m.handleTunnelDashboardKey(msg)
+		return m, cmd
 	}
 	if m.focusTabs {
 		return m.handleTabKey(msg)
@@ -1067,6 +1079,10 @@ func (m *Model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // handleMouse makes the interface usable with a mouse: wheel scrolls, click
 // focuses a pane and picks a row.
 func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.Overlay == OverlayTerminal {
+		m.handleEmbeddedMouse(msg)
+		return m, nil
+	}
 	if m.Overlay != OverlayNone {
 		return m, nil
 	}

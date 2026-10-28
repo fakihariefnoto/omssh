@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
@@ -370,12 +371,12 @@ func TestConnectedSessionIsRememberedWithAnExistingTab(t *testing.T) {
 func TestEmbeddedCursorIsDrawn(t *testing.T) {
 	emu := vt.NewEmulator(20, 4)
 	_, _ = emu.WriteString("hello")
-	lines := renderTerminalScreen(emu, true)
+	lines := renderTerminalScreen(emu, true, nil)
 	if !strings.Contains(lines[0], "\x1b[7m") {
 		t.Errorf("the cursor cell should be reversed: %q", lines[0])
 	}
 	_, _ = emu.WriteString("\x1b[?25l")
-	if lines := renderTerminalScreen(emu, true); strings.Contains(lines[0], "\x1b[7m") {
+	if lines := renderTerminalScreen(emu, true, nil); strings.Contains(lines[0], "\x1b[7m") {
 		t.Errorf("a hidden cursor should not be drawn: %q", lines[0])
 	}
 }
@@ -407,5 +408,27 @@ func TestEmbeddedDetachAndReattach(t *testing.T) {
 	m.handleEmbeddedExit(embeddedExitMsg{host: "contabo"})
 	if m.detachedState("contabo") != nil {
 		t.Error("an exited detached session should be removed")
+	}
+}
+
+// A drag reads the cells in order, trims line ends, and highlights them.
+func TestTerminalSelectionAndPaste(t *testing.T) {
+	emu := vt.NewEmulator(20, 4)
+	_, _ = emu.WriteString("hello\r\nworld")
+	text := selectionText(emu, textSelection{start: uv.Pos(0, 0), end: uv.Pos(4, 1)})
+	if text != "hello\nworld" {
+		t.Errorf("selection = %q", text)
+	}
+	// Backwards drags are the same selection.
+	back := selectionText(emu, textSelection{start: uv.Pos(4, 1), end: uv.Pos(0, 0)})
+	if back != text {
+		t.Errorf("backwards selection = %q", back)
+	}
+	lines := renderTerminalScreen(emu, false, &textSelection{start: uv.Pos(0, 0), end: uv.Pos(4, 0)})
+	if !strings.Contains(lines[0], "\x1b[7m") {
+		t.Errorf("selected cells should be reversed: %q", lines[0])
+	}
+	if shellPasteText("ls\r\npwd\n") != "ls\rpwd\r" {
+		t.Errorf("paste should turn newlines into Enter")
 	}
 }

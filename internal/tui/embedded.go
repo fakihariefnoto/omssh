@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
+	"github.com/fakihariefnoto/omssh/internal/clipboard"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/session"
 )
@@ -32,6 +34,16 @@ type embeddedState struct {
 	// mu guards the emulator: two remote streams write it while the interface
 	// reads it every frame.
 	mu sync.Mutex
+	// sel is the mouse selection on screen; selecting is true between press and
+	// release. Copying a selection is the only clipboard path a terminal can have
+	// without taking the mouse away from the remote program.
+	sel       textSelection
+	selecting bool
+}
+
+// textSelection is a screen rectangle in reading order.
+type textSelection struct {
+	start, end uv.Position
 }
 
 // embeddedExitMsg says the remote shell ended.
@@ -321,7 +333,8 @@ func (m *Model) renderEmbedded(l layout) string {
 	// block can be reversed where the remote cursor actually is, and blink it with
 	// the heartbeat.
 	blink := time.Now().UnixMilli()/500%2 == 0
-	lines := renderTerminalScreen(state.emu, blink)
+	selection := state.sel
+	lines := renderTerminalScreen(state.emu, blink, &selection)
 	state.mu.Unlock()
 	out := make([]string, 0, l.Height)
 	for i := 0; i < height; i++ {
@@ -339,13 +352,141 @@ func (m *Model) renderEmbedded(l layout) string {
 	return strings.Join(out, "\n")
 }
 
+// handleEmbeddedMouse selects text and copies it on release. The terminal keeps
+// the mouse; a drag is a selection, not an event sent to the remote program.
+func (m *Model) handleEmbeddedMouse(msg tea.MouseMsg) {
+	state := m.embedded
+	if state == nil {
+		return
+	}
+	me := msg.Mouse()
+	// The status line is ours, not the screen's.
+	if me.Y < 0 || me.Y >= state.height {
+		return
+	}
+	position := uv.Pos(clamp(me.X, 0, state.width-1), clamp(me.Y, 0, state.height-1))
+	switch e := msg.(type) {
+	case tea.MouseClickMsg:
+		if e.Button != ansi.MouseLeft {
+			return
+		}
+		state.mu.Lock()
+		state.sel = textSelection{start: position, end: position}
+		state.selecting = true
+		state.mu.Unlock()
+	case tea.MouseMotionMsg:
+		state.mu.Lock()
+		if state.selecting {
+			state.sel.end = position
+		}
+		state.mu.Unlock()
+	case tea.MouseReleaseMsg:
+		state.mu.Lock()
+		if !state.selecting {
+			state.mu.Unlock()
+			return
+		}
+		state.selecting = false
+		state.sel.end = position
+		text := selectionText(state.emu, state.sel)
+		state.mu.Unlock()
+		if strings.TrimSpace(text) == "" {
+			return
+		}
+		if err := clipboard.Write(context.Background(), text); err != nil {
+			m.toastWarning("Copied to the screen, but not the clipboard: " + err.Error())
+			return
+		}
+		m.toastSuccess("Copied " + plural(len(strings.Split(text, "\n")), "line", "lines"))
+	}
+}
+
+// selectionText reads the selected cells in reading order. Trailing spaces are
+// trimmed per line, which is what every terminal does when it copies.
+func selectionText(emu *vt.Emulator, sel textSelection) string {
+	start, end := sel.start, sel.end
+	if end.Y < start.Y || (end.Y == start.Y && end.X < start.X) {
+		start, end = end, start
+	}
+	lines := make([]string, 0, end.Y-start.Y+1)
+	for y := start.Y; y <= end.Y; y++ {
+		from, to := 0, emu.Width()-1
+		if y == start.Y {
+			from = start.X
+		}
+		if y == end.Y {
+			to = end.X
+		}
+		var line strings.Builder
+		for x := from; x <= to; x++ {
+			cell := emu.CellAt(x, y)
+			if cell == nil || cell.Content == "" {
+				line.WriteByte(' ')
+				continue
+			}
+			line.WriteString(cell.Content)
+		}
+		lines = append(lines, strings.TrimRight(line.String(), " "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// pasteEmbedded sends clipboard text to the shell. Newlines become carriage
+// returns, the byte a terminal sends for Enter.
+func (m *Model) pasteEmbedded(text string) {
+	state := m.embedded
+	if state == nil || state.shell == nil {
+		return
+	}
+	text = shellPasteText(text)
+	if _, err := state.shell.Write([]byte(text)); err != nil {
+		m.toastError("Shell: " + err.Error())
+		return
+	}
+	if state.rec != nil && m.cfg.Sessions.RecordInput {
+		state.rec.Input([]byte(text))
+	}
+}
+
+// shellPasteText makes clipboard text act like typed keys: Enter is carriage
+// return, not a line feed the shell may treat as part of the same line.
+func shellPasteText(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	return strings.ReplaceAll(text, "\n", "\r")
+}
+
+// cellSelected is the reading-order rectangle test: first row from the start
+// column, last row to the end column, middle rows whole.
+func cellSelected(x, y int, start, end uv.Position) bool {
+	if y < start.Y || y > end.Y {
+		return false
+	}
+	if start.Y == end.Y {
+		return y == start.Y && x >= start.X && x <= end.X
+	}
+	if y == start.Y {
+		return x >= start.X
+	}
+	if y == end.Y {
+		return x <= end.X
+	}
+	return true
+}
+
 // renderTerminalScreen draws cells with their styles, reversing the cell under
 // the remote cursor. Wide characters advance by their cell width, so a glyph that
 // takes two columns does not shift the rest of the line.
-func renderTerminalScreen(emu *vt.Emulator, cursorVisible bool) []string {
+func renderTerminalScreen(emu *vt.Emulator, cursorVisible bool, selection *textSelection) []string {
 	width, height := emu.Width(), emu.Height()
 	position := emu.CursorPosition()
 	showCursor := cursorVisible && !emu.CursorHidden()
+	selStart, selEnd := uv.Pos(-1, -1), uv.Pos(-1, -1)
+	if selection != nil {
+		selStart, selEnd = selection.start, selection.end
+		if selEnd.Y < selStart.Y || (selEnd.Y == selStart.Y && selEnd.X < selStart.X) {
+			selStart, selEnd = selEnd, selStart
+		}
+	}
 	lines := make([]string, 0, height)
 	for y := 0; y < height; y++ {
 		var line strings.Builder
@@ -361,6 +502,9 @@ func renderTerminalScreen(emu *vt.Emulator, cursorVisible bool) []string {
 				content = " "
 			}
 			style := cell.Style
+			if selection != nil && cellSelected(x, y, selStart, selEnd) {
+				style.Attrs |= uv.AttrReverse
+			}
 			if showCursor && x == position.X && y == position.Y {
 				style.Attrs |= uv.AttrReverse
 			}

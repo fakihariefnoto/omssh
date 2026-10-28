@@ -164,8 +164,7 @@ func (m *Model) renderTunnelHost(l layout) string {
 	for i, row := range rows {
 		label := row.label
 		meta := row.meta
-		switch row.kind {
-		case "saved":
+		if row.kind == "saved" {
 			// Name on one line, the two ends under it: the label is what makes
 			// "ovh: 0.0.0.0:9000 server → 127.0.0.1:8080 local" readable.
 			if i == m.tunnelHostMenu.cursor {
