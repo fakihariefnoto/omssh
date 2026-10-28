@@ -102,16 +102,16 @@ func (m *Model) homeItems() []homeItem {
 		items = append(items, homeItem{ID: "session.recordings", Icon: "@",
 			Label: "Recordings", Hint: fmt.Sprintf("%d · Alt+L", count)})
 	}
-	items = append(items,
-		homeItem{ID: "session.terminal-choose", Icon: "t", Label: "Terminal",
-			Hint: "choose a host"},
-		homeItem{ID: "session.tunnel-choose", Icon: "n", Label: "Tunnel",
-			Hint: tunnelMenuHint(m)})
 	return append(items,
+		// Connections first, then the things that use them: Terminal and Tunnel
+		// only make sense once there is somewhere to run them.
 		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},
+		homeItem{ID: "session.terminal-choose", Icon: "t", Label: "Terminal", Hint: "choose a host"},
+		homeItem{ID: "session.tunnel-choose", Icon: "n", Label: "Tunnel", Hint: tunnelMenuHint(m)},
 		homeItem{ID: "app.dashboard", Icon: "=", Label: "Dashboard", Hint: "choose panes"},
-		homeItem{ID: "app.files", Icon: "~", Label: "Browse local files", Hint: "Enter"},
-		homeItem{ID: "nav.path", Icon: "/", Label: "Go to a folder", Hint: "Ctrl+L"},
+		// One way into the local machine: browse here, or go somewhere first; the
+		// remote panes are the dashboard's question and follow either answer.
+		homeItem{ID: "app.local", Icon: "~", Label: "Local files", Hint: "browse or go to a folder"},
 		// Keys and help live inside settings: one card for "how do I change how
 		// this behaves", rather than two menu rows that each answer half of it.
 		homeItem{ID: "app.mcp", Icon: "M", Label: "MCP for agents", Hint: "setup and log"},
@@ -289,7 +289,8 @@ func (m *Model) activateHome(item homeItem) tea.Cmd {
 		return nil
 	}
 	switch item.ID {
-	case "app.help", "app.settings", "app.mcp", "session.terminal-choose", "session.tunnel-choose":
+	case "app.help", "app.settings", "app.mcp", "app.local",
+		"session.terminal-choose", "session.tunnel-choose":
 		// Overlays open on top of the launcher, so the way back stays obvious.
 		return m.runAction(item.ID)
 	case "app.quit":

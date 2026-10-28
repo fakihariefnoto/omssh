@@ -170,6 +170,10 @@ type Model struct {
 	// lands: "terminal" or "tunnel".
 	pendingAfterConnect string
 	pendingHost         string
+	// afterLocalSetup is set when a path prompt was opened from the local card:
+	// the dashboard chooser follows the path, not the other way round.
+	afterLocalSetup bool
+	localChoose     localChooseState
 
 	// live is the sessions this interface is showing, by alias, so switching tabs
 	// does not have to ask the manager.
@@ -922,6 +926,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.overlayCmd = m.handleSessionChooserKey(msg)
 		return true
 
+	case OverlayLocalChoose:
+		m.handleLocalChooseKey(msg)
+		return true
+
 	case OverlayMCP:
 		if msg.String() == "esc" || msg.String() == "q" {
 			m.Overlay = OverlayNone
@@ -1350,6 +1358,9 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "session.tunnel":
 		m.openTunnelPrompt()
 		return nil
+	case "app.local":
+		m.openLocalChooser()
+		return nil
 	case "app.mcp":
 		m.loadMCPLog()
 		m.Overlay = OverlayMCP
@@ -1574,7 +1585,7 @@ func (m *Model) focusedInput() *input {
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
 	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings,
-		OverlayTunnels, OverlayMCP, OverlaySessionChoose:
+		OverlayTunnels, OverlayMCP, OverlaySessionChoose, OverlayLocalChoose:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
@@ -1630,6 +1641,10 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 		// Typed paths go through the resolver: ~ is the pane's home and a bare
 		// name is relative, instead of being glued onto the current path.
 		m.goToPath(value)
+		if m.afterLocalSetup {
+			m.afterLocalSetup = false
+			m.openDashboard()
+		}
 		return nil
 	case "prompt.copy-to":
 		return m.copyToPath(value, false)

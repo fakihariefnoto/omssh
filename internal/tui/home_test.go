@@ -38,13 +38,13 @@ func TestHomeIsTheDefaultScreen(t *testing.T) {
 		t.Fatal("a first run should start on the launcher")
 	}
 	out := ansi.Strip(render(m))
-	for _, want := range []string{strings.TrimSpace(logo[0]), "Oh My SSH", "Browse local files", "Settings, theme and keys", "Quit"} {
+	for _, want := range []string{strings.TrimSpace(logo[0]), "Oh My SSH", "Local files", "Settings, theme and keys", "Quit"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the launcher is missing %q:\n%s", want, out)
 		}
 	}
 	// Every entry carries a plain ASCII icon, good on any terminal.
-	for _, icon := range []string{"[~]", "[/]", "[+]", "[x]"} {
+	for _, icon := range []string{"[~]", "[M]", "[+]", "[x]"} {
 		if !strings.Contains(out, icon) {
 			t.Errorf("the launcher is missing the %s icon:\n%s", icon, out)
 		}
@@ -105,7 +105,7 @@ func TestPlateAndMenuAreCentred(t *testing.T) {
 		// with a pointer, so the leading spaces differ on purpose; the icon column
 		// must not.
 		iconColumn := func(line string) int {
-			for _, icon := range []string{"[~]", "[/]", "[+]", "[x]"} {
+			for _, icon := range []string{"[~]", "[M]", "[+]", "[x]"} {
 				if i := strings.Index(line, icon); i >= 0 {
 					return visibleWidth(line[:i])
 				}
@@ -171,8 +171,12 @@ func TestHomeMenuNavigatesAndActingLeaves(t *testing.T) {
 		t.Errorf("up from the first entry should wrap to the last, cursor is %d", m.home.cursor)
 	}
 
-	// "Browse local files" takes you to the files.
-	m.home.cursor = indexOfHome(m, "app.files")
+	// "Local files" asks how, then takes you to the files.
+	m.home.cursor = indexOfHome(m, "app.local")
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.Overlay != OverlayLocalChoose {
+		t.Fatalf("Local files should ask browse or go to, overlay=%v", m.Overlay)
+	}
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.screen != screenFiles {
 		t.Error("choosing Browse local files should open the file manager")
@@ -187,14 +191,14 @@ func TestHomeMenuNavigatesAndActingLeaves(t *testing.T) {
 	}
 }
 
-// "Go to a folder" opens the path prompt over the file manager.
+// "Go to a folder" is the second choice inside Local files, and its prompt opens
+// over the launcher's card.
 func TestHomeGoToFolderOpensThePathPrompt(t *testing.T) {
 	m := newLauncher(t)
-	m.home.cursor = indexOfHome(m, "nav.path")
+	m.home.cursor = indexOfHome(m, "app.local")
 	press(t, m, keyNamed(tea.KeyEnter))
-	if m.screen != screenFiles {
-		t.Fatal("Go to a folder should live in the file manager")
-	}
+	press(t, m, keyNamed(tea.KeyDown))
+	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayPrompt {
 		t.Errorf("Go to a folder should open the path prompt, overlay is %v", m.Overlay)
 	}
@@ -249,13 +253,18 @@ func TestLauncherHonoursTheShortcutsItAdvertises(t *testing.T) {
 func TestHomeIsClickable(t *testing.T) {
 	m := newLauncher(t)
 	_, top, itemStart := m.homeGeometry(m.measure())
-	index := indexOfHome(m, "app.files")
+	index := indexOfHome(m, "app.local")
 	click := tea.MouseClickMsg(tea.Mouse{
 		X: 20, Y: top + itemStart + index, Button: ansi.MouseLeft,
 	})
 	_, _ = m.Update(click)
+	if m.Overlay != OverlayLocalChoose {
+		t.Fatalf("clicking Local files should open its card, overlay=%v", m.Overlay)
+	}
+	// The first row is Browse, which then opens the files.
+	press(t, m, keyNamed(tea.KeyEnter))
 	if m.screen != screenFiles {
-		t.Errorf("clicking Browse local files should open the file manager, screen is %v", m.screen)
+		t.Errorf("choosing Browse local files should open the file manager, screen is %v", m.screen)
 	}
 }
 
@@ -336,5 +345,78 @@ func TestLauncherListsConnectedHosts(t *testing.T) {
 	}
 	if m.activeTab != 1 || m.Focused != 1 {
 		t.Errorf("choosing contabo should focus its pane, tab %d focused %d", m.activeTab, m.Focused)
+	}
+}
+
+// The launcher's order: connections first, then the things that use them, then
+// the local machine as one row rather than two half-questions.
+func TestLauncherOrderAndLocalRow(t *testing.T) {
+	m := newTestModel(t)
+	ids := make([]string, 0, len(m.homeItems()))
+	for _, item := range m.homeItems() {
+		ids = append(ids, string(item.ID))
+	}
+	index := func(id string) int {
+		for i, got := range ids {
+			if got == id {
+				return i
+			}
+		}
+		return -1
+	}
+	manage, terminal, tunnel := index("session.open"), index("session.terminal-choose"), index("session.tunnel-choose")
+	if manage < 0 || terminal < 0 || tunnel < 0 {
+		t.Fatalf("expected Manage connections, Terminal and Tunnel, got %v", ids)
+	}
+	if manage >= terminal || terminal >= tunnel {
+		t.Errorf("Terminal and Tunnel should follow Manage connections: %v", ids)
+	}
+	if index("app.local") < 0 {
+		t.Errorf("one Local files row should be offered: %v", ids)
+	}
+	if index("app.files") != -1 || index("nav.path") != -1 {
+		t.Errorf("Browse local files and Go to a folder should be folded into Local files: %v", ids)
+	}
+}
+
+// Local files is a two-option card. Browse opens the local pane; go to a folder
+// asks for the path first. Either way the dashboard follows.
+func TestLocalChooser(t *testing.T) {
+	m := newTestModel(t)
+	m.runAction("app.local")
+	if m.Overlay != OverlayLocalChoose {
+		t.Fatalf("app.local should open the card, overlay=%v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Local files", "Browse local files", "Go to a folder"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the card should show %q:\n%s", want, out)
+		}
+	}
+
+	// Browse: the local pane is where we land.
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.screen != screenFiles {
+		t.Errorf("browse should go to the files, screen=%v", m.screen)
+	}
+	if m.localPaneIndex() < 0 {
+		t.Error("browse should show the local pane")
+	}
+
+	// Go to a folder: a prompt, then the dashboard.
+	dir := t.TempDir()
+	m.screen = screenHome
+	m.runAction("app.local")
+	press(t, m, keyNamed(tea.KeyDown))
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.Overlay != OverlayPrompt || m.prompt.Action != "prompt.path" {
+		t.Fatalf("go to a folder should ask for a path, overlay=%v action=%q", m.Overlay, m.prompt.Action)
+	}
+	m.applyPrompt("prompt.path", dir)
+	if m.screen != screenFiles {
+		t.Errorf("a chosen folder should show the files, screen=%v", m.screen)
+	}
+	if m.Pane().Path != dir {
+		t.Errorf("the local pane should be in %q, got %q", dir, m.Pane().Path)
 	}
 }

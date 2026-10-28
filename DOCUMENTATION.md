@@ -39,11 +39,13 @@ omssh prod       # the interface, connected to prod on startup
 
 - **Manage connections** (`Ctrl+O`) — hosts and buckets, one screen per kind.
   `Esc` there returns here, to the launcher.
+- **Terminal** / **Tunnel** — choose a connected host, or a configured one that is
+  connected on the way.
 - **Dashboard** — asks which places it should show (local optional, hosts, buckets).
-- **Browse local files** — skips the question and brings the local folder to the
-  front, adding it back if a remote-only dashboard had removed it.
-- **Browse local files** (`Esc` or `Enter`) — the file manager at the directory
-  you started in.
+- **Local files** — one entry for the two ways into this machine: **Browse local
+  files** opens the folder you were in, **Go to a folder…** asks for a path first.
+  Either answer is followed by the dashboard's remote-pane chooser, up to four.
+- **MCP for agents** — the stdio setup and the recent call log.
 - **Settings, theme and keys** (`Ctrl+,`) — themes, icons, motion, and the keymap.
 
 Nothing is modal. You can open the palette (`Ctrl+K`), the keymap (`?`), or the
@@ -56,9 +58,11 @@ connections screen from anywhere, and `Esc` always takes you one step back.
     Oh My SSH — SSH/SFTP with terminal UI
 
  ▸ [>] Manage connections        Ctrl+O
+   [t] Terminal                  choose a host
+   [n] Tunnel                    choose a host
    [=] Dashboard                 choose panes
-   [~] Browse local files        Enter
-   [/] Go to a folder            Ctrl+L
+   [~] Local files               browse or go to a folder
+   [M] MCP for agents            setup and log
    [+] Settings, theme and keys  Ctrl+,
    [x] Quit                      Ctrl+Q
 ```
@@ -66,14 +70,6 @@ connections screen from anywhere, and `Esc` always takes you one step back.
 `↑↓` chooses, `Enter` opens, `Esc` goes straight to the files. Connected hosts
 appear above the menu, so returning to the launcher also offers the way back to
 where you were.
-
-The launcher also has:
-
-```
-   [t] Terminal        choose a host
-   [n] Tunnel          choose a host
-   [m] MCP for agents  setup and log
-```
 
 **Terminal** opens the session chooser: connected hosts first, then the rest of
 `~/.ssh/config` marked *not connected*. `Enter` opens the embedded terminal, `t`
@@ -88,6 +84,12 @@ The chooser is the dashboard's question — which place — with the connect ste
 folded in, so "I have not connected yet" is not a dead end: pick the host and the
 right thing happens. "Manage connections…" at the bottom is still the way to add
 or edit one.
+
+**Local files** is one row rather than two: it asks whether to browse the current
+folder or go somewhere, then opens the dashboard chooser so the remote panes can
+be ticked beside it — the same question the **Dashboard** row asks, with the local
+half already answered. `Esc`/`Enter` from a pane still goes straight to the files,
+and `Ctrl+L` still jumps to a path directly.
 
 ## The dashboard
 

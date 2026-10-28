@@ -243,6 +243,8 @@ func standardPreset() []Action {
 		{ID: "app.dashboard", Label: "Dashboard", Category: CatApp,
 			Desc:    "Choose which places the dashboard shows",
 			Enabled: func(Context) bool { return true }},
+		{ID: "app.local", Label: "Local files", Category: CatApp,
+			Desc: "Browse local files or go to a folder, then choose remote panes", Enabled: f(always)},
 		{ID: "app.files", Label: "Browse local files", Category: CatApp,
 			Desc: "Leave the launcher and open the local file manager", Enabled: always},
 		{ID: "app.home", Label: "Home screen", Category: CatApp,

@@ -58,6 +58,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderMCP(l)
 	case OverlaySessionChoose:
 		return m.renderSessionChooser(l)
+	case OverlayLocalChoose:
+		return m.renderLocalChooser(l)
 	default:
 		return ""
 	}
