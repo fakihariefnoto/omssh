@@ -171,3 +171,59 @@ func TestPruneRecordings(t *testing.T) {
 		t.Error("the oldest recording over the cap should be removed")
 	}
 }
+
+// The tunnel card shows what is listening, where it goes, and the counters; a
+// tunnel stays running when the card closes.
+func TestTunnelCard(t *testing.T) {
+	m := newTestModel(t)
+	active := &activeTunnel{id: 1, host: "contabo", kind: "local",
+		listen: "127.0.0.1:8080", target: "db:5432"}
+	active.conns, active.bytesIn, active.bytesOut = 2, 1024, 2048
+	m.tunnels = []*activeTunnel{active}
+	m.Overlay = OverlayTunnels
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Tunnels", "local", "127.0.0.1:8080", "db:5432", "2 conns", "contabo"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the card should show %q:\n%s", want, out)
+		}
+	}
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.Overlay != OverlayNone || len(m.tunnels) != 1 {
+		t.Errorf("Esc should close the card and leave the tunnel, overlay=%v tunnels=%d", m.Overlay, len(m.tunnels))
+	}
+
+	// x stops it.
+	m.Overlay = OverlayTunnels
+	press(t, m, run('x', 0, "x"))
+	if len(m.tunnels) != 0 {
+		t.Errorf("x should stop the tunnel, tunnels=%d", len(m.tunnels))
+	}
+}
+
+// Starting a tunnel without a live session explains what is missing instead of
+// opening a prompt that cannot work.
+func TestTunnelNeedsALiveSession(t *testing.T) {
+	m := newTestModel(t)
+	m.Panes[0] = Pane{Side: SideRemote, Host: "contabo", Path: "/", Selected: map[string]bool{}, History: []string{"/"}}
+	m.Focused = 0
+	m.runAction("session.tunnel")
+	if m.Overlay == OverlayPrompt {
+		t.Error("there is no session, so there is nothing to tunnel through")
+	}
+}
+
+// The MCP card carries the configuration, because the server itself is a stdio
+// process started by the agent, not a screen inside omssh.
+func TestMCPCard(t *testing.T) {
+	m := newTestModel(t)
+	m.runAction("app.mcp")
+	if m.Overlay != OverlayMCP {
+		t.Fatalf("app.mcp should open the card, overlay=%v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"MCP", "mcpServers", "--allow-write", "--allow-host"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the card should show %q:\n%s", want, out)
+		}
+	}
+}

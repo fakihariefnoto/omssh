@@ -52,6 +52,10 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderTransfersScreen(l)
 	case OverlayRecordings:
 		return m.renderRecordings(l)
+	case OverlayTunnels:
+		return m.renderTunnels(l)
+	case OverlayMCP:
+		return m.renderMCP(l)
 	default:
 		return ""
 	}

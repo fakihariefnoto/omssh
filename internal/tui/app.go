@@ -156,9 +156,12 @@ type Model struct {
 	connecting map[string]bool
 	// embedded is the embedded terminal, when one is open; replay is a recording
 	// being played. Both own the screen, so only one can exist at a time.
-	embedded   *embeddedState
-	replay     *replayState
-	recordings recordingsState
+	embedded     *embeddedState
+	replay       *replayState
+	recordings   recordingsState
+	tunnels      []*activeTunnel
+	tunnelSeq    int
+	tunnelCursor int
 
 	// live is the sessions this interface is showing, by alias, so switching tabs
 	// does not have to ask the manager.
@@ -903,6 +906,23 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.handleRecordingsKey(msg)
 		return true
 
+	case OverlayTunnels:
+		m.handleTunnelsKey(msg)
+		return true
+
+	case OverlayMCP:
+		if msg.String() == "esc" || msg.String() == "q" {
+			m.Overlay = OverlayNone
+		}
+		if msg.String() == "c" {
+			if err := clipboard.Write(context.Background(), mcpConfigSnippet()); err != nil {
+				m.toastWarning("Clipboard unavailable: " + err.Error())
+			} else {
+				m.toastSuccess("MCP config copied")
+			}
+		}
+		return true
+
 	case OverlayStaged:
 		switch msg.String() {
 		case "esc":
@@ -1099,6 +1119,7 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 
 	switch id {
 	case "app.quit":
+		m.closeTunnels()
 		m.quit = true
 	case "app.back":
 		m.goBack()
@@ -1307,6 +1328,15 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		return m.openEmbedded()
 	case "session.replay":
 		m.openReplayPrompt()
+		return nil
+	case "session.tunnels":
+		m.openTunnels()
+		return nil
+	case "session.tunnel":
+		m.openTunnelPrompt()
+		return nil
+	case "app.mcp":
+		m.Overlay = OverlayMCP
 		return nil
 	case "session.recordings":
 		m.openRecordings()
@@ -1521,7 +1551,7 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings:
+	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings, OverlayTunnels, OverlayMCP:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
@@ -1599,6 +1629,9 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 		return nil
 	case "prompt.replay-search":
 		m.searchReplay(value)
+		return nil
+	case "prompt.tunnel":
+		m.handleTunnelPrompt(value)
 		return nil
 	case "prompt.link-show":
 		// The URL is on screen to be read or selected; Enter just dismisses it.

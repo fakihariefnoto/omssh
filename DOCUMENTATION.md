@@ -485,8 +485,9 @@ it" look identical from the outside: it separates them.
 
 ## Terminal
 
-`t` on the connections list, or `T` in a file pane, hands the terminal to `ssh -t
-<alias>`. It is the real thing: vim, top, tmux, colours and modes work because
+`t` on the connections list (`Ctrl+O`, then the host), or `T` in a file pane,
+hands the terminal to `ssh -t <alias>`. `Enter` on a host in that list browses its
+files instead, and `U` opens the embedded terminal. It is the real thing: vim, top, tmux, colours and modes work because
 nothing stands in their way. When you exit, the interface takes the terminal back
 and refreshes the panes.
 
@@ -600,6 +601,12 @@ omssh tunnel contabo -D 1080                      # SOCKS5 on 127.0.0.1:1080
 omssh tunnel contabo -L 8080:db:5432 --json-lines # events as they happen
 ```
 
+In the interface, `Alt+T` on a connected host asks for the same spec with a kind
+prefix — `L:8080:db:5432`, `R:9000:localhost:3000`, `D:1080` — and `Alt+Y` opens
+the list of running forwards with connection counts and bytes each way. `x`
+stops one; `Esc` closes the list and leaves the tunnels running. Both actions are
+in `Ctrl+K`, so they are reachable from any screen.
+
 The shape is `ssh`'s: `[bind:]port:host:port` for `-L` and `-R`, `[bind:]port`
 for `-D`. A forward with no bind address listens on **127.0.0.1**, not on every
 interface — a private database should not appear on café Wi-Fi because a colon was
@@ -697,6 +704,10 @@ network, no token to leak. It exposes the same places and the same safety model:
   }
 }
 ```
+
+In the interface, `Alt+M` opens an **MCP** card with this snippet; `c` copies it.
+The server is a stdio process the agent starts, so it is configured outside omssh
+— the card exists so the flags are not something to remember.
 
 That is a Claude Desktop / Cursor / any MCP client's configuration. Drop the
 `--allow-write` and the server can only read; add `--yes` and `rm` performs
@@ -892,6 +903,9 @@ with `omssh keys`. The grammar is small:
 | `w` | Switch pane |
 | `T` | Terminal on this host, handed over to ssh |
 | `U` | Embedded terminal on this host (recordable) |
+| `Alt+T` | Start a tunnel through this host |
+| `Alt+Y` | Watch or stop running tunnels |
+| `Alt+M` | MCP configuration for agents |
 | `Alt+R` | Replay the newest recording, or choose a path |
 | `Alt+L` | List recordings |
 | `Q` | Disconnect, keeping the tab |

@@ -220,3 +220,35 @@ type fakeAddr string
 
 func (a fakeAddr) Network() string { return "tcp" }
 func (a fakeAddr) String() string  { return string(a) }
+
+// The spec a person types in the interface: kind prefix optional, loopback bind
+// by default.
+func TestParseSpec(t *testing.T) {
+	cases := []struct {
+		in     string
+		kind   Kind
+		listen string
+		target string
+	}{
+		{"L:8080:db:5432", Local, "127.0.0.1:8080", "db:5432"},
+		{"8080:db:5432", Local, "127.0.0.1:8080", "db:5432"},
+		{"0.0.0.0:8080:db:5432", Local, "0.0.0.0:8080", "db:5432"},
+		{"R:9000:localhost:3000", Remote, "127.0.0.1:9000", "localhost:3000"},
+		{"D:1080", Dynamic, "127.0.0.1:1080", ""},
+		{"D:0.0.0.0:1080", Dynamic, "0.0.0.0:1080", ""},
+	}
+	for _, tc := range cases {
+		spec, err := ParseSpec(tc.in)
+		if err != nil {
+			t.Fatalf("ParseSpec(%q): %v", tc.in, err)
+		}
+		if spec.Kind != tc.kind || spec.Listen != tc.listen || spec.Target != tc.target {
+			t.Errorf("ParseSpec(%q) = %+v", tc.in, spec)
+		}
+	}
+	for _, bad := range []string{"", "X:1:2:3", "L:8080", "D:"} {
+		if _, err := ParseSpec(bad); err == nil {
+			t.Errorf("ParseSpec(%q) should fail", bad)
+		}
+	}
+}
