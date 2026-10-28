@@ -26,11 +26,12 @@ import (
 // activeTunnel is one running forward and its counters. The callbacks run on the
 // tunnel's goroutines, so the numbers are behind a mutex and rendering only reads.
 type activeTunnel struct {
-	id     int
-	host   string
-	kind   tunnel.Kind
-	listen string
-	target string
+	id        int
+	sessionID string
+	host      string
+	kind      tunnel.Kind
+	listen    string
+	target    string
 
 	mu       sync.Mutex
 	tunnel   *tunnel.Tunnel
@@ -106,12 +107,13 @@ func (m *Model) handleTunnelFormKey(msg tea.KeyPressMsg) {
 			return
 		}
 		m.tunnelForm = tunnelFormState{}
-		// A tunnel is not a file: land in its own history, where Enter watches
-		// the tail, instead of on a file dashboard nobody asked for.
+		// A tunnel is not a file: show the running list, where x stops it and
+		// Enter opens its history tail. The form is gone; the tunnel is not.
 		m.screen = screenHome
 		m.mode = "NORMAL"
-		m.openHistory(1)
-		m.toastSuccess("Tunnel running · Enter to watch its tail")
+		m.Overlay = OverlayTunnels
+		m.tunnelCursor = len(m.tunnels) - 1
+		m.toastSuccess("Tunnel running · x stops it · Enter shows history")
 	default:
 		m.tunnelForm.err = ""
 		m.tunnelForm.input.Handle(msg)
@@ -124,9 +126,25 @@ func (m *Model) renderTunnelForm(l layout) string {
 	width := cardWidth(l, 66, 96)
 	content := cardContent(width)
 	form := m.tunnelForm
+	via := form.host
+	if live, ok := m.live[form.host]; ok {
+		target := live.Target
+		address := target.Host
+		if target.Port != 0 {
+			address = fmt.Sprintf("%s:%d", address, target.Port)
+		}
+		user := ""
+		if target.User != "" {
+			user = target.User + "@"
+		}
+		if address != "" {
+			via = fmt.Sprintf("%s · %s%s", form.host, user, address)
+		}
+	}
 	lines := []string{
 		m.st.CardTitle.Render("Tunnel through " + form.host),
-		m.st.CardMuted.Render(truncate("Forward a port over the SSH connection. Nothing is captured.", content)),
+		m.st.CardMuted.Render(truncate("via "+via+" · nothing is captured", content)),
+		m.st.CardMuted.Render(truncate("For L, localhost is the server; for R, it is this machine.", content)),
 		"",
 	}
 	lines = append(lines, m.st.StatusMuted.Render(truncate(
@@ -202,6 +220,7 @@ func (m *Model) startTunnel(specText string) error {
 	}
 	m.tunnelSeq++
 	active.id, active.tunnel = m.tunnelSeq, started
+	active.sessionID = started.ID()
 	m.tunnels = append(m.tunnels, active)
 	return nil
 }
@@ -235,11 +254,35 @@ func (m *Model) handleTunnelsKey(msg tea.KeyPressMsg) {
 		m.tunnelCursor = max(0, m.tunnelCursor-1)
 	case "down", "j":
 		m.tunnelCursor = min(max(0, len(m.tunnels)-1), m.tunnelCursor+1)
-	case "x", "d", "enter":
+	case "enter":
+		m.Overlay = OverlayNone
+		m.openHistory(1)
+	case "x", "d":
 		if m.tunnelCursor >= 0 && m.tunnelCursor < len(m.tunnels) {
 			m.stopTunnel(m.tunnelCursor)
 		}
 	}
+}
+
+// runningTunnel finds a live forward by the session id history records.
+func (m *Model) runningTunnel(session string) *activeTunnel {
+	for _, active := range m.tunnels {
+		if active.sessionID == session {
+			return active
+		}
+	}
+	return nil
+}
+
+// stopTunnelBySession stops a forward selected in History or its tail.
+func (m *Model) stopTunnelBySession(session string) bool {
+	for i, active := range m.tunnels {
+		if active.sessionID == session {
+			m.stopTunnel(i)
+			return true
+		}
+	}
+	return false
 }
 
 // stopTunnel closes one and drops it from the list.
@@ -301,7 +344,7 @@ func (m *Model) renderTunnels(l layout) string {
 	if len(m.tunnels) == 0 {
 		lines = append(lines, m.st.PaneEmpty.Render("Nothing running"))
 	}
-	lines = append(lines, m.st.CardMuted.Render("↑↓ choose · x stop · Esc close"))
+	lines = append(lines, m.st.CardMuted.Render("↑↓ choose · x stop · Enter history · Esc close (tunnels keep running)"))
 	return m.card(width, lines)
 }
 

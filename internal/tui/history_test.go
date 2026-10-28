@@ -11,6 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/session"
+	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
 	"github.com/fakihariefnoto/omssh/internal/tunnel"
 )
 
@@ -211,5 +213,43 @@ func TestRecordingsBelongToHistory(t *testing.T) {
 	press(t, m, keyNamed(tea.KeyEsc))
 	if m.screen != screenHome {
 		t.Errorf("Esc should return to the launcher, screen=%v", m.screen)
+	}
+}
+
+// A running tunnel is marked, and can be stopped from History without deleting
+// its record.
+func TestHistoryStopsRunningTunnel(t *testing.T) {
+	historyFixture(t)
+	m := newTestModel(t)
+	m.tunnels = []*activeTunnel{{id: 1, sessionID: "s1", host: "contabo", kind: tunnel.Local,
+		listen: "127.0.0.1:8080", target: "db:5432"}}
+	m.openHistory(1)
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "running") {
+		t.Errorf("a running tunnel should say so:\n%s", out)
+	}
+	press(t, m, run('s', 0, "s"))
+	if len(m.tunnels) != 0 {
+		t.Error("s should stop the running tunnel")
+	}
+	// Stopping is not deleting: the history row stays.
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "127.0.0.1:8080") {
+		t.Errorf("the history record should survive stopping:\n%s", out)
+	}
+}
+
+// The form names the real host address, and whose localhost is whose.
+func TestTunnelFormShowsTheRealAddress(t *testing.T) {
+	m := newTestModel(t)
+	m.live = map[string]*session.Session{"contabo": {Target: omssh.Target{
+		Alias: "contabo", User: "deploy", Host: "203.0.113.10", Port: 2222,
+	}}}
+	m.tunnelForm = tunnelFormState{host: "contabo"}
+	m.tunnelForm.input.Set("L:8080:localhost:80")
+	m.Overlay = OverlayTunnelForm
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"deploy@203.0.113.10:2222", "localhost is the server", "this machine"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the form should explain %q:\n%s", want, out)
+		}
 	}
 }

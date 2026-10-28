@@ -96,8 +96,13 @@ reach. A remote forward publishes a port on the server that comes back to this
 machine. A dynamic forward is a SOCKS5 proxy that chooses its target per
 connection.
 
-Starting one lands in **Tunnel history**, not on a file dashboard: the tunnel is
-not a file. **MCP** shows the stdio configuration, copies it with `c`, and lists
+The form names the real connection (`via contabo · deploy@203.0.113.10:2222`)
+and settles the one thing ssh's syntax hides: for `L`, `localhost` in the target
+is the **server**; for `R`, it is **this machine**.
+
+Starting one closes the form and shows the **running tunnels** card, where `x`
+stops the selected forward, `Enter` opens its history tail, and `Esc` closes the
+card while the tunnel keeps running. **MCP** shows the stdio configuration, copies it with `c`, and lists
 the last agent calls with `r` to refresh.
 
 ## History
@@ -112,7 +117,8 @@ rows are newest first.
   `v` shows the same conversation as plain text, with the escape sequences gone.
 - **Tunnel** rows are sessions from `<state>/tunnels.jsonl`. Tunnel metadata is
   **recorded automatically** — there is nothing to enable, and it is what the
-  audit log uses. `Enter` opens the
+  audit log uses. A running session is marked `running`; `s` stops it without
+  deleting the record, and `x` inside the tail does the same. `Enter` opens the
   **tail**: when it started, where it listened, every connection with its byte
   counts, and live counters when it is still running.
 - **Agent** rows are MCP tool calls, always labelled `agent · <tool>` so they are

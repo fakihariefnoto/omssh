@@ -277,6 +277,9 @@ func (m *Model) renderHistory(l layout) string {
 	for i := m.history.offset; i < len(entries) && i < m.history.offset+listRows; i++ {
 		entry := entries[i]
 		meta := entry.detail
+		if entry.kind == historyTunnel && m.runningTunnel(entry.session) != nil {
+			meta = "running · " + meta
+		}
 		if !entry.when.IsZero() {
 			meta = entry.when.Format("Jan 02 15:04") + " · " + meta
 		}
@@ -348,6 +351,15 @@ func (m *Model) handleHistoryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.openHistoryEntry(entries[m.history.cursor])
 			return m, nil
 		}
+	case "s":
+		if m.history.cursor >= 0 && m.history.cursor < len(entries) && entries[m.history.cursor].kind == historyTunnel {
+			if m.stopTunnelBySession(entries[m.history.cursor].session) {
+				m.history.all = m.loadHistory()
+				m.toastSuccess("Tunnel stopped")
+			} else {
+				m.toastInfo("That tunnel is not running")
+			}
+		}
 	case "v":
 		if m.history.cursor >= 0 && m.history.cursor < len(entries) && entries[m.history.cursor].kind == historyTerminal {
 			m.openTranscript(entries[m.history.cursor])
@@ -416,7 +428,8 @@ func (m *Model) openTunnelTail(entry historyEntry) {
 			}
 		}
 	}
-	m.openHistoryDetail("Tunnel · watch", lines)
+	m.historyDetail = historyDetailState{title: "Tunnel · watch", lines: lines, session: state.id}
+	m.Overlay = OverlayHistoryDetail
 }
 
 // openTranscript is the conversation log: the output of a recording with the
@@ -449,9 +462,10 @@ func (m *Model) openTranscript(entry historyEntry) {
 
 // historyDetailState is a paged, read-only text card.
 type historyDetailState struct {
-	title  string
-	lines  []string
-	offset int
+	title   string
+	lines   []string
+	offset  int
+	session string // a tunnel tail can stop the forward it is watching
 }
 
 func (m *Model) openHistoryDetail(title string, lines []string) {
@@ -463,6 +477,18 @@ func (m *Model) handleHistoryDetailKey(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc", "q", "enter":
 		m.Overlay = OverlayNone
+	case "x", "s":
+		sessionID := m.historyDetail.session
+		if sessionID == "" {
+			return
+		}
+		if m.stopTunnelBySession(sessionID) {
+			m.Overlay = OverlayNone
+			m.history.all = m.loadHistory()
+			m.toastSuccess("Tunnel stopped")
+		} else {
+			m.toastInfo("That tunnel is not running")
+		}
 	case "up", "k":
 		m.historyDetail.offset = max(0, m.historyDetail.offset-1)
 	case "down", "j":
