@@ -269,10 +269,10 @@ func TestLauncherChoosesConnectedSessions(t *testing.T) {
 	}
 	press(t, m, keyNamed(tea.KeyEnter))
 	if m.Overlay != OverlayTunnelForm || m.tunnelHost != "contabo" {
-		t.Fatalf("Enter should ask for the spec on contabo, overlay=%v host=%q", m.Overlay, m.tunnelHost)
+		t.Fatalf("Enter should ask how to tunnel on contabo, overlay=%v host=%q", m.Overlay, m.tunnelHost)
 	}
-	if !strings.HasPrefix(m.tunnelForm.input.Value, "L:") {
-		t.Errorf("the spec form should start with a local forward, got %q", m.tunnelForm.input.Value)
+	if m.tunnelForm.step != 0 {
+		t.Errorf("the form should start with the direction question, step=%d", m.tunnelForm.step)
 	}
 }
 

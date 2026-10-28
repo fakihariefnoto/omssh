@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -75,35 +76,177 @@ func (m *Model) openTunnelPrompt() {
 	m.openTunnelPromptHost(host)
 }
 
-// tunnelFormState is the tunnel form: a host that cannot change, a spec, and the
-// examples that make the spec understandable.
+// tunnelFormState is the tunnel form. It is two steps — which direction, then
+// the addresses — because "L:8080:host:port" is ssh's syntax, not a person's.
 type tunnelFormState struct {
-	host  string
-	input input
-	err   string
+	host   string
+	step   int // 0: choose L/R/D, 1: fill the fields
+	kind   tunnel.Kind
+	cursor int // kind chooser
+	fields []tunnelField
+	focus  int
+	err    string
 }
 
-// openTunnelPromptHost asks for the spec for one chosen host.
+type tunnelField struct {
+	key, label, hint string
+	in               input
+}
+
+// tunnelKindOptions is the first step, in the order it is shown.
+var tunnelKindOptions = []struct {
+	kind    tunnel.Kind
+	name    string
+	meaning string
+}{
+	{tunnel.Local, "Local", "listen here; the server dials the target"},
+	{tunnel.Remote, "Remote", "listen on the server; this machine dials"},
+	{tunnel.Dynamic, "Dynamic", "a SOCKS5 proxy on this machine"},
+}
+
+// openTunnelPromptHost starts at the direction question.
 func (m *Model) openTunnelPromptHost(host string) {
 	if _, live := m.live[host]; !live {
 		m.toastInfo("Connect to " + host + " first")
 		return
 	}
 	m.tunnelHost = host
-	m.tunnelForm = tunnelFormState{host: host}
-	m.tunnelForm.input.Set("L:8080:localhost:80")
+	m.tunnelForm = tunnelFormState{host: host, kind: tunnel.Local}
 	m.Overlay = OverlayTunnelForm
 }
 
-// handleTunnelFormKey edits or submits the spec.
+// enterTunnelFields moves to step 2 with defaults a beginner can press Enter on.
+func (f *tunnelFormState) enterFields(kind tunnel.Kind) {
+	f.step, f.kind, f.focus, f.err = 1, kind, 0, ""
+	add := func(key, label, hint, value string) {
+		field := tunnelField{key: key, label: label, hint: hint}
+		field.in.Set(value)
+		f.fields = append(f.fields, field)
+	}
+	switch kind {
+	case tunnel.Local, tunnel.Bastion:
+		// Bastion is the CLI's name for a local forward with metadata intent; the
+		// interface only offers L, R and D, but the switch stays exhaustive.
+		port := suggestPort("127.0.0.1", 8080)
+		add("bind", "bind", "127.0.0.1 keeps it private; 0.0.0.0 exposes it", "127.0.0.1")
+		add("port", "port", fmt.Sprintf("%d is free on this machine", port), strconv.Itoa(port))
+		add("host", "target host", "resolved by the server, not by you", "localhost")
+		add("port2", "target port", "the service on the target", "80")
+	case tunnel.Remote:
+		add("bind", "server bind", "where the server listens; loopback is private", "127.0.0.1")
+		add("port", "server port", "the port to open on the server", "9000")
+		add("host", "local host", "resolved on this machine", "localhost")
+		add("port2", "local port", "the service here to reach", "3000")
+	case tunnel.Dynamic:
+		port := suggestPort("127.0.0.1", 1080)
+		add("bind", "bind", "the SOCKS5 listener on this machine", "127.0.0.1")
+		add("port", "port", fmt.Sprintf("%d is free; a SOCKS5 client connects here", port), strconv.Itoa(port))
+	}
+}
+
+func (f tunnelFormState) value(key string) string {
+	for _, field := range f.fields {
+		if field.key == key {
+			return strings.TrimSpace(field.in.Value)
+		}
+	}
+	return ""
+}
+
+// spec turns the fields into what the tunnel package starts. Validation happens
+// here, so an empty port is a sentence rather than a failed listener.
+func (f tunnelFormState) spec() (tunnel.Spec, error) {
+	bind, port := f.value("bind"), f.value("port")
+	if bind == "" {
+		return tunnel.Spec{}, fmt.Errorf("a bind address is required")
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
+		return tunnel.Spec{}, fmt.Errorf("port must be a number from 1 to 65535")
+	}
+	listen := net.JoinHostPort(bind, port)
+	if f.kind == tunnel.Dynamic {
+		return tunnel.Spec{Kind: tunnel.Dynamic, Listen: listen}, nil
+	}
+	host := f.value("host")
+	if host == "" {
+		return tunnel.Spec{}, fmt.Errorf("a target host is required")
+	}
+	targetPort, err := strconv.Atoi(f.value("port2"))
+	if err != nil || targetPort < 1 || targetPort > 65535 {
+		return tunnel.Spec{}, fmt.Errorf("the target port must be a number from 1 to 65535")
+	}
+	return tunnel.Spec{Kind: f.kind, Listen: listen,
+		Target: net.JoinHostPort(host, strconv.Itoa(targetPort))}, nil
+}
+
+// checkPort is the "is it free" question before a start, for the local listener.
+// A remote forward listens on the server; its collision is reported when the
+// server answers.
+func (f tunnelFormState) checkPort() error {
+	if f.kind == tunnel.Remote {
+		return nil
+	}
+	spec, err := f.spec()
+	if err != nil {
+		return err
+	}
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(context.Background(), "tcp", spec.Listen)
+	if err != nil {
+		host, port, splitErr := net.SplitHostPort(spec.Listen)
+		if splitErr == nil {
+			if number, convErr := strconv.Atoi(port); convErr == nil {
+				return fmt.Errorf("%s is in use · try %d: %w", spec.Listen, suggestPort(host, number+1), err)
+			}
+		}
+		return fmt.Errorf("%s is not free: %w", spec.Listen, err)
+	}
+	return listener.Close()
+}
+
+// handleTunnelFormKey drives the two steps.
 func (m *Model) handleTunnelFormKey(msg tea.KeyPressMsg) {
+	form := &m.tunnelForm
+	if form.step == 0 {
+		switch msg.String() {
+		case "esc":
+			m.tunnelForm = tunnelFormState{}
+			m.Overlay = OverlayNone
+		case "up", "k":
+			form.cursor = (form.cursor + len(tunnelKindOptions) - 1) % len(tunnelKindOptions)
+		case "down", "j":
+			form.cursor = (form.cursor + 1) % len(tunnelKindOptions)
+		case "enter":
+			form.enterFields(tunnelKindOptions[form.cursor].kind)
+		}
+		return
+	}
 	switch msg.String() {
 	case "esc":
-		m.tunnelForm = tunnelFormState{}
-		m.Overlay = OverlayNone
+		// Back to the direction, not out of the whole card: the fields are the
+		// second half of one question.
+		form.step, form.err = 0, ""
+		if form.cursor < 0 || form.cursor >= len(tunnelKindOptions) {
+			form.cursor = 0
+		}
+	case "tab", "down":
+		form.focus = (form.focus + 1) % len(form.fields)
+	case "shift+tab", "up":
+		form.focus = (form.focus - 1 + len(form.fields)) % len(form.fields)
 	case "enter":
-		if err := m.startTunnel(m.tunnelForm.input.Value); err != nil {
-			m.tunnelForm.err = err.Error()
+		if err := form.checkPort(); err != nil {
+			form.err = err.Error()
+			return
+		}
+		spec, err := form.spec()
+		if err != nil {
+			form.err = err.Error()
+			return
+		}
+		m.tunnelHost = form.host
+		if err := m.startTunnelSpec(spec); err != nil {
+			form.err = err.Error()
 			return
 		}
 		m.tunnelForm = tunnelFormState{}
@@ -115,85 +258,137 @@ func (m *Model) handleTunnelFormKey(msg tea.KeyPressMsg) {
 		m.tunnelCursor = len(m.tunnels) - 1
 		m.toastSuccess("Tunnel running · x stops it · Enter shows history")
 	default:
-		m.tunnelForm.err = ""
-		m.tunnelForm.input.Handle(msg)
+		form.err = ""
+		form.fields[form.focus].in.Handle(msg)
 	}
 }
 
-// renderTunnelForm draws the form with the three shapes spelled out. A bare
-// prompt asked beginners to know ssh's syntax before they could use the feature.
+// renderTunnelForm draws the step, and the preview that says what will happen.
 func (m *Model) renderTunnelForm(l layout) string {
-	width := cardWidth(l, 66, 96)
-	content := cardContent(width)
 	form := m.tunnelForm
-	via := form.host
+	width := cardWidth(l, 70, 100)
+	content := cardContent(width)
+	alias := form.host
+	via := alias
 	if live, ok := m.live[form.host]; ok {
 		target := live.Target
 		address := target.Host
 		if target.Port != 0 {
 			address = fmt.Sprintf("%s:%d", address, target.Port)
 		}
-		user := ""
 		if target.User != "" {
-			user = target.User + "@"
+			address = target.User + "@" + address
 		}
 		if address != "" {
-			via = fmt.Sprintf("%s · %s%s", form.host, user, address)
+			via = fmt.Sprintf("%s · %s", alias, address)
 		}
 	}
 	lines := []string{
-		m.st.CardTitle.Render("Tunnel through " + form.host),
+		m.st.CardTitle.Render("Tunnel through " + alias),
 		m.st.CardMuted.Render(truncate("via "+via+" · nothing is captured", content)),
-		m.st.CardMuted.Render(truncate("For L, localhost is the server; for R, it is this machine.", content)),
 		"",
 	}
-	lines = append(lines, m.st.StatusMuted.Render(truncate(
-		"L local · R remote · D dynamic (SOCKS5)", content)), "")
-	examples := []struct{ letter, name, meaning, spec string }{
-		{"L", "Local", "this machine listens; the server dials the target", "8080:db.internal:5432"},
-		{"R", "Remote", "the server listens; this machine dials the target", "9000:localhost:3000"},
-		{"D", "Dynamic", "a SOCKS5 proxy on this machine", "1080"},
+	if form.step == 0 {
+		lines = append(lines, m.st.StatusMuted.Render(truncate("What should the forward do?", content)), "")
+		for i, option := range tunnelKindOptions {
+			text := spread(m.st.CardText.Render(option.name), m.st.CardMuted.Render(option.meaning), content-1)
+			if i == form.cursor {
+				lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible(
+					"▸ "+option.name+"  "+option.meaning, content)))
+				continue
+			}
+			lines = append(lines, "  "+text)
+		}
+		lines = append(lines, "", m.st.CardMuted.Render("↑↓ choose · Enter next · Esc close"))
+		return m.card(width, lines)
 	}
-	for _, example := range examples {
+
+	labelWidth := 11
+	for _, field := range form.fields {
+		labelWidth = max(labelWidth, len(field.label))
+	}
+	valueWidth := max(10, content-labelWidth-2)
+	for i, field := range form.fields {
+		label := m.st.StatusMuted.Render(padRight(field.label, labelWidth))
+		shown := field.in.Display()
+		if i == form.focus {
+			shown = field.in.Rendered()
+		}
+		value := m.st.PathInput.Width(valueWidth).Render(truncate(shown, valueWidth))
+		prefix := "  "
+		if i == form.focus {
+			prefix = m.st.Accent.Bold(true).Render("▸ ")
+		}
 		lines = append(lines,
-			m.st.CardText.Render(truncate("  "+example.letter+"  "+padRight(example.name, 9)+example.meaning, content)),
-			m.st.CardMuted.Render(truncate("     "+example.spec, content)))
+			prefix+label+" "+value,
+			spaces(2+labelWidth+1)+m.st.CardMuted.Render(truncate(field.hint, valueWidth)),
+		)
 	}
-	lines = append(lines, "")
-	label := m.st.StatusMuted.Render("spec  ")
-	valueWidth := max(10, content-6)
-	shown := form.input.Display()
-	if m.Overlay == OverlayTunnelForm {
-		shown = form.input.Rendered()
+
+	diagram, explanation := form.preview(alias)
+	lines = append(lines, "", m.st.StatusMuted.Render("What will happen"), "")
+	for _, line := range diagram {
+		lines = append(lines, m.st.CardText.Render(truncate("  "+line, content)))
 	}
-	lines = append(lines,
-		m.st.Accent.Bold(true).Render("▸ ")+label+
-			m.st.PathInput.Width(valueWidth).Render(truncate(shown, valueWidth)),
-		spaces(6)+m.st.CardMuted.Render(truncate("L:port:host:port · R:port:host:port · D:port", valueWidth)),
-	)
+	for _, line := range explanation {
+		lines = append(lines, m.st.CardMuted.Render(truncate("  "+line, content)))
+	}
 	if form.err != "" {
 		lines = append(lines, "", m.st.Danger.Render(truncate(form.err, content)))
 	}
-	lines = append(lines, "", m.st.CardMuted.Render("Enter start · Esc cancel"))
+	footer := "Tab next · Enter start · Esc back"
+	if form.kind == tunnel.Remote {
+		footer = "Tab next · Enter start (port checked by the server) · Esc back"
+	}
+	lines = append(lines, "", m.st.CardMuted.Render(footer))
 	return m.card(width, lines)
 }
 
-// sshHostForTunnel finds the live session the focused pane or tab belongs to.
-func (m *Model) sshHostForTunnel() (string, bool) {
-	host := m.Pane().Host
-	if host == "" && m.activeTab >= 0 && m.activeTab < len(m.tabs) {
-		host = m.tabs[m.activeTab].Host
+// preview is the simulation: where the bytes enter, where they leave, and what
+// localhost means at each end.
+func (f tunnelFormState) preview(alias string) (diagram, explanation []string) {
+	bind, port, host, port2 := f.value("bind"), f.value("port"), f.value("host"), f.value("port2")
+	local := net.JoinHostPort(valueOr(bind, "127.0.0.1"), valueOr(port, "port"))
+	target := net.JoinHostPort(valueOr(host, "host"), valueOr(port2, "port"))
+	switch f.kind {
+	case tunnel.Remote:
+		return []string{
+				fmt.Sprintf("%s  ◀──SSH──  %s", target, local),
+				fmt.Sprintf("on %s: %s", alias, local),
+			}, []string{
+				fmt.Sprintf("A program on %s connecting to %s reaches %s here.", alias, local, target),
+				"localhost on the server side would mean the server; here it means this machine.",
+			}
+	case tunnel.Dynamic:
+		return []string{
+				fmt.Sprintf("SOCKS5 %s  ───SSH──▶  any target", local),
+				fmt.Sprintf("through %s", alias),
+			}, []string{
+				fmt.Sprintf("Point a SOCKS5 client at %s on this machine.", local),
+				fmt.Sprintf("%s resolves and reaches whichever target the client asks for.", alias),
+				"No fixed target: that is what dynamic means.",
+			}
+	default:
+		return []string{
+				fmt.Sprintf("%s  ───SSH──▶  %s", local, target),
+				fmt.Sprintf("on this machine   through %s", alias),
+			}, []string{
+				fmt.Sprintf("Connect to %s on this machine; the connection leaves %s for %s.",
+					local, alias, target),
+				"localhost in the target means the server, not your laptop.",
+			}
 	}
-	if host == "" {
-		return "", false
-	}
-	_, live := m.live[host]
-	return host, live
 }
 
-// startTunnel parses a spec and opens the forward. It returns an error message
-// rather than reporting success for a port it could not bind.
-func (m *Model) startTunnel(specText string) error {
+func valueOr(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+// startTunnelSpec opens a forward from an already validated spec.
+func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	host := m.tunnelHost
 	if host == "" {
 		host, _ = m.sshHostForTunnel()
@@ -202,10 +397,6 @@ func (m *Model) startTunnel(specText string) error {
 		return fmt.Errorf("no live session on %s", host)
 	}
 	live := m.live[host]
-	spec, err := tunnel.ParseSpec(specText)
-	if err != nil {
-		return err
-	}
 	options := tunnel.Options{Kind: spec.Kind, Listen: spec.Listen, Target: spec.Target, Host: host}
 	active := &activeTunnel{host: host, kind: spec.Kind, listen: spec.Listen, target: spec.Target}
 	options.OnEvent = active.observe
@@ -225,16 +416,27 @@ func (m *Model) startTunnel(specText string) error {
 	return nil
 }
 
-// sshDialer adapts an SSH client to tunnel.Dialer. x/crypto's Dial has no context,
-// which is fine: the tunnel's context ends the listener, and a dial in flight is
-// bounded by SSH's own timeouts.
+// sshDialer adapts an SSH client to tunnel.Dialer.
 type sshDialer struct{ client *sshx.Client }
 
 func (d sshDialer) DialContext(_ context.Context, network, addr string) (net.Conn, error) {
 	return d.client.Dial(network, addr)
 }
 
-// openTunnels lists the running forwards.
+// sshHostForTunnel finds the live session the focused pane or tab belongs to.
+func (m *Model) sshHostForTunnel() (string, bool) {
+	host := m.Pane().Host
+	if host == "" && m.activeTab >= 0 && m.activeTab < len(m.tabs) {
+		host = m.tabs[m.activeTab].Host
+	}
+	if host == "" {
+		return "", false
+	}
+	_, live := m.live[host]
+	return host, live
+}
+
+// openTunnels lists the running forwards, or asks for one when there are none.
 func (m *Model) openTunnels() {
 	if len(m.tunnels) == 0 {
 		m.openTunnelPrompt()
@@ -244,8 +446,7 @@ func (m *Model) openTunnels() {
 	m.Overlay = OverlayTunnels
 }
 
-// handleTunnelsKey stops one or leaves the list. Tunnels keep running when the
-// card closes: it is a watcher, not the tunnel's owner.
+// handleTunnelsKey stops one, opens its history, or leaves the list.
 func (m *Model) handleTunnelsKey(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc", "q":
@@ -297,7 +498,7 @@ func (m *Model) stopTunnel(index int) {
 	m.tunnels = append(m.tunnels[:index], m.tunnels[index+1:]...)
 	m.tunnelCursor = clamp(m.tunnelCursor, 0, max(0, len(m.tunnels)-1))
 	m.toastInfo(fmt.Sprintf("Stopped %s → %s", active.listen, active.target))
-	if len(m.tunnels) == 0 {
+	if len(m.tunnels) == 0 && m.Overlay == OverlayTunnels {
 		m.Overlay = OverlayNone
 	}
 }
@@ -310,6 +511,29 @@ func (m *Model) closeTunnels() {
 		}
 	}
 	m.tunnels = nil
+}
+
+// suggestPort returns the first free port at or after preferred, so the form can
+// offer something that will actually start. It probes the local bind only; a
+// remote listen is the server's answer to give.
+func suggestPort(bind string, preferred int) int {
+	var listenConfig net.ListenConfig
+	for port := preferred; port < preferred+50; port++ {
+		listener, err := listenConfig.Listen(context.Background(), "tcp", net.JoinHostPort(bind, strconv.Itoa(port)))
+		if err != nil {
+			continue
+		}
+		port = listener.Addr().(*net.TCPAddr).Port
+		_ = listener.Close()
+		return port
+	}
+	listener, err := listenConfig.Listen(context.Background(), "tcp", net.JoinHostPort(bind, "0"))
+	if err != nil {
+		return preferred
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	return port
 }
 
 // renderTunnels is the watcher: every forward, its counters, and its errors.

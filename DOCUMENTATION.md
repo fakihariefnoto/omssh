@@ -81,24 +81,28 @@ only then which host. The host chooser lists connected hosts first, then the res
 of `~/.ssh/config` marked *not connected*. For a terminal, `Enter` opens the
 embedded one, `t` hands over to `ssh` (which works whether or not the session is
 open here), and choosing an offline host **connects it first** and then opens what
-you asked for. A tunnel opens the form that teaches the three shapes instead of
-assuming ssh's syntax:
+you asked for.
+
+A tunnel is two steps, because `L:8080:host:port` is ssh's syntax rather than a
+person's. The first is the direction:
 
 ```
-L local    this machine listens; the server dials the target   8080:db.internal:5432
-R remote   the server listens; this machine dials the target   9000:localhost:3000
-D dynamic  a SOCKS5 proxy on this machine                      1080
+▸ Local    listen here; the server dials the target
+  Remote   listen on the server; this machine dials
+  Dynamic  a SOCKS5 proxy on this machine
 ```
 
-In ssh's words: `L` is `-L`, `R` is `-R`, `D` is `-D`. A local forward is the
-common one — you connect to a port here and reach something the far side can
-reach. A remote forward publishes a port on the server that comes back to this
-machine. A dynamic forward is a SOCKS5 proxy that chooses its target per
-connection.
+`←/→` or `↑/↓` choose, `Enter` goes to the addresses. The second step is a form —
+bind, port, target host, target port — with a default in every field and a hint
+under it. Ports are suggested after probing for a free one, and a busy port is
+caught before anything starts, with the next free port named in the error. A
+remote forward's port is checked by the server and reported when it answers.
 
-The form names the real connection (`via contabo · deploy@203.0.113.10:2222`)
-and settles the one thing ssh's syntax hides: for `L`, `localhost` in the target
-is the **server**; for `R`, it is **this machine**.
+Below the fields is the **simulation**: the path the bytes take and what
+`localhost` means at each end. For a local forward it reads like
+`127.0.0.1:8080 ───SSH──▶ db.internal:5432`, with the sentence "localhost in the
+target means the server, not your laptop". The form also names the real connection
+(`via contabo · deploy@203.0.113.10:22`).
 
 Starting one closes the form and shows the **running tunnels** card, where `x`
 stops the selected forward, `Enter` opens its history tail, and `Esc` closes the

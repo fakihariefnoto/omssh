@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -161,17 +164,31 @@ func TestHistoryDelete(t *testing.T) {
 	}
 }
 
-// The tunnel form teaches the shapes instead of trusting the reader to know ssh.
+// The tunnel form asks for a direction, then shows the fields and a simulation.
 func TestTunnelFormIsIllustrated(t *testing.T) {
 	m := newTestModel(t)
-	m.tunnelForm = tunnelFormState{host: "contabo"}
-	m.tunnelForm.input.Set("L:8080:localhost:80")
-	m.Overlay = OverlayTunnelForm
+	m.live = map[string]*session.Session{"contabo": {Target: omssh.Target{
+		Alias: "contabo", User: "deploy", Host: "203.0.113.10", Port: 22,
+	}}}
+	m.openTunnelPromptHost("contabo")
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"Tunnel through contabo", "L local", "R remote", "D dynamic",
-		"8080:db.internal:5432", "9000:localhost:3000", "1080", "spec"} {
+	for _, want := range []string{"Tunnel through contabo", "Local", "Remote", "Dynamic",
+		"listen here", "SOCKS5"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("the form should explain %q:\n%s", want, out)
+			t.Errorf("step one should explain %q:\n%s", want, out)
+		}
+	}
+
+	// Enter chooses Local and moves to fields with a simulation.
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.tunnelForm.step != 1 {
+		t.Fatalf("Enter should move to the fields, step=%d", m.tunnelForm.step)
+	}
+	out = ansi.Strip(render(m))
+	for _, want := range []string{"bind", "port", "target host", "target port",
+		"What will happen", "localhost in the target means the server"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("step two should explain %q:\n%s", want, out)
 		}
 	}
 }
@@ -243,13 +260,54 @@ func TestTunnelFormShowsTheRealAddress(t *testing.T) {
 	m.live = map[string]*session.Session{"contabo": {Target: omssh.Target{
 		Alias: "contabo", User: "deploy", Host: "203.0.113.10", Port: 2222,
 	}}}
-	m.tunnelForm = tunnelFormState{host: "contabo"}
-	m.tunnelForm.input.Set("L:8080:localhost:80")
-	m.Overlay = OverlayTunnelForm
+	m.openTunnelPromptHost("contabo")
+	press(t, m, keyNamed(tea.KeyEnter))
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"deploy@203.0.113.10:2222", "localhost is the server", "this machine"} {
+	for _, want := range []string{"deploy@203.0.113.10:2222", "localhost in the target means the server", "this machine"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the form should explain %q:\n%s", want, out)
 		}
 	}
+}
+
+// A busy port is caught before anything starts, with a free one suggested.
+func TestTunnelFormChecksPort(t *testing.T) {
+	var listenConfig net.ListenConfig
+	busy, err := listenConfig.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = busy.Close() }()
+	port := busy.Addr().(*net.TCPAddr).Port
+
+	m := newTestModel(t)
+	m.live = map[string]*session.Session{"contabo": {Target: omssh.Target{Alias: "contabo", Host: "h"}}}
+	m.openTunnelPromptHost("contabo")
+	press(t, m, keyNamed(tea.KeyEnter))
+	for i := range m.tunnelForm.fields {
+		if m.tunnelForm.fields[i].key == "port" {
+			m.tunnelForm.fields[i].in.Set(strconv.Itoa(port))
+		}
+	}
+	press(t, m, keyNamed(tea.KeyEnter))
+	if !strings.Contains(m.tunnelForm.err, "in use") {
+		t.Fatalf("a busy port should be refused, err=%q", m.tunnelForm.err)
+	}
+	if !strings.Contains(m.tunnelForm.err, "try") {
+		t.Errorf("the error should suggest a free port: %q", m.tunnelForm.err)
+	}
+	if len(m.tunnels) != 0 {
+		t.Error("nothing should start when the port is busy")
+	}
+}
+
+// The suggested default is actually free.
+func TestSuggestPortIsFree(t *testing.T) {
+	port := suggestPort("127.0.0.1", 8080)
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err != nil {
+		t.Fatalf("suggested port %d is not free: %v", port, err)
+	}
+	_ = listener.Close()
 }
