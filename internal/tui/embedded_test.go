@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 
 	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/ssh"
@@ -343,5 +344,50 @@ func TestConnectedSessionIsRememberedWithAnExistingTab(t *testing.T) {
 		if strings.Contains(line, "contabo") && strings.Contains(line, "not connected") {
 			t.Errorf("a live host was offered as offline: %s", line)
 		}
+	}
+}
+
+// The remote cursor is drawn: Render() alone is text, so the cell under the cursor
+// is reversed, and it is hidden when the remote hides it.
+func TestEmbeddedCursorIsDrawn(t *testing.T) {
+	emu := vt.NewEmulator(20, 4)
+	_, _ = emu.WriteString("hello")
+	lines := renderTerminalScreen(emu, true)
+	if !strings.Contains(lines[0], "\x1b[7m") {
+		t.Errorf("the cursor cell should be reversed: %q", lines[0])
+	}
+	_, _ = emu.WriteString("\x1b[?25l")
+	if lines := renderTerminalScreen(emu, true); strings.Contains(lines[0], "\x1b[7m") {
+		t.Errorf("a hidden cursor should not be drawn: %q", lines[0])
+	}
+}
+
+// Ctrl+] detaches without ending the shell; asking for the host again reattaches.
+func TestEmbeddedDetachAndReattach(t *testing.T) {
+	m := newTestModel(t)
+	state := &embeddedState{host: "contabo", emu: vt.NewEmulator(40, 10), width: 40, height: 10}
+	m.embedded = state
+	m.Overlay = OverlayTerminal
+	m.detachEmbedded()
+	if m.embedded != nil || m.Overlay != OverlayNone {
+		t.Fatalf("detach should hide the terminal, embedded=%v overlay=%v", m.embedded, m.Overlay)
+	}
+	if m.detachedState("contabo") != state {
+		t.Fatal("the detached terminal should still be running")
+	}
+	m.openEmbeddedHost("contabo")
+	if m.embedded != state || m.Overlay != OverlayTerminal {
+		t.Fatalf("asking again should reattach, embedded=%v overlay=%v", m.embedded, m.Overlay)
+	}
+	if m.detachedState("contabo") != nil {
+		t.Error("a reattached terminal should leave the detached list")
+	}
+
+	// A shell that ends in the background is removed and its recorder closed.
+	m.embedded = nil
+	m.detached = []*embeddedState{state}
+	m.handleEmbeddedExit(embeddedExitMsg{host: "contabo"})
+	if m.detachedState("contabo") != nil {
+		t.Error("an exited detached session should be removed")
 	}
 }

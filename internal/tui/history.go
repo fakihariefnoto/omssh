@@ -230,7 +230,11 @@ func (m *Model) renderHistory(l layout) string {
 	rows := make([]string, 0, l.Height)
 
 	title := m.st.Accent.Bold(true).Render("History")
-	right := m.st.StatusMuted.Render(fmt.Sprintf("%d %s", len(entries), plural(len(entries), "entry", "entries")))
+	rightText := fmt.Sprintf("%d %s", len(entries), plural(len(entries), "entry", "entries"))
+	if m.history.tab == 0 && !m.cfg.Sessions.Record {
+		rightText = "recording off · " + rightText
+	}
+	right := m.st.StatusMuted.Render(rightText)
 	rows = append(rows, spread(title, right, width), "")
 
 	// Tabs are pills: the active one is filled, the rest are quiet words.
@@ -305,9 +309,13 @@ func (m *Model) historyEmpty() string {
 	switch historyTabs[m.history.tab].kind {
 	case historyTerminal:
 		if !m.cfg.Sessions.Record {
-			return "No recordings — sessions.record is off. Turn it on to keep embedded terminals."
+			return "No recordings — recording is off (sessions.record, or Ctrl+, Record sessions)."
 		}
-		return "No recordings yet — open an embedded terminal with U."
+		dir, err := recordingsDir()
+		if err != nil {
+			return "No recordings yet — open an embedded terminal with U."
+		}
+		return "No recordings yet — U opens an embedded terminal. Looking in " + dir
 	case historyTunnel:
 		return "No tunnels yet — Terminal & Tunnel on the launcher forwards a port."
 	case historyAgent:

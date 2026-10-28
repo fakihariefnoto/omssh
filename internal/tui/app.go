@@ -157,6 +157,7 @@ type Model struct {
 	// embedded is the embedded terminal, when one is open; replay is a recording
 	// being played. Both own the screen, so only one can exist at a time.
 	embedded     *embeddedState
+	detached     []*embeddedState
 	replay       *replayState
 	recordings   recordingsState
 	tunnels      []*activeTunnel
@@ -469,17 +470,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case embeddedExitMsg:
-		wasOpen := m.embedded != nil
-		m.endEmbedded()
-		if !wasOpen {
-			// Detached before the remote shell noticed; nothing to report.
-			return m, nil
-		}
-		if msg.err != nil {
-			m.toastWarning("Session ended: " + msg.err.Error())
-		} else {
-			m.toastInfo("Session ended")
-		}
+		m.handleEmbeddedExit(msg)
 		return m, nil
 
 	case replayTickMsg:
@@ -705,12 +696,8 @@ func (m *Model) handleKeyNow(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.Overlay == OverlayConfirm || m.Overlay == OverlayPrompt {
 			break // let the dialog handle it first
 		}
-		m.quit = true
-		m.answerPendingPrompt()
-		if m.cancelConnect != nil {
-			m.cancelConnect()
-		}
-		return m, tea.Quit
+		quitCmd := m.requestQuit()
+		return m, quitCmd
 	case "ctrl+k":
 		m.togglePalette()
 		return m, nil
@@ -1170,10 +1157,9 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 
 	switch id {
 	case "app.quit":
-		m.closeTunnels()
-		m.quit = true
+		return m.requestQuit()
 	case "app.back":
-		m.goBack()
+		return m.goBack()
 	case "app.palette":
 		m.togglePalette()
 	case "app.help":
@@ -1488,7 +1474,7 @@ func (m *Model) explainUnavailable(a actions.Action) {
 
 // goBack implements Esc: dismiss, cancel, or clear, in that order. It never
 // quits, and it never destroys anything.
-func (m *Model) goBack() {
+func (m *Model) goBack() tea.Cmd {
 	switch {
 	case m.Overlay != OverlayNone:
 		m.confirm, m.prompt = confirmState{}, promptState{}
@@ -1526,12 +1512,50 @@ func (m *Model) goBack() {
 		m.screen = screenHome
 		m.home.cursor = 0
 		m.mode = "NORMAL"
+	case m.screen == screenHome:
+		// The launcher is the outermost screen; Esc there means "leave".
+		return m.requestQuit()
 	case m.resolver.Pending() != "":
 		m.resolver.Reset()
 	case m.dismissToast():
 	default:
 		m.quitHint = "Nothing to dismiss · Ctrl+Q to quit"
 	}
+	return nil
+}
+
+// requestQuit asks before ending something that is still moving. A transfer is
+// work in progress; quitting cancels it, so the dialog says so rather than
+// discovering it afterwards.
+func (m *Model) requestQuit() tea.Cmd {
+	if jobs := m.Jobs(); jobs > 0 {
+		m.confirm = confirmState{
+			Title:  "Quit with transfers running?",
+			Body:   []string{fmt.Sprintf("%d %s still running.", jobs, plural(jobs, "transfer is", "transfers are")), "Quitting cancels them."},
+			Danger: true,
+			Action: "app.quit",
+			open:   true,
+		}
+		m.Overlay = OverlayConfirm
+		return nil
+	}
+	return m.finishQuit()
+}
+
+// finishQuit ends the interface cleanly: tunnels, embedded terminals, SSH
+// sessions and the context the transfers share.
+func (m *Model) finishQuit() tea.Cmd {
+	m.closeTunnels()
+	m.closeEmbeddedAll()
+	if m.sessions != nil {
+		_ = m.sessions.CloseAll()
+	}
+	m.answerPendingPrompt()
+	if m.cancelConnect != nil {
+		m.cancelConnect()
+	}
+	m.quit = true
+	return tea.Quit
 }
 
 // openPrompt opens one of the named prompts.
@@ -1788,6 +1812,8 @@ func (m *Model) applyConfirmed(action actions.ID, entries []Entry) tea.Cmd {
 		m.applyDeleteConnection(m.confirmAlias)
 	case "history.delete":
 		m.deleteHistoryEntry()
+	case "app.quit":
+		return m.finishQuit()
 	}
 	return nil
 }

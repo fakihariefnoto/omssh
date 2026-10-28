@@ -43,7 +43,8 @@ unpacked tree or a single archive instead of a pile of files.
   takes HMAC keys, ADC, a service-account JSON or impersonation.
 - **Recorded sessions.** `U` opens an embedded terminal, recorded to an asciinema
   `.cast` by default (Ctrl+, turns that off); History lists them, `Alt+R` replays
-  with play, seek, speed and search. `T` still hands the terminal to `ssh`.
+  with play, seek, speed and search. `Ctrl+]` detaches without ending the shell,
+  and Terminal & Tunnel attaches again. `T` still hands the terminal to `ssh`.
 - **History.** Terminal recordings, tunnel sessions and agent calls in one screen
   with tabs, a conversation log for terminals, an event tail for tunnels, and
   per-record delete. The launcher opens it on the tab you asked for.

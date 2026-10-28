@@ -50,8 +50,8 @@ func TestHomeIsTheDefaultScreen(t *testing.T) {
 		}
 	}
 	// And one line that teaches the keys, so nothing is memorised.
-	if !strings.Contains(out, "Esc go to the files") {
-		t.Errorf("the launcher should say how to skip it:\n%s", out)
+	if !strings.Contains(out, "Esc quit") {
+		t.Errorf("the launcher should say how to leave it:\n%s", out)
 	}
 }
 
@@ -365,12 +365,12 @@ func TestLauncherOrderAndLocalRow(t *testing.T) {
 		return -1
 	}
 	manage, dashboard := index("session.open"), index("app.dashboard")
-	tools, history, mcp := index("app.session-tools"), index("app.history"), index("app.mcp")
-	if manage < 0 || dashboard < 0 || tools < 0 || history < 0 || mcp < 0 {
+	tools, local, history, mcp := index("app.session-tools"), index("app.local"), index("app.history"), index("app.mcp")
+	if manage < 0 || dashboard < 0 || tools < 0 || local < 0 || history < 0 || mcp < 0 {
 		t.Fatalf("expected Manage, Dashboard, Terminal & Tunnel, History and MCP, got %v", ids)
 	}
-	if manage >= dashboard || dashboard >= tools || tools >= history || history >= mcp {
-		t.Errorf("launcher order should be Manage, Dashboard, tools, History, MCP: %v", ids)
+	if manage >= dashboard || dashboard >= tools || tools >= local || local >= history || history >= mcp {
+		t.Errorf("launcher order should be Manage, Dashboard, tools, Local files, History, MCP: %v", ids)
 	}
 	if index("app.local") < 0 {
 		t.Errorf("one Local files row should be offered: %v", ids)

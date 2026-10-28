@@ -49,7 +49,9 @@ omssh prod       # the interface, connected to prod on startup
 - **Settings, theme and keys** (`Ctrl+,`) — themes, icons, motion, and the keymap.
 
 Nothing is modal. You can open the palette (`Ctrl+K`), the keymap (`?`), or the
-connections screen from anywhere, and `Esc` always takes you one step back.
+connections screen from anywhere, and `Esc` takes you one step back. On the
+launcher — the outermost screen — `Esc` leaves, after asking if a transfer is
+still running.
 
 ## The launcher
 
@@ -67,7 +69,10 @@ connections screen from anywhere, and `Esc` always takes you one step back.
    [x] Quit                      Ctrl+Q
 ```
 
-`↑↓` chooses, `Enter` opens, `Esc` goes straight to the files. Connected hosts
+`↑↓` chooses, `Enter` opens, and `Esc` quits the program; with a transfer still
+running it asks first, because quitting cancels it. `Ctrl+Q` and the Quit row do
+the same thing, with the same check, and close SSH sessions, tunnels and embedded
+terminals before leaving. Connected hosts
 appear above the menu, so returning to the launcher also offers the way back to
 where you were.
 
@@ -562,9 +567,10 @@ The alias is passed as-is, so ports, keys, users and jump hosts come from
 
 `U` opens an **embedded** terminal on the focused pane's host: the same SSH
 connection the pane uses, a real PTY, and a terminal emulator drawing the server's
-answers inside omssh. `Ctrl+]` detaches; the connection and the other panes stay
-open. `T` is unchanged, and remains the right choice when you want the terminal
-handed over entirely.
+answers inside omssh. `Ctrl+]` **detaches**: the shell, its scrollback and its
+recording keep running, and **Terminal & Tunnel** → Terminal marks the host
+`terminal detached · Enter reattaches`. `T` is unchanged, and remains the right
+choice when you want the terminal handed over entirely.
 
 The embedded terminal is **recorded by default**: every session lands in
 **History**, and `Ctrl+,` has a *Record sessions* toggle for turning it off. The
@@ -966,7 +972,7 @@ with `omssh keys`. The grammar is small:
 | `Enter` | Replay, watch the tunnel tail, or show the agent call |
 | `v` | Read a terminal recording as a conversation log |
 | `d` | Delete the selected record (after asking) |
-| `Esc` | Back to the launcher |
+| `Esc` | Back to the launcher (on the launcher, quit) |
 
 ### Sessions
 
@@ -987,7 +993,7 @@ with `omssh keys`. The grammar is small:
 | `Alt+L` | List recordings |
 | `Q` | Disconnect, keeping the tab |
 | `Ctrl+W` | Close the tab |
-| `Esc` | Tab strip (with several tabs), then the launcher |
+| `Esc` | Tab strip (with several tabs), then the launcher; on the launcher, quit |
 
 ### Application
 

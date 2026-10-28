@@ -180,7 +180,7 @@ func TestHistoryEmptyExplainsRecording(t *testing.T) {
 	m := newTestModel(t)
 	m.cfg.Sessions.Record = false
 	m.openHistory(0)
-	if out := ansi.Strip(render(m)); !strings.Contains(out, "sessions.record") {
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "sessions.record") && !strings.Contains(out, "recording is off") {
 		t.Errorf("with recording off, history should say so:\n%s", out)
 	}
 	m.cfg.Sessions.Record = true

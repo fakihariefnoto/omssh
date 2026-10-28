@@ -10,6 +10,10 @@ type sessionKindState struct{ cursor int }
 
 func (m *Model) openSessionKind() {
 	m.sessionKind = sessionKindState{}
+	// The cards are the launcher's own question; keeping the file explorer behind
+	// them made choosing a terminal look like it had already switched screens.
+	m.screen = screenHome
+	m.mode = "NORMAL"
 	m.Overlay = OverlaySessionKind
 }
 

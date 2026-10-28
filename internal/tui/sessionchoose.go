@@ -85,7 +85,11 @@ func (m *Model) sessionChooserRows() []sessionRow {
 	live := make(map[string]bool, len(m.live))
 	for _, host := range m.liveSSHHosts() {
 		live[host] = true
-		rows = append(rows, sessionRow{key: host, label: host, hint: "connected", live: true})
+		hint := "connected"
+		if m.sessionChoose.mode == "terminal" && m.detachedState(host) != nil {
+			hint = "terminal detached · Enter reattaches"
+		}
+		rows = append(rows, sessionRow{key: host, label: host, hint: hint, live: true})
 	}
 	// The connections manager already knows how to list hosts and which ones are
 	// not for browsing; reuse that answer.

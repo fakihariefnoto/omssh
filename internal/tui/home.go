@@ -113,10 +113,10 @@ func (m *Model) homeItems() []homeItem {
 		homeItem{ID: "app.dashboard", Icon: "=", Label: "Dashboard", Hint: "choose panes"},
 		homeItem{ID: "app.session-tools", Icon: "t", Label: "Terminal & Tunnel",
 			Hint: sessionToolsHint(m)},
-		homeItem{ID: "app.history", Icon: "H", Label: "History", Hint: "terminals, tunnels, agent calls"},
 		// One way into the local machine: browse here, or go somewhere first; the
 		// remote panes are the dashboard's question and follow either answer.
 		homeItem{ID: "app.local", Icon: "~", Label: "Local files", Hint: "browse or go to a folder"},
+		homeItem{ID: "app.history", Icon: "H", Label: "History", Hint: "terminals, tunnels, agent calls"},
 		// Keys and help live inside settings: one card for "how do I change how
 		// this behaves", rather than two menu rows that each answer half of it.
 		homeItem{ID: "app.mcp", Icon: "M", Label: "MCP for agents", Hint: "setup and log"},
@@ -197,9 +197,9 @@ func (m *Model) renderHome(l layout) string {
 		menu = append(menu, menuRow{text: "   " + icon + " " + m.st.CardText.Render(item.Label) + gap + hint})
 	}
 
-	footer := "↑↓ choose · Enter open · Esc go to the files · Ctrl+K actions"
+	footer := "↑↓ choose · Enter open · Esc quit · Ctrl+K actions"
 	if width < lipgloss.Width(footer)+2 {
-		footer = "↑↓ · Enter · Esc files"
+		footer = "↑↓ · Enter · Esc quit"
 	}
 	menu = append(menu, menuRow{}, menuRow{text: m.st.CardMuted.Render(footer), centre: true})
 
@@ -263,9 +263,9 @@ func (m *Model) handleHomeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "end":
 		m.home.cursor = len(items) - 1
 	case "esc":
-		// The footer promises "Esc go to the files", and Escape should mean one
-		// thing in one place: here it opens the file manager.
-		m.openFiles()
+		// The launcher is the outermost screen, so Escape here is "leave" — after
+		// asking about work in progress.
+		return m.requestQuit(), true
 	case "enter", "space":
 		if m.home.cursor < len(items) {
 			return m.activateHome(items[m.home.cursor]), true
@@ -300,8 +300,7 @@ func (m *Model) activateHome(item homeItem) tea.Cmd {
 		// Overlays open on top of the launcher, so the way back stays obvious.
 		return m.runAction(item.ID)
 	case "app.quit":
-		m.quit = true
-		return tea.Quit
+		return m.requestQuit()
 	}
 	// Everything else needs the file manager, so switch first and then act.
 	m.openFiles()

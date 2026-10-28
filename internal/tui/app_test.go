@@ -282,29 +282,25 @@ func TestSelectionIsSummarisedOnce(t *testing.T) {
 	}
 }
 
-// Esc dismisses, cancels and goes back. It never quits: it is one byte that
-// terminals also use to begin escape sequences, and it has three jobs already.
-func TestEscNeverQuits(t *testing.T) {
+// Esc dismisses, cancels and goes back. On the launcher, the outermost screen,
+// it is the way out — after the transfer check.
+func TestEscBacksOutAndQuitsFromTheLauncher(t *testing.T) {
 	m := newTestModel(t)
 	press(t, m, keyNamed(tea.KeyEsc))
 	if m.quit {
-		t.Fatal("Esc quit the application")
+		t.Fatal("Esc from the files should reach the launcher, not quit")
 	}
-	// The first Escape leaves the file manager for the launcher; the second goes
-	// back to the files, which is what the launcher's footer promises. Neither
-	// quits: quitting has its own key.
 	if m.screen != screenHome {
 		t.Errorf("the first Escape should reach the launcher, screen is %v", m.screen)
 	}
 	press(t, m, keyNamed(tea.KeyEsc))
-	if m.quit {
-		t.Fatal("Esc quit the application")
-	}
-	if m.screen != screenFiles {
-		t.Errorf("on the launcher, Esc should open the files, screen is %v", m.screen)
+	if !m.quit {
+		t.Error("Esc on the launcher should quit when nothing is running")
 	}
 
-	// With a selection, Esc clears it instead.
+	// With a selection, Esc clears it instead of travelling.
+	m.quit = false
+	m.screen = screenFiles
 	m.selectByName("README.md")
 	press(t, m, keyNamed(tea.KeySpace))
 	press(t, m, keyNamed(tea.KeyEsc))
@@ -316,6 +312,7 @@ func TestEscNeverQuits(t *testing.T) {
 	}
 }
 
+// Quitting is Ctrl+Q, which is rebindable, and F10 for the file-manager
 // Quitting is Ctrl+Q, which is rebindable, and F10 for the file-manager
 // convention.
 func TestCtrlQQuitsAndF10Too(t *testing.T) {
@@ -1054,5 +1051,35 @@ func TestCopyToAndMoveToHaveKeys(t *testing.T) {
 		if got := m.keys.Primary(id); got != want {
 			t.Errorf("%s should be bound to %q, got %q", id, want, got)
 		}
+	}
+}
+
+// Esc on the launcher quits when nothing is moving.
+func TestLauncherEscQuits(t *testing.T) {
+	m := newTestModel(t)
+	m.screen = screenHome
+	cmd := m.requestQuit()
+	if !m.quit || cmd == nil {
+		t.Fatal("with no transfers, quitting should be immediate")
+	}
+}
+
+// With a transfer running, quitting asks first and cancels only after yes.
+func TestQuitAsksAboutRunningTransfers(t *testing.T) {
+	m := newTestModel(t)
+	m.transfers = map[int]transfer{1: {id: 1, label: "copy → contabo", started: time.Now()}}
+	if cmd := m.requestQuit(); cmd != nil || m.quit {
+		t.Fatal("a running transfer should open a confirmation, not quit")
+	}
+	if m.Overlay != OverlayConfirm {
+		t.Fatalf("expected the quit confirmation, overlay=%v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "transfers running") || !strings.Contains(out, "cancels") {
+		t.Errorf("the dialog should say what happens:\n%s", out)
+	}
+	_ = m.applyConfirmed("app.quit", nil)
+	if !m.quit {
+		t.Error("confirming should quit")
 	}
 }

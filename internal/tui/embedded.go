@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
@@ -63,8 +64,18 @@ func (m *Model) openEmbedded() tea.Cmd {
 	return m.openEmbeddedHost(host)
 }
 
-// openEmbeddedHost opens an embedded shell on a named host.
+// openEmbeddedHost opens an embedded shell on a named host, or reattaches to one
+// that was detached. A terminal you left with Ctrl+] is still running; asking for
+// it again should return to it, not start a second shell.
 func (m *Model) openEmbeddedHost(host string) tea.Cmd {
+	if state := m.detachedState(host); state != nil {
+		m.removeDetached(host)
+		m.embedded = state
+		m.Overlay = OverlayTerminal
+		m.resizeEmbedded(m.width, m.height)
+		m.toastInfo("Reattached to " + host)
+		return nil
+	}
 	if strings.TrimSpace(host) == "" {
 		m.toastInfo("Open a host first · U opens its embedded terminal")
 		return nil
@@ -112,6 +123,9 @@ func (m *Model) openEmbeddedHost(host string) tea.Cmd {
 	state.shell = shell
 	m.embedded = state
 	m.Overlay = OverlayTerminal
+	if !m.cfg.Sessions.Record {
+		m.toastInfo("Not recording · Ctrl+, turns recording on")
+	}
 	// The wait blocks until the shell exits; it is one command, not the update
 	// loop, and its message is what brings the interface back.
 	return func() tea.Msg {
@@ -131,14 +145,44 @@ func safeName(name string) string {
 	}, name)
 }
 
-// endEmbedded detaches and stops recording, leaving the SSH connection itself
-// alone: panes on the same host keep working.
-func (m *Model) endEmbedded() {
+// detachEmbedded hides the terminal without ending it: the shell, its recording
+// and its scrollback keep going, and the chooser can attach again.
+func (m *Model) detachEmbedded() {
 	state := m.embedded
 	m.embedded = nil
 	if m.Overlay == OverlayTerminal {
 		m.Overlay = OverlayNone
 	}
+	if state == nil {
+		return
+	}
+	m.detached = append(m.detached, state)
+	m.toastInfo("Detached · Terminal & Tunnel attaches again")
+}
+
+// detachedState finds a running terminal for a host.
+func (m *Model) detachedState(host string) *embeddedState {
+	for _, state := range m.detached {
+		if state.host == host {
+			return state
+		}
+	}
+	return nil
+}
+
+// removeDetached drops a terminal from the background list.
+func (m *Model) removeDetached(host string) *embeddedState {
+	for i, state := range m.detached {
+		if state.host == host {
+			m.detached = append(m.detached[:i], m.detached[i+1:]...)
+			return state
+		}
+	}
+	return nil
+}
+
+// closeEmbedded ends one state for good: shell and recorder.
+func (m *Model) closeEmbedded(state *embeddedState) {
 	if state == nil {
 		return
 	}
@@ -150,11 +194,50 @@ func (m *Model) endEmbedded() {
 	}
 }
 
+// handleEmbeddedExit reconciles a shell that ended, whether it was on screen or
+// detached in the background.
+func (m *Model) handleEmbeddedExit(msg embeddedExitMsg) {
+	var state *embeddedState
+	wasOpen := false
+	if m.embedded != nil && m.embedded.host == msg.host {
+		state, wasOpen = m.embedded, true
+		m.embedded = nil
+		if m.Overlay == OverlayTerminal {
+			m.Overlay = OverlayNone
+		}
+	} else {
+		state = m.removeDetached(msg.host)
+	}
+	if state == nil {
+		return
+	}
+	m.closeEmbedded(state)
+	if wasOpen && msg.err != nil {
+		m.toastWarning("Session ended: " + msg.err.Error())
+		return
+	}
+	if wasOpen {
+		m.toastInfo("Session ended")
+		return
+	}
+	m.toastInfo("Detached session on " + msg.host + " ended")
+}
+
+// closeEmbeddedAll ends the visible and detached terminals, for a clean quit.
+func (m *Model) closeEmbeddedAll() {
+	m.closeEmbedded(m.embedded)
+	m.embedded = nil
+	for _, state := range m.detached {
+		m.closeEmbedded(state)
+	}
+	m.detached = nil
+}
+
 // handleEmbeddedKey forwards keys to the remote shell. Ctrl+] detaches first: the
 // interface's own keys must be reachable from inside a session.
 func (m *Model) handleEmbeddedKey(msg tea.KeyPressMsg) {
 	if msg.String() == "ctrl+]" {
-		m.endEmbedded()
+		m.detachEmbedded()
 		return
 	}
 	state := m.embedded
@@ -233,9 +316,13 @@ func (m *Model) renderEmbedded(l layout) string {
 	}
 	height := max(1, l.Height-1)
 	state.mu.Lock()
-	screen := state.emu.Render()
+	// Render() does not draw a cursor: an emulator screen is text, and the cursor
+	// belongs to the terminal it is displayed in. Build the lines from cells so the
+	// block can be reversed where the remote cursor actually is, and blink it with
+	// the heartbeat.
+	blink := time.Now().UnixMilli()/500%2 == 0
+	lines := renderTerminalScreen(state.emu, blink)
 	state.mu.Unlock()
-	lines := strings.Split(screen, "\n")
 	out := make([]string, 0, l.Height)
 	for i := 0; i < height; i++ {
 		line := ""
@@ -250,6 +337,40 @@ func (m *Model) renderEmbedded(l layout) string {
 	}
 	out = append(out, m.st.StatusMuted.Render(padVisible(truncate(status, l.Width), l.Width)))
 	return strings.Join(out, "\n")
+}
+
+// renderTerminalScreen draws cells with their styles, reversing the cell under
+// the remote cursor. Wide characters advance by their cell width, so a glyph that
+// takes two columns does not shift the rest of the line.
+func renderTerminalScreen(emu *vt.Emulator, cursorVisible bool) []string {
+	width, height := emu.Width(), emu.Height()
+	position := emu.CursorPosition()
+	showCursor := cursorVisible && !emu.CursorHidden()
+	lines := make([]string, 0, height)
+	for y := 0; y < height; y++ {
+		var line strings.Builder
+		for x := 0; x < width; {
+			cell := emu.CellAt(x, y)
+			if cell == nil {
+				line.WriteByte(' ')
+				x++
+				continue
+			}
+			content := cell.Content
+			if content == "" {
+				content = " "
+			}
+			style := cell.Style
+			if showCursor && x == position.X && y == position.Y {
+				style.Attrs |= uv.AttrReverse
+			}
+			line.WriteString(style.Styled(content))
+			step := max(1, cell.Width)
+			x += step
+		}
+		lines = append(lines, line.String())
+	}
+	return lines
 }
 
 // resizeEmbedded follows the terminal: the remote PTY and the screen both move.
