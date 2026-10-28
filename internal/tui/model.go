@@ -298,6 +298,7 @@ const (
 	OverlayRecordings
 	OverlayTunnels
 	OverlayMCP
+	OverlaySessionChoose
 )
 
 // Name returns the identifier the action registry expects in Context.Overlay.
@@ -335,6 +336,8 @@ func (o Overlay) Name() string {
 		return "tunnels"
 	case OverlayMCP:
 		return "mcp"
+	case OverlaySessionChoose:
+		return "choose"
 	default:
 		return ""
 	}

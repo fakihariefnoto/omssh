@@ -227,3 +227,69 @@ func TestMCPCard(t *testing.T) {
 		}
 	}
 }
+
+// The launcher offers Terminal and Tunnel only once something is connected, and
+// the chooser asks which live session they are for.
+func TestLauncherChoosesConnectedSessions(t *testing.T) {
+	m := newTestModel(t)
+	has := func(id string) bool {
+		for _, item := range m.homeItems() {
+			if string(item.ID) == id {
+				return true
+			}
+		}
+		return false
+	}
+	if has("session.terminal-choose") || has("session.tunnel-choose") {
+		t.Error("Terminal and Tunnel need a live session")
+	}
+	if !has("app.mcp") {
+		t.Error("MCP is useful before anything is connected")
+	}
+
+	m.tabs = []Tab{{Title: "contabo", Host: "contabo", State: StateReady}}
+	m.live = map[string]*session.Session{"contabo": {}}
+	if !has("session.terminal-choose") || !has("session.tunnel-choose") {
+		t.Fatal("a live session should add both rows")
+	}
+
+	m.runAction("session.tunnel-choose")
+	if m.Overlay != OverlaySessionChoose {
+		t.Fatalf("the chooser should open, overlay=%v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Tunnel", "contabo", "Manage connections"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the chooser should show %q:\n%s", want, out)
+		}
+	}
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.Overlay != OverlayPrompt || m.tunnelHost != "contabo" {
+		t.Fatalf("Enter should ask for the spec on contabo, overlay=%v host=%q", m.Overlay, m.tunnelHost)
+	}
+	if !strings.HasPrefix(m.prompt.input.Value, "L:") {
+		t.Errorf("the spec prompt should start with a local forward, got %q", m.prompt.input.Value)
+	}
+}
+
+// The MCP card shows what the agent did, from the log the server writes.
+func TestMCPCardShowsRecentCalls(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	dir := filepath.Join(state, "omssh")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"time":"2026-10-28T10:00:00Z","tool":"ls","place":"prod","path":"/srv/app","ok":true}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "mcp.jsonl"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestModel(t)
+	m.runAction("app.mcp")
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Recent agent calls", "ls", "prod:/srv/app", "ok"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the card should show %q:\n%s", want, out)
+		}
+	}
+}

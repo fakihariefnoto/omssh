@@ -67,6 +67,26 @@ connections screen from anywhere, and `Esc` always takes you one step back.
 appear above the menu, so returning to the launcher also offers the way back to
 where you were.
 
+Once a host is connected the launcher also grows:
+
+```
+   [t] Terminal        choose a connected host
+   [n] Tunnel          choose a connected host
+   [m] MCP for agents  setup and log
+```
+
+**Terminal** opens the session chooser: every live SSH connection, in tab order,
+with `Enter` opening the embedded terminal and `t` handing over to `ssh`. **Tunnel**
+uses the same chooser, then asks for the spec; if forwards are already running its
+first row is **Running tunnels**, which opens the watcher. **MCP** shows the stdio
+configuration, copies it with `c`, and lists the last agent calls with `r` to
+refresh.
+
+The chooser is the same question the dashboard asks — which live place — so it
+only ever lists sessions that are actually connected. When none are, the launcher
+does not show the rows at all, and "Manage connections…" in the chooser is the way
+to fix that.
+
 ## The dashboard
 
 Each connection lives in a pane. One or two panes sit side by side; three or four

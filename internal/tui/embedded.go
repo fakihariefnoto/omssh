@@ -60,6 +60,11 @@ func (m *Model) openEmbedded() tea.Cmd {
 	if host == "" && m.activeTab >= 0 && m.activeTab < len(m.tabs) {
 		host = m.tabs[m.activeTab].Host
 	}
+	return m.openEmbeddedHost(host)
+}
+
+// openEmbeddedHost opens an embedded shell on a named host.
+func (m *Model) openEmbeddedHost(host string) tea.Cmd {
 	if strings.TrimSpace(host) == "" {
 		m.toastInfo("Open a host first · U opens its embedded terminal")
 		return nil

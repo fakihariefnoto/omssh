@@ -102,6 +102,14 @@ func (m *Model) homeItems() []homeItem {
 		items = append(items, homeItem{ID: "session.recordings", Icon: "@",
 			Label: "Recordings", Hint: fmt.Sprintf("%d · Alt+L", count)})
 	}
+	if len(m.liveSSHHosts()) > 0 {
+		items = append(items, homeItem{ID: "session.terminal-choose", Icon: "t",
+			Label: "Terminal", Hint: "choose a connected host"})
+	}
+	if len(m.liveSSHHosts()) > 0 || len(m.tunnels) > 0 {
+		items = append(items, homeItem{ID: "session.tunnel-choose", Icon: "n",
+			Label: "Tunnel", Hint: tunnelMenuHint(m)})
+	}
 	return append(items,
 		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},
 		homeItem{ID: "app.dashboard", Icon: "=", Label: "Dashboard", Hint: "choose panes"},
@@ -109,9 +117,18 @@ func (m *Model) homeItems() []homeItem {
 		homeItem{ID: "nav.path", Icon: "/", Label: "Go to a folder", Hint: "Ctrl+L"},
 		// Keys and help live inside settings: one card for "how do I change how
 		// this behaves", rather than two menu rows that each answer half of it.
+		homeItem{ID: "app.mcp", Icon: "M", Label: "MCP for agents", Hint: "setup and log"},
 		homeItem{ID: "app.settings", Icon: "+", Label: "Settings, theme and keys", Hint: "Ctrl+,"},
 		homeItem{ID: "app.quit", Icon: "x", Label: "Quit", Hint: "Ctrl+Q"},
 	)
+}
+
+// tunnelMenuHint says what the Tunnel row will do right now: watch, or start.
+func tunnelMenuHint(m *Model) string {
+	if len(m.tunnels) > 0 {
+		return fmt.Sprintf("%d running · watch", len(m.tunnels))
+	}
+	return "choose a connected host"
 }
 
 // homeGeometry reports where the launcher's rows land, so a click and a key press
@@ -275,7 +292,7 @@ func (m *Model) activateHome(item homeItem) tea.Cmd {
 		return nil
 	}
 	switch item.ID {
-	case "app.help", "app.settings":
+	case "app.help", "app.settings", "app.mcp", "session.terminal-choose", "session.tunnel-choose":
 		// Overlays open on top of the launcher, so the way back stays obvious.
 		return m.runAction(item.ID)
 	case "app.quit":

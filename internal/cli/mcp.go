@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -151,6 +152,12 @@ func (s *mcpServer) callTool(request rpcRequest) {
 		return
 	}
 	text, failed := s.runTool(params.Name, params.Arguments)
+	place, _ := params.Arguments["place"].(string)
+	path, _ := params.Arguments["path"].(string)
+	if path == "" {
+		path, _ = params.Arguments["src_path"].(string)
+	}
+	recordMCPCall(params.Name, place, path, !failed)
 	s.respond(request.ID, toolResult(text, failed), nil)
 }
 
@@ -417,6 +424,33 @@ func pluralWord(n int, one, many string) string {
 		return one
 	}
 	return many
+}
+
+// recordMCPCall keeps the same kind of log as the tunnel and action events: what
+// was asked, where, and whether it worked. File contents are never written.
+func recordMCPCall(tool, place, path string, ok bool) {
+	dir, err := config.StateDir()
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	entry := map[string]any{
+		"time": time.Now().UTC().Format(time.RFC3339),
+		"tool": tool, "place": place, "path": path, "ok": ok,
+	}
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+	file, err := os.OpenFile(filepath.Join(dir, "mcp.jsonl"),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer func() { _ = file.Close() }()
+	_, _ = file.Write(append(line, '\n'))
 }
 
 // open applies the safety model before a filesystem is handed out.

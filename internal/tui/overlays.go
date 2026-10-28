@@ -56,6 +56,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderTunnels(l)
 	case OverlayMCP:
 		return m.renderMCP(l)
+	case OverlaySessionChoose:
+		return m.renderSessionChooser(l)
 	default:
 		return ""
 	}

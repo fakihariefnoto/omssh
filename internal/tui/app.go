@@ -162,6 +162,10 @@ type Model struct {
 	tunnels      []*activeTunnel
 	tunnelSeq    int
 	tunnelCursor int
+	// tunnelHost is the host a tunnel prompt is for, chosen before the prompt.
+	tunnelHost    string
+	sessionChoose sessionChooseState
+	mcpLog        []mcpLogEntry
 
 	// live is the sessions this interface is showing, by alias, so switching tabs
 	// does not have to ask the manager.
@@ -910,16 +914,23 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.handleTunnelsKey(msg)
 		return true
 
+	case OverlaySessionChoose:
+		m.overlayCmd = m.handleSessionChooserKey(msg)
+		return true
+
 	case OverlayMCP:
 		if msg.String() == "esc" || msg.String() == "q" {
 			m.Overlay = OverlayNone
 		}
-		if msg.String() == "c" {
+		switch msg.String() {
+		case "c":
 			if err := clipboard.Write(context.Background(), mcpConfigSnippet()); err != nil {
 				m.toastWarning("Clipboard unavailable: " + err.Error())
 			} else {
 				m.toastSuccess("MCP config copied")
 			}
+		case "r":
+			m.loadMCPLog()
 		}
 		return true
 
@@ -1336,7 +1347,14 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openTunnelPrompt()
 		return nil
 	case "app.mcp":
+		m.loadMCPLog()
 		m.Overlay = OverlayMCP
+		return nil
+	case "session.terminal-choose":
+		m.openSessionChooser("terminal")
+		return nil
+	case "session.tunnel-choose":
+		m.openSessionChooser("tunnel")
 		return nil
 	case "session.recordings":
 		m.openRecordings()
@@ -1551,7 +1569,8 @@ func (m *Model) focusedInput() *input {
 		// The password dialog has a field of its own, kept separate so it can be
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
-	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings, OverlayTunnels, OverlayMCP:
+	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings,
+		OverlayTunnels, OverlayMCP, OverlaySessionChoose:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is

@@ -1,9 +1,13 @@
 package tui
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -11,6 +15,7 @@ import (
 
 	sshx "golang.org/x/crypto/ssh"
 
+	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/tunnel"
 )
 
@@ -66,6 +71,16 @@ func (m *Model) openTunnelPrompt() {
 		m.toastInfo("Open a host first · tunnels run over a live session")
 		return
 	}
+	m.openTunnelPromptHost(host)
+}
+
+// openTunnelPromptHost asks for the spec for one chosen host.
+func (m *Model) openTunnelPromptHost(host string) {
+	if _, live := m.live[host]; !live {
+		m.toastInfo("Connect to " + host + " first")
+		return
+	}
+	m.tunnelHost = host
 	m.prompt = promptState{
 		Title:  "Tunnel on " + host,
 		Hint:   "L:8080:host:port · R:9000:host:port · D:1080 (L is assumed)",
@@ -92,8 +107,11 @@ func (m *Model) sshHostForTunnel() (string, bool) {
 // startTunnel parses a spec and opens the forward. It returns an error message
 // rather than reporting success for a port it could not bind.
 func (m *Model) startTunnel(specText string) error {
-	host, liveOK := m.sshHostForTunnel()
-	if !liveOK {
+	host := m.tunnelHost
+	if host == "" {
+		host, _ = m.sshHostForTunnel()
+	}
+	if _, liveOK := m.live[host]; !liveOK {
 		return fmt.Errorf("no live session on %s", host)
 	}
 	live := m.live[host]
@@ -229,6 +247,36 @@ func (m *Model) renderTunnels(l layout) string {
 
 // mcpCard explains how to point an agent at this program. The server itself is a
 // stdio process: it cannot live inside the interface, so the card is the setup.
+// loadMCPLog reads the calls agents made, newest first. It runs when the card
+// opens or is refreshed, not per frame: a log is a file, and rendering is not the
+// place to touch one.
+func (m *Model) loadMCPLog() {
+	m.mcpLog = nil
+	dir, err := config.StateDir()
+	if err != nil {
+		return
+	}
+	file, err := os.Open(filepath.Join(dir, "mcp.jsonl"))
+	if err != nil {
+		return
+	}
+	defer func() { _ = file.Close() }()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 32<<10), 1<<20)
+	entries := make([]mcpLogEntry, 0, 32)
+	for scanner.Scan() {
+		var entry mcpLogEntry
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	// Newest first, capped: the card is a glance, not a pager.
+	for i := len(entries) - 1; i >= 0 && len(m.mcpLog) < 8; i-- {
+		m.mcpLog = append(m.mcpLog, entries[i])
+	}
+}
+
 // mcpConfigSnippet is the configuration an MCP client pastes, with the flags
 // that make the write surface explicit rather than implied.
 func mcpConfigSnippet() string {
@@ -248,7 +296,7 @@ func (m *Model) renderMCP(l layout) string {
 	width := cardWidth(l, 62, 96)
 	content := cardContent(width)
 	snippet := mcpConfigSnippet()
-	lines := make([]string, 0, 16+strings.Count(snippet, "\n"))
+	lines := make([]string, 0, 24+strings.Count(snippet, "\n"))
 	lines = append(lines,
 		m.st.CardTitle.Render("MCP · for AI agents"),
 		m.st.CardMuted.Render(truncate("A stdio server, started by the agent, not a listener.", content)),
@@ -263,7 +311,17 @@ func (m *Model) renderMCP(l layout) string {
 		m.st.CardMuted.Render(truncate("--allow-host and --allow-path narrow what is reachable. rm is a plan", content)),
 		m.st.CardMuted.Render(truncate("unless the run also has --yes.", content)),
 		"",
-		m.st.CardMuted.Render("c copy this config · Esc close"),
+		m.st.StatusMuted.Render(truncate("Recent agent calls", content)),
+	)
+	if len(m.mcpLog) == 0 {
+		lines = append(lines, m.st.PaneEmpty.Render("Nothing yet · calls appear here as they happen"))
+	}
+	for _, entry := range m.mcpLog {
+		lines = append(lines, m.st.CardText.Render(truncate(entry.label(), content)))
+	}
+	lines = append(lines,
+		"",
+		m.st.CardMuted.Render("c copy this config · r refresh · Esc close"),
 	)
 	return m.card(width, lines)
 }
