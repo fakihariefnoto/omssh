@@ -249,8 +249,12 @@ func (m *Model) bindPane(index int, s *session.Session) {
 	m.Panes[index].Base = s.Base
 }
 
-// addSessionTab adds or focuses the tab for a session.
+// addSessionTab adds or focuses the tab for a session. The live map is updated
+// before the early return: connecting creates the tab while it is still only a
+// promise, so remembering the session only in the "new tab" branch meant a normal
+// connect never recorded it — and the chooser called it not connected.
 func (m *Model) addSessionTab(s *session.Session) {
+	m.rememberSession(s)
 	for i, tab := range m.tabs {
 		if tab.Host == s.Target.Alias {
 			m.activeTab = i
@@ -260,7 +264,6 @@ func (m *Model) addSessionTab(s *session.Session) {
 	}
 	m.tabs = append(m.tabs, Tab{Title: s.Target.Alias, Host: s.Target.Alias, State: StateReady})
 	m.activeTab = len(m.tabs) - 1
-	m.rememberSession(s)
 }
 
 // rememberSession records a session so its tab can be switched back to.

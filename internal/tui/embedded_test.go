@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/session"
+	"github.com/fakihariefnoto/omssh/internal/ssh"
 )
 
 // Keys reach the remote shell as the bytes a terminal would send.
@@ -306,5 +307,34 @@ func TestSessionChooserIncludesOfflineHosts(t *testing.T) {
 	}
 	if !strings.Contains(out, "Manage connections") {
 		t.Errorf("the way to add a host should be there too:\n%s", out)
+	}
+}
+
+// Connecting creates the tab before the session exists. If that tab is what
+// addSessionTab finds, the session still has to be remembered — otherwise the
+// chooser keeps calling a connected host "not connected".
+func TestConnectedSessionIsRememberedWithAnExistingTab(t *testing.T) {
+	m := newTestModel(t)
+	m.tabs = []Tab{{Title: "contabo", Host: "contabo", State: StateConnecting}}
+	sessionLive := &session.Session{Target: ssh.Target{Alias: "contabo"}}
+	m.addSessionTab(sessionLive)
+	if m.live["contabo"] != sessionLive {
+		t.Fatal("the live session should be recorded even when its tab already existed")
+	}
+	if m.tabs[0].State != StateReady {
+		t.Errorf("the tab should be ready, state=%v", m.tabs[0].State)
+	}
+
+	// And the chooser must say so.
+	m.tabs = []Tab{{Title: "contabo", Host: "contabo", State: StateReady}}
+	m.runAction("session.terminal-choose")
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "contabo") || !strings.Contains(out, "connected") {
+		t.Errorf("the chooser should mark the host connected:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "contabo") && strings.Contains(line, "not connected") {
+			t.Errorf("a live host was offered as offline: %s", line)
+		}
 	}
 }
