@@ -378,9 +378,83 @@ pseudo-terminal.
 - An agent with `--allow-write` and a broad allowlist is a shell with extra steps.
   The defaults are the product.
 
-**Not planned:** driving the TUI from an agent. Screen-scraping a terminal UI is
+**Not planned:** driving the TUI from an agent by scraping its screen. That is
 neither stable nor honest; the CLI and MCP are the interfaces, and the TUI stays
-for people.
+for people. M15 adds an assistant *inside* the TUI, using the same tool layer
+rather than reading escape sequences.
+
+---
+
+## M15 — An assistant beside the terminal  (planned)
+
+A chat sidebar that can see what you are looking at and use the same tools as
+`omssh mcp`: ask "why did the deploy fail", "make this tarball", "what is using
+port 8080", and let it read the current pane, the selection, or the embedded
+terminal before answering. It is a companion, not a second shell, and not a
+replacement for the terminal.
+
+**Deliverables**
+
+- A right-hand **Agent** sidebar, opened from the palette and a key (no F-keys),
+  that can be hidden without losing the conversation. Streaming answers, a stop
+  button, and a token/context indicator.
+- **Providers** are configuration, not code: an OpenAI-compatible base URL and
+  model, plus at least one other provider if demand warrants it. API keys live in
+  the OS keyring (the same store as passwords and bucket secrets); a key never
+  appears in `config.yaml`, a prompt, or a log.
+- **Bounded context.** The assistant sees the focused place and path, the visible
+  listing, the selection, and — only when embedded — the terminal screen and its
+  scrollback. It never reads the filesystem broadly, and the transcript says
+  exactly what was attached to each turn.
+- **Three modes, chosen before the first call and visible in the header:**
+  - *Ask* — read-only. The tools that change anything are not offered at all.
+  - *Suggest* — answers with commands or diffs; nothing runs, and a proposal is
+    copied or inserted into the terminal without pressing Enter.
+  - *Act* — tool calls through the MCP layer (`ls`, `stat`, `get`, `put`,
+    `mkdir`, `copy`, `extract`, `rm`), each shown with its arguments and approved
+    before it runs. Writes need the run to have permission; `rm` stays a plan
+    until confirmed.
+- **Terminal read, not terminal drive.** The assistant may read the embedded
+  terminal's screen for context. It may not inject keystrokes into a live shell;
+  a proposed command is a thing you run, not a thing that happens.
+- **Untrusted input.** File contents and terminal output are data, never
+  instructions. A file that says "ignore your rules" is shown as text, and no tool
+  call is approved implicitly because a document asked for it.
+- **Privacy and audit.** Sending context to a model is an explicit act with a
+  visible boundary; the provider, model and what was attached are recorded in the
+  state directory. Conversations are kept for the session and can be cleared;
+  credential prompts are never captured, and the recording of a terminal pauses
+  while the assistant has its screen attached, or says that it does not.
+
+**Acceptance criteria**
+
+- The sidebar opens over any screen, streams an answer, can be cancelled, and
+  survives hiding and showing.
+- Ask mode has no mutating tool available; Act mode shows each call with its
+  arguments and refuses a write without permission.
+- A proposed command appears in the conversation and never runs on its own; the
+  only way to run it is an explicit action that the person takes.
+- Context is the focused pane and, when embedded, the terminal screen — an
+  external `ssh` terminal (`T`) contributes nothing, because omssh never sees it.
+- A prompt injection in a file or in terminal output cannot cause a tool call
+  without the same approval any other call needs.
+- The audit log names every tool call the assistant made, and the conversation
+  record names the provider, model and context attached.
+
+**Risks**
+
+- **Prompt injection** is the defining risk: content the assistant reads can try
+  to direct it. Approvals per call, a read-only default, and treating all content
+  as data are the mitigations; there is no version of this feature where an
+  agent's tool call is implicitly trusted.
+- **Cost and latency.** Context is capped, summaries replace raw history as it
+  grows, and streaming is cancellable. A chat that silently spends money is a
+  bug, so the indicator is part of the feature.
+- **Privacy.** Terminal output can contain anything. The default is to attach only
+  what the turn needs, to show it before sending, and to keep the provider
+  configurable rather than assumed.
+- **A confident wrong answer.** The assistant is not the source of truth: what it
+  proposes is reviewed and run by a person, and the interface says so.
 
 ---
 
