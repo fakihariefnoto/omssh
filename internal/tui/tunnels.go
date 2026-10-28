@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	sshx "golang.org/x/crypto/ssh"
 
@@ -428,6 +429,14 @@ func (f tunnelFormState) preview(alias string) (diagram, explanation []string) {
 	}
 }
 
+// titleWord capitalises the first letter without the deprecated strings.Title.
+func titleWord(word string) string {
+	if word == "" {
+		return word
+	}
+	return strings.ToUpper(word[:1]) + word[1:]
+}
+
 func valueOr(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback
@@ -516,11 +525,21 @@ func (m *Model) stopTunnel(index int) {
 		return
 	}
 	active := m.tunnels[index]
-	if active.tunnel != nil {
-		_ = active.tunnel.Close()
-	}
+	// Remove it from the list first, then close in the background. Close waits for
+	// open connections to finish; doing that on the update loop froze the
+	// dashboard for exactly as long as the tunnel's slowest client.
 	m.tunnels = append(m.tunnels[:index], m.tunnels[index+1:]...)
+	if active.tunnel != nil {
+		go func() { _ = active.tunnel.Close() }()
+	}
+	if m.tunnelDash > len(m.tunnels)-1 {
+		m.tunnelDash = max(0, len(m.tunnels)-1)
+	}
 	m.toastInfo(fmt.Sprintf("Stopped %s → %s", active.listen, active.target))
+	if len(m.tunnels) == 0 && m.screen == screenTunnels {
+		m.screen = screenHome
+		m.mode = "NORMAL"
+	}
 }
 
 // closeTunnels stops everything, for a clean quit.
@@ -800,18 +819,20 @@ func (m *Model) selectedTunnel() *activeTunnel {
 	return m.tunnels[m.tunnelDash]
 }
 
-// renderTunnelDashboard is the live view: the list on the left, the selected
-// tunnel's traffic and connections on the right.
+// renderTunnelDashboard is the live view: two panels, like the file manager, so
+// the list and the traffic do not run into each other.
 func (m *Model) renderTunnelDashboard(l layout) string {
 	width, height := l.Width, l.Height
-	leftW := clamp(width*2/5, 30, 48)
-	rightW := width - leftW - 3
+	leftW := clamp(width*48/100, 38, 56)
+	rightW := max(36, width-leftW-3)
+	panelRows := max(4, height-9)
 
-	header := spread(m.st.Accent.Bold(true).Render("Tunnels"),
-		m.st.StatusMuted.Render(fmt.Sprintf("%d running", len(m.tunnels))), width)
-	lines := []string{header, m.st.CardMuted.Render(strings.Repeat("─", max(1, width)))}
-
-	list := make([]string, 0, height-4)
+	// The left panel: one forward per two lines, selection filled.
+	list := []string{
+		spread(m.st.PaneTitle.Render("RUNNING"),
+			m.st.StatusMuted.Render(fmt.Sprintf("%d", len(m.tunnels))), leftW-6),
+		m.st.CardMuted.Render(strings.Repeat("─", max(1, leftW-6))),
+	}
 	for i, active := range m.tunnels {
 		conns, in, out, _ := active.snapshot()
 		arrow := "→"
@@ -823,41 +844,51 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 			humanSize(in), humanSize(out))
 		if i == m.tunnelDash {
 			list = append(list,
-				m.st.PaletteItemActive.Width(leftW).Render(padVisible("▸ "+truncate(title, leftW-2), leftW)),
-				m.st.CardMuted.Render(truncate("  "+meta, leftW)))
+				m.st.PaletteItemActive.Width(leftW-6).Render(padVisible("▸ "+truncate(title, leftW-8), leftW-6)),
+				m.st.PaletteItemActive.Width(leftW-6).Render(padVisible("  "+truncate(meta, leftW-8), leftW-6)))
 			continue
 		}
 		list = append(list,
-			m.st.CardText.Render(truncate("  "+title, leftW)),
-			m.st.CardMuted.Render(truncate("  "+meta, leftW)))
+			m.st.CardText.Render(truncate("  "+title, leftW-6)),
+			m.st.CardMuted.Render(truncate("  "+meta, leftW-6)))
 	}
+	for len(list) < panelRows {
+		list = append(list, "")
+	}
+	list = list[:panelRows]
 
-	detail := make([]string, 0, height-4)
+	// The right panel: what this tunnel is doing, and the last few connections.
+	detail := []string{}
 	if active := m.selectedTunnel(); active != nil {
 		conns, in, out, errText := active.snapshot()
+		arrow := "→"
+		if active.kind == tunnel.Remote {
+			arrow = "←"
+		}
 		detail = append(detail,
-			m.st.CardTitle.Render(truncate(fmt.Sprintf("%s · %s", active.kind, active.host), rightW)),
-			truncate(active.listen+" → "+active.target, rightW),
+			m.st.PaneTitle.Render(truncate(fmt.Sprintf("%s · %s", titleWord(string(active.kind)), active.host), rightW-6)),
+			m.st.CardMuted.Render(strings.Repeat("─", max(1, rightW-6))),
+			m.st.CardText.Render(truncate(active.listen+" "+arrow+" "+active.target, rightW-6)),
 			"",
 			fmt.Sprintf("%d connections · %s received · %s sent", conns, humanSize(in), humanSize(out)),
 		)
 		if errText != "" {
-			detail = append(detail, m.st.Danger.Render(truncate(errText, rightW)))
+			detail = append(detail, m.st.Danger.Render(truncate(errText, rightW-6)))
 		}
 		detail = append(detail, "", m.st.StatusMuted.Render("Recent connections"))
 		events := active.tail()
 		shown := 0
-		for i := len(events) - 1; i >= 0 && shown < max(3, height-12); i-- {
+		for i := len(events) - 1; i >= 0 && len(detail) < panelRows-1; i-- {
 			event := events[i]
 			switch {
 			case event.Client == "" && event.Error == "":
 				continue
 			case event.Error != "":
-				detail = append(detail, m.st.Danger.Render(truncate("  error  "+event.Error, rightW)))
+				detail = append(detail, m.st.Danger.Render(truncate("  error  "+event.Error, rightW-6)))
 			default:
 				detail = append(detail, m.st.CardText.Render(truncate(fmt.Sprintf("  %s  %s  %s in · %s out",
 					event.Time.Format("15:04:05"), event.Client,
-					humanSize(event.BytesIn), humanSize(event.BytesOut)), rightW)))
+					humanSize(event.BytesIn), humanSize(event.BytesOut)), rightW-6)))
 			}
 			shown++
 		}
@@ -865,21 +896,17 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 			detail = append(detail, m.st.PaneEmpty.Render("  waiting for a connection"))
 		}
 	}
-
-	for i := 0; i < height-3; i++ {
-		left := ""
-		if i < len(list) {
-			left = list[i]
-		}
-		right := ""
-		if i < len(detail) {
-			right = detail[i]
-		}
-		lines = append(lines, padVisible(left, leftW)+"   "+padVisible(truncate(right, rightW), rightW))
+	for len(detail) < panelRows {
+		detail = append(detail, "")
 	}
-	lines = append(lines, "", m.st.StatusMuted.Render(truncate(
-		"↑↓ choose · x stop · p another port · n new tunnel · h history · Esc launcher", width)))
-	return strings.Join(lines, "\n")
+	detail = detail[:panelRows]
+
+	panels := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.card(leftW, list), " ", m.card(rightW, detail))
+	header := spread(m.st.Accent.Bold(true).Render("Tunnels"),
+		m.st.StatusMuted.Render(fmt.Sprintf("%d running", len(m.tunnels))), width)
+	footer := "↑↓ choose · x stop/disconnect · p another port · n new tunnel · h history · Esc launcher"
+	return header + "\n" + panels + "\n" + m.st.StatusMuted.Render(truncate(footer, width))
 }
 
 // loadMCPLog reads the calls agents made, newest first. It runs when the card
