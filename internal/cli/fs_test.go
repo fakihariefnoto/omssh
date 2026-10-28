@@ -77,7 +77,7 @@ func TestFsLocalRoundTrip(t *testing.T) {
 		t.Fatalf("get = %q (code %d)", out, code)
 	}
 
-	if _, _, code := run("fs", "rm", remote, "--allow-write"); code != 0 {
+	if _, _, code := run("fs", "rm", remote, "--allow-write", "--yes"); code != 0 {
 		t.Fatalf("rm failed: %d", code)
 	}
 	if out, _, code := run("fs", "stat", remote, "--json"); code == 0 {
@@ -136,6 +136,17 @@ func TestFsRefusesWithoutPermission(t *testing.T) {
 		t.Fatalf("an allowed put failed: %d (%s)", code, msg)
 	}
 
+	// Removal is a plan until --yes: the flag belongs to the run, not the call.
+	if _, code := run("fs", "rm", remote, "--allow-write"); code != 0 {
+		t.Fatalf("a plan should succeed, code=%d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "out.txt")); err != nil {
+		t.Fatal("a plan must not remove anything")
+	}
+	if _, code := run("fs", "rm", remote, "--allow-write", "--yes"); code != 0 {
+		t.Fatalf("--yes should remove it, code=%d", code)
+	}
+
 	// Every change leaves a line in the audit log.
 	state, err := config.StateDir()
 	if err != nil {
@@ -152,5 +163,38 @@ func TestFsRefusesWithoutPermission(t *testing.T) {
 	// A read needs no permission at all.
 	if msg, code := run("fs", "ls", "local:"+dir); code != 0 {
 		t.Errorf("ls should be free: %d (%s)", code, msg)
+	}
+}
+
+// --json-lines streams the operation: start first, done last, one object per
+// line, so a long copy is observable while it runs.
+func TestFsJSONLines(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.txt")
+	if err := os.WriteFile(source, []byte("stream me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Execute([]string{"fs", "put", source, "local:" + filepath.Join(dir, "sub", "out.txt"),
+		"--json-lines", "--allow-write", "--config", filepath.Join(dir, "config.yaml")}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("put failed: %d %s %s", code, stdout.String(), stderr.String())
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected start and done, got %q", lines)
+	}
+	var first, last map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &last); err != nil {
+		t.Fatal(err)
+	}
+	if first["event"] != "start" {
+		t.Errorf("first event = %v", first)
+	}
+	if last["event"] != "done" {
+		t.Errorf("last event = %v", last)
 	}
 }

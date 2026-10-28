@@ -228,6 +228,61 @@ func audit(action, placeName, p string, bytes int64, err error) {
 	_, _ = file.Write(append(line, '\n'))
 }
 
+// ndjson writes one event per line. Long operations use it so a caller sees
+// progress while it happens instead of only the final document.
+type ndjson struct{ out io.Writer }
+
+func (n ndjson) emit(event string, fields map[string]any) {
+	line := map[string]any{"event": event}
+	for key, value := range fields {
+		line[key] = value
+	}
+	encoded, err := json.Marshal(line)
+	if err != nil {
+		return
+	}
+	_, _ = n.out.Write(append(encoded, '\n'))
+}
+
+// progressWriter reports bytes as they are copied, at most ten times a second:
+// one line per read would be a denial of service on the reader.
+type progressWriter struct {
+	out     io.Writer
+	total   int64
+	written int64
+	last    time.Time
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	n, err := p.out.Write(b)
+	p.written += int64(n)
+	if now := time.Now(); now.Sub(p.last) >= 100*time.Millisecond {
+		p.last = now
+		ndjson{out: p.out}.emit("progress", map[string]any{"bytes": p.written, "total": p.total})
+	}
+	return n, err
+}
+
+// countingReader reports how much has been read from a source, which is what a
+// put can observe: the destination is opaque until Close.
+type countingReader struct {
+	in    io.Reader
+	out   io.Writer
+	total int64
+	read  int64
+	last  time.Time
+}
+
+func (c *countingReader) Read(b []byte) (int, error) {
+	n, err := c.in.Read(b)
+	c.read += int64(n)
+	if now := time.Now(); now.Sub(c.last) >= 100*time.Millisecond {
+		c.last = now
+		ndjson{out: c.out}.emit("progress", map[string]any{"bytes": c.read, "total": c.total})
+	}
+	return n, err
+}
+
 func writeJSON(stdout io.Writer, value any) error {
 	encoder := json.NewEncoder(stdout)
 	encoder.SetIndent("", "  ")
@@ -357,9 +412,25 @@ func newFsGetCmd(opts *Options, stdout io.Writer) *cobra.Command {
 				defer func() { _ = local.Close() }()
 				out = local
 			}
+			info, _ := file.Stat()
+			total := int64(0)
+			if info != nil {
+				total = info.Size()
+			}
+			if opts.JSONLines {
+				ndjson{out: stdout}.emit("start", map[string]any{"place": name, "path": p, "total": total})
+				out = &progressWriter{out: out, total: total}
+			}
 			written, err := io.Copy(out, file)
 			if err != nil {
+				if opts.JSONLines {
+					ndjson{out: stdout}.emit("error", map[string]any{"message": err.Error()})
+				}
 				return err
+			}
+			if opts.JSONLines {
+				ndjson{out: stdout}.emit("done", map[string]any{"place": name, "path": p, "bytes": written})
+				return nil
 			}
 			if opts.JSON {
 				return writeJSON(stdout, map[string]any{"place": name, "path": p, "bytes": written})
@@ -408,6 +479,16 @@ func newFsPutCmd(opts *Options, stdout io.Writer) *cobra.Command {
 					return classify(err)
 				}
 			}
+			if opts.JSONLines {
+				total := int64(0)
+				if args[0] != "-" {
+					if info, err := os.Stat(args[0]); err == nil {
+						total = info.Size()
+					}
+				}
+				ndjson{out: stdout}.emit("start", map[string]any{"place": name, "path": p, "total": total})
+				in = &countingReader{in: in, out: stdout, total: total}
+			}
 			writer, err := target.fsys.Create(p)
 			if err != nil {
 				return classify(err)
@@ -416,13 +497,23 @@ func newFsPutCmd(opts *Options, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				_ = writer.Close()
 				audit("put", name, p, 0, err)
+				if opts.JSONLines {
+					ndjson{out: stdout}.emit("error", map[string]any{"message": err.Error()})
+				}
 				return err
 			}
 			if err := writer.Close(); err != nil {
 				audit("put", name, p, written, err)
+				if opts.JSONLines {
+					ndjson{out: stdout}.emit("error", map[string]any{"message": err.Error()})
+				}
 				return err
 			}
 			audit("put", name, p, written, nil)
+			if opts.JSONLines {
+				ndjson{out: stdout}.emit("done", map[string]any{"place": name, "path": p, "bytes": written})
+				return nil
+			}
 			if opts.JSON {
 				return writeJSON(stdout, map[string]any{"place": name, "path": p, "bytes": written})
 			}
@@ -451,11 +542,20 @@ func newFsRmCmd(opts *Options, stdout io.Writer) *cobra.Command {
 				return err
 			}
 			defer target.done()
-			// Removing a tree is the destructive case, so it says the path it is
-			// about to remove before doing it.
-			if opts.JSON {
-				defer func() { _ = writeJSON(stdout, map[string]any{"place": name, "path": p, "removed": true}) }()
-			} else {
+			// Destructive calls return a plan unless --yes was given for the run:
+			// the difference between thinking about it and doing it is a flag the
+			// caller cannot slip into a tool argument.
+			if !opts.Yes {
+				if opts.JSON || opts.JSONLines {
+					return writeJSON(stdout, map[string]any{
+						"place": name, "path": p, "planned": true,
+						"note": "add --yes to remove it",
+					})
+				}
+				fmt.Fprintf(stdout, "would remove %s:%s (add --yes to do it)\n", name, p)
+				return nil
+			}
+			if !opts.JSON && !opts.JSONLines {
 				fmt.Fprintf(stdout, "removing %s:%s\n", name, p)
 			}
 			if err := target.fsys.RemoveAll(p); err != nil {
@@ -463,6 +563,9 @@ func newFsRmCmd(opts *Options, stdout io.Writer) *cobra.Command {
 				return classify(err)
 			}
 			audit("rm", name, p, 0, nil)
+			if opts.JSON || opts.JSONLines {
+				return writeJSON(stdout, map[string]any{"place": name, "path": p, "removed": true})
+			}
 			return nil
 		},
 	}

@@ -33,6 +33,11 @@ type Options struct {
 	// Batch forbids prompting: an agent cannot answer a dialog, and a hang is
 	// worse than an exit code.
 	Batch bool
+	// JSONLines streams one event per line for long operations: start, progress,
+	// done, error. A single document at the end is useless while a copy runs.
+	JSONLines bool
+	// Yes confirms a destructive call. Without it, the call returns a plan.
+	Yes bool
 	// AllowWrite is read-only's opposite. A write needs it for the run, not a
 	// flag per call, because the flag per call is the one an agent sets itself.
 	AllowWrite bool
@@ -99,6 +104,8 @@ func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 	root.PersistentFlags().IntVar(&opts.WidthMargin, "width-margin", -1, "columns to keep free at the right edge (0-8); try 1 if the layout shifts while typing")
 	root.PersistentFlags().BoolVar(&opts.JSON, "json", false, "print one JSON document (for scripts and agents)")
 	root.PersistentFlags().BoolVar(&opts.Batch, "batch", false, "never prompt: fail with an exit code instead")
+	root.PersistentFlags().BoolVar(&opts.JSONLines, "json-lines", false, "stream one JSON event per line for long operations")
+	root.PersistentFlags().BoolVar(&opts.Yes, "yes", false, "perform a destructive call instead of returning its plan")
 	root.PersistentFlags().BoolVar(&opts.AllowWrite, "allow-write", false, "permit changes (without it, omssh only reads)")
 	root.PersistentFlags().StringArrayVar(&opts.AllowHosts, "allow-host", nil, "only these places (repeatable)")
 	root.PersistentFlags().StringArrayVar(&opts.AllowPaths, "allow-path", nil, "only paths under these prefixes (repeatable)")
@@ -109,6 +116,8 @@ func newRoot(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newExecCmd(opts, stdout, stderr))
 	root.AddCommand(newCloudCmd(opts, stdout))
 	root.AddCommand(newFsCmd(opts, stdout))
+	root.AddCommand(newTunnelCmd(opts, stdout, stderr))
+	root.AddCommand(newMCPCmd(opts, stdout, stderr))
 	root.AddCommand(newConfigCmd(opts, stdout))
 	root.AddCommand(newKeysCmd(opts, stdout))
 	root.AddCommand(newVersionCmd(stdout))

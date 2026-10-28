@@ -275,7 +275,7 @@ This milestone makes a *recorded* session an option rather than the only way.
 
 ---
 
-## M13 — Tunnels, and a proxy that can be audited
+## M13 — Tunnels, and a proxy that can be audited  (shipped: -L/-R/-D, metadata bastion, tunnels.jsonl; bastion .cast deferred)
 
 Tunnelling is the other half of "this app is the intermediary": forwarding ports,
 and — when someone deliberately asks for it — terminating the SSH connection so
@@ -322,7 +322,7 @@ the traffic can be recorded.
 
 ---
 
-## M14 — An interface for agents  (shipped: `omssh fs`, `--json`, `--batch`, `--allow-write`, allowlists, audit log; still missing: `--json-lines`, `omssh mcp`)
+## M14 — An interface for agents  (shipped: `omssh fs`, `omssh mcp`, `--json`, `--json-lines`, `--batch`, `--allow-write`, allowlists, plans for destructive calls, audit log)
 
 A person drives a screen. An agent cannot: it needs a command that does not ask
 questions, output it can parse, and a safety model that fails closed. This is the
@@ -335,14 +335,14 @@ pseudo-terminal.
   place is a host alias or a cloud profile. Verbs: `ls`, `stat`, `get`, `put`,
   `mv`, `rm`, `mkdir`, `extract`. SSH and buckets stop being different shapes to a
   caller.
-- `--json` on every command: one document, stable field names. `--json-lines` for
-  long operations: one object per event (`start`, `progress`, `item-error`,
+- ~~`--json` on every command, and `--json-lines` for long operations: one object per event (`start`, `progress`, `item-error`,
   `done`), so a copy is observable while it runs.
 - `--batch`: never prompt. An unknown host key exits 65 with the fingerprint on
   stderr; a password that is needed and not stored exits 77; nothing waits for a
   terminal that is not there.
-- `omssh mcp`: an MCP server over stdio, exposing the same operations as tools
-  with JSON schemas. Local transport, no network listener, credentials resolved
+- ~~`omssh mcp`: an MCP server over stdio, exposing the same operations as tools
+  with JSON schemas.~~ Shipped with places, ls, stat, get, put, mkdir, copy,
+  extract and rm. Local transport, no network listener, credentials resolved
   exactly as the TUI resolves them.
 - An audit log in the state directory: one JSON line per mutating action with
   place, path, bytes and outcome.

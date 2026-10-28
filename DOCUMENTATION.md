@@ -575,6 +575,8 @@ re-checked at apply time rather than trusting the plan.
 omssh                            # the interface, in this directory
 omssh <host>                     # the interface, connected on startup
 omssh exec <host> -- <command>   # one command, its exit status
+omssh tunnel <host> -L 8080:db:5432
+omssh mcp                        # MCP server over stdio, for agents
 omssh keys                       # the effective keymap
 omssh config path                # where the config lives
 omssh config init                # write a commented example
@@ -586,6 +588,38 @@ omssh version
 side for commands that want one. It exits with the remote command's status, so it
 composes in a script. An unknown host key prints its fingerprint and asks before
 trusting it; passwords are read with echo off.
+
+### Tunnels
+
+`omssh tunnel <host>` forwards TCP over the same connection the interface uses:
+
+```sh
+omssh tunnel contabo -L 8080:db.internal:5432      # this machine → far network
+omssh tunnel contabo -R 9000:localhost:3000       # far machine → this network
+omssh tunnel contabo -D 1080                      # SOCKS5 on 127.0.0.1:1080
+omssh tunnel contabo -L 8080:db:5432 --json-lines # events as they happen
+```
+
+The shape is `ssh`'s: `[bind:]port:host:port` for `-L` and `-R`, `[bind:]port`
+for `-D`. A forward with no bind address listens on **127.0.0.1**, not on every
+interface — a private database should not appear on café Wi-Fi because a colon was
+missing. Several `-L`/`-R`/`-D` flags may be given at once.
+
+The connection is the pool's: when it drops, the next accepted connection
+reconnects, and a dial that fails on a stale connection is retried once. A port
+that is already taken fails with the address and, when `lsof` is available, the
+program holding it.
+
+**A bastion is a forwarding rule with a name.** `omssh bastion <host> --listen
+127.0.0.1:2222 --to db.internal:22` accepts TCP locally and carries it through the
+SSH host to the target. What it records is **metadata**: who connected, where it
+went, how many bytes each way, and when. It does not capture traffic, and it does
+not terminate SSH, so it cannot produce a `.cast` of the proxied session — that
+would require implementing an SSH server. `--listen/--to` with `omssh tunnel`
+does the same forwarding; `bastion` is the name that says what it is for.
+
+Every tunnel event is appended to `<state>/tunnels.jsonl` (0600). `--json-lines`
+also prints the events while the tunnel runs.
 
 ### Files from a script, or an agent
 
@@ -637,6 +671,56 @@ exits `77`. The codes:
 | 64   | the command line was wrong                          |
 | 65   | the host is not trusted yet (`--batch`)             |
 | 77   | refused: no `--allow-write`, allowlist, credentials |
+
+**Destructive calls return a plan.** `fs rm` without `--yes` prints what it would
+remove and changes nothing; with `--yes` it removes and audits. Like
+`--allow-write`, `--yes` belongs to the run, so a tool call cannot grant itself
+the right to delete.
+
+**Long operations stream.** `--json-lines` writes one object per line:
+`{"event":"start",…}`, `progress` (at most ten a second), `done`, or `error`. A
+single document at the end is useless while a copy runs.
+
+### MCP: an agent's interface
+
+`omssh mcp` is a Model Context Protocol server over **stdio** — no listener, no
+network, no token to leak. It exposes the same places and the same safety model:
+
+```json
+{
+  "mcpServers": {
+    "omssh": {
+      "command": "omssh",
+      "args": ["mcp", "--allow-write", "--allow-host", "prod",
+               "--allow-path", "/srv/app"]
+    }
+  }
+}
+```
+
+That is a Claude Desktop / Cursor / any MCP client's configuration. Drop the
+`--allow-write` and the server can only read; add `--yes` and `rm` performs
+instead of returning a plan.
+
+| Tool | What it does |
+| --- | --- |
+| `places` | List `local` and the cloud profiles |
+| `ls` | List a directory |
+| `stat` | Describe one path |
+| `get` | Read a file as text, or `base64:…` when binary |
+| `put` | Write a file, creating parents |
+| `mkdir` | Create a directory |
+| `copy` | Copy a file or a whole tree between places |
+| `extract` | Extract an archive into a place |
+| `rm` | Remove, as a plan unless the server runs with `--yes` |
+
+Every call goes through the same allowlists, the same audit log and the same
+keyring as the interface. Nothing prompts: an unknown host key is an error, not a
+dialog. The server speaks protocol version `2024-11-05`.
+
+The `--json-lines` events and the MCP tools are the two interfaces an agent
+should use. Driving the TUI by scraping its screen is neither stable nor honest,
+and is not supported.
 
 Every change appends a line to `audit.jsonl` in the state directory
 (`omssh config path` shows where configuration lives; the state directory is its

@@ -44,6 +44,12 @@ unpacked tree or a single archive instead of a pile of files.
 - **Recorded sessions.** `U` opens an embedded terminal; with
   `sessions.record: true` it writes an asciinema `.cast`, and `Alt+R` replays it
   with play, seek, speed and search. `T` still hands the terminal to `ssh`.
+- **Tunnels.** `-L`, `-R` and SOCKS `-D` over the pooled connection, with a
+  reconnect on the next connection and metadata-only auditing in
+  `<state>/tunnels.jsonl`. `bastion` names the forward that exists to be watched.
+- **An agent interface.** `omssh fs` and `omssh mcp`: one path grammar, JSON
+  output, `--json-lines` progress, and a safety model — read-only by default,
+  allowlists, plans for destructive calls, an audit log.
 - **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
   diff, and a sync mode that mirrors. A second run with nothing changed does
   nothing.
