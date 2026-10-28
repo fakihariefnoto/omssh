@@ -60,8 +60,7 @@ connections screen from anywhere, and `Esc` always takes you one step back.
  ▸ [>] Manage connections        Ctrl+O
    [t] Terminal                  choose a host
    [n] Tunnel                    choose a host
-   [H] Terminal history          recordings and replay
-   [W] Tunnel history            sessions and tails
+   [H] History                   terminals, tunnels, agent calls
    [=] Dashboard                 choose panes
    [~] Local files               browse or go to a folder
    [M] MCP for agents            setup and log
@@ -81,10 +80,16 @@ choosing an offline host **connects it first** and then opens what you asked for
 shapes instead of assuming ssh's syntax:
 
 ```
-  L 8080:db.internal:5432   localhost:8080 reaches db.internal:5432 from the server
-  R 9000:localhost:3000     the server's port 9000 reaches your localhost:3000
-  D 1080                    SOCKS5 proxy on 127.0.0.1:1080
+L local    this machine listens; the server dials the target   8080:db.internal:5432
+R remote   the server listens; this machine dials the target   9000:localhost:3000
+D dynamic  a SOCKS5 proxy on this machine                      1080
 ```
+
+In ssh's words: `L` is `-L`, `R` is `-R`, `D` is `-D`. A local forward is the
+common one — you connect to a port here and reach something the far side can
+reach. A remote forward publishes a port on the server that comes back to this
+machine. A dynamic forward is a SOCKS5 proxy that chooses its target per
+connection.
 
 Starting one lands in **Tunnel history**, not on a file dashboard: the tunnel is
 not a file. **MCP** shows the stdio configuration, copies it with `c`, and lists
@@ -92,8 +97,8 @@ the last agent calls with `r` to refresh.
 
 ## History
 
-**Terminal history** and **Tunnel history** are the same screen opened on a
-different tab: Terminal, Tunnel, Agent, All. `Tab` changes the filter, `↑↓`
+**History** is one launcher row and one screen, split by tab: Terminal, Tunnel,
+Agent, All. `Tab` changes the filter, `↑↓`
 chooses, `Enter` opens the record, `v` reads a terminal conversation log, `d`
 deletes the selected record after asking, and `Esc` returns to the launcher. The
 rows are newest first.

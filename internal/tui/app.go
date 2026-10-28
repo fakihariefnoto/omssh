@@ -1373,11 +1373,8 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "session.tunnel":
 		m.openTunnelPrompt()
 		return nil
-	case "app.history-terminal":
+	case "app.history":
 		m.openHistory(0)
-		return nil
-	case "app.history-tunnel":
-		m.openHistory(1)
 		return nil
 	case "app.local":
 		m.openLocalChooser()

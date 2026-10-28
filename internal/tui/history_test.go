@@ -166,7 +166,8 @@ func TestTunnelFormIsIllustrated(t *testing.T) {
 	m.tunnelForm.input.Set("L:8080:localhost:80")
 	m.Overlay = OverlayTunnelForm
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"Tunnel through contabo", "L 8080:db.internal:5432", "R 9000:localhost:3000", "D 1080", "spec"} {
+	for _, want := range []string{"Tunnel through contabo", "L local", "R remote", "D dynamic",
+		"8080:db.internal:5432", "9000:localhost:3000", "1080", "spec"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the form should explain %q:\n%s", want, out)
 		}

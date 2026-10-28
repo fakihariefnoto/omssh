@@ -129,14 +129,17 @@ func (m *Model) renderTunnelForm(l layout) string {
 		m.st.CardMuted.Render(truncate("Forward a port over the SSH connection. Nothing is captured.", content)),
 		"",
 	}
-	examples := []struct{ spec, what string }{
-		{"L 8080:db.internal:5432", "localhost:8080 reaches db.internal:5432 from the server"},
-		{"R 9000:localhost:3000", "the server's port 9000 reaches your localhost:3000"},
-		{"D 1080", "SOCKS5 proxy on 127.0.0.1:1080"},
+	lines = append(lines, m.st.StatusMuted.Render(truncate(
+		"L local · R remote · D dynamic (SOCKS5)", content)), "")
+	examples := []struct{ letter, name, meaning, spec string }{
+		{"L", "Local", "this machine listens; the server dials the target", "8080:db.internal:5432"},
+		{"R", "Remote", "the server listens; this machine dials the target", "9000:localhost:3000"},
+		{"D", "Dynamic", "a SOCKS5 proxy on this machine", "1080"},
 	}
 	for _, example := range examples {
 		lines = append(lines,
-			m.st.CardText.Render(truncate("  "+padRight(example.spec, 26)+example.what, content)))
+			m.st.CardText.Render(truncate("  "+example.letter+"  "+padRight(example.name, 9)+example.meaning, content)),
+			m.st.CardMuted.Render(truncate("     "+example.spec, content)))
 	}
 	lines = append(lines, "")
 	label := m.st.StatusMuted.Render("spec  ")

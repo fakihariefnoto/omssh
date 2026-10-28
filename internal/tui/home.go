@@ -112,8 +112,7 @@ func (m *Model) homeItems() []homeItem {
 		homeItem{ID: "session.open", Icon: ">", Label: "Manage connections", Hint: "Ctrl+O"},
 		homeItem{ID: "session.terminal-choose", Icon: "t", Label: "Terminal", Hint: "choose a host"},
 		homeItem{ID: "session.tunnel-choose", Icon: "n", Label: "Tunnel", Hint: tunnelMenuHint(m)},
-		homeItem{ID: "app.history-terminal", Icon: "H", Label: "Terminal history", Hint: "recordings and replay"},
-		homeItem{ID: "app.history-tunnel", Icon: "W", Label: "Tunnel history", Hint: "sessions and tails"},
+		homeItem{ID: "app.history", Icon: "H", Label: "History", Hint: "terminals, tunnels, agent calls"},
 		homeItem{ID: "app.dashboard", Icon: "=", Label: "Dashboard", Hint: "choose panes"},
 		// One way into the local machine: browse here, or go somewhere first; the
 		// remote panes are the dashboard's question and follow either answer.
@@ -296,7 +295,7 @@ func (m *Model) activateHome(item homeItem) tea.Cmd {
 	}
 	switch item.ID {
 	case "app.help", "app.settings", "app.mcp", "app.local",
-		"app.history-terminal", "app.history-tunnel",
+		"app.history",
 		"session.terminal-choose", "session.tunnel-choose":
 		// Overlays open on top of the launcher, so the way back stays obvious.
 		return m.runAction(item.ID)
