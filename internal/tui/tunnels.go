@@ -74,6 +74,14 @@ func (m *Model) openTunnelPrompt() {
 	m.openTunnelPromptHost(host)
 }
 
+// tunnelFormState is the tunnel form: a host that cannot change, a spec, and the
+// examples that make the spec understandable.
+type tunnelFormState struct {
+	host  string
+	input input
+	err   string
+}
+
 // openTunnelPromptHost asks for the spec for one chosen host.
 func (m *Model) openTunnelPromptHost(host string) {
 	if _, live := m.live[host]; !live {
@@ -81,14 +89,72 @@ func (m *Model) openTunnelPromptHost(host string) {
 		return
 	}
 	m.tunnelHost = host
-	m.prompt = promptState{
-		Title:  "Tunnel on " + host,
-		Hint:   "L:8080:host:port · R:9000:host:port · D:1080 (L is assumed)",
-		Action: "prompt.tunnel",
-		open:   true,
+	m.tunnelForm = tunnelFormState{host: host}
+	m.tunnelForm.input.Set("L:8080:localhost:80")
+	m.Overlay = OverlayTunnelForm
+}
+
+// handleTunnelFormKey edits or submits the spec.
+func (m *Model) handleTunnelFormKey(msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "esc":
+		m.tunnelForm = tunnelFormState{}
+		m.Overlay = OverlayNone
+	case "enter":
+		if err := m.startTunnel(m.tunnelForm.input.Value); err != nil {
+			m.tunnelForm.err = err.Error()
+			return
+		}
+		m.tunnelForm = tunnelFormState{}
+		// A tunnel is not a file: land in its own history, where Enter watches
+		// the tail, instead of on a file dashboard nobody asked for.
+		m.screen = screenHome
+		m.mode = "NORMAL"
+		m.openHistory(1)
+		m.toastSuccess("Tunnel running · Enter to watch its tail")
+	default:
+		m.tunnelForm.err = ""
+		m.tunnelForm.input.Handle(msg)
 	}
-	m.prompt.input.Set("L:8080:localhost:80")
-	m.Overlay = OverlayPrompt
+}
+
+// renderTunnelForm draws the form with the three shapes spelled out. A bare
+// prompt asked beginners to know ssh's syntax before they could use the feature.
+func (m *Model) renderTunnelForm(l layout) string {
+	width := cardWidth(l, 66, 96)
+	content := cardContent(width)
+	form := m.tunnelForm
+	lines := []string{
+		m.st.CardTitle.Render("Tunnel through " + form.host),
+		m.st.CardMuted.Render(truncate("Forward a port over the SSH connection. Nothing is captured.", content)),
+		"",
+	}
+	examples := []struct{ spec, what string }{
+		{"L 8080:db.internal:5432", "localhost:8080 reaches db.internal:5432 from the server"},
+		{"R 9000:localhost:3000", "the server's port 9000 reaches your localhost:3000"},
+		{"D 1080", "SOCKS5 proxy on 127.0.0.1:1080"},
+	}
+	for _, example := range examples {
+		lines = append(lines,
+			m.st.CardText.Render(truncate("  "+padRight(example.spec, 26)+example.what, content)))
+	}
+	lines = append(lines, "")
+	label := m.st.StatusMuted.Render("spec  ")
+	valueWidth := max(10, content-6)
+	shown := form.input.Display()
+	if m.Overlay == OverlayTunnelForm {
+		shown = form.input.Rendered()
+	}
+	lines = append(lines,
+		m.st.Accent.Bold(true).Render("▸ ")+label+
+			m.st.PathInput.Width(valueWidth).Render(truncate(shown, valueWidth)),
+		spaces(6)+m.st.CardMuted.Render(truncate("L:port:host:port · R:port:host:port · D:port", valueWidth)),
+	)
+	if form.err != "" {
+		lines = append(lines, "", m.st.Danger.Render(truncate(form.err, content)))
+	}
+	lines = append(lines, "", m.st.CardMuted.Render("Enter start · Esc cancel"))
+	return m.card(width, lines)
 }
 
 // sshHostForTunnel finds the live session the focused pane or tab belongs to.
@@ -119,7 +185,7 @@ func (m *Model) startTunnel(specText string) error {
 	if err != nil {
 		return err
 	}
-	options := tunnel.Options{Kind: spec.Kind, Listen: spec.Listen, Target: spec.Target}
+	options := tunnel.Options{Kind: spec.Kind, Listen: spec.Listen, Target: spec.Target, Host: host}
 	active := &activeTunnel{host: host, kind: spec.Kind, listen: spec.Listen, target: spec.Target}
 	options.OnEvent = active.observe
 	if spec.Kind == tunnel.Remote {
@@ -144,15 +210,6 @@ type sshDialer struct{ client *sshx.Client }
 
 func (d sshDialer) DialContext(_ context.Context, network, addr string) (net.Conn, error) {
 	return d.client.Dial(network, addr)
-}
-
-// handleTunnelPrompt starts what was typed.
-func (m *Model) handleTunnelPrompt(value string) {
-	if err := m.startTunnel(value); err != nil {
-		m.toastError(err.Error())
-		return
-	}
-	m.Overlay = OverlayTunnels
 }
 
 // openTunnels lists the running forwards.

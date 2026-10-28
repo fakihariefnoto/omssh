@@ -60,6 +60,10 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderSessionChooser(l)
 	case OverlayLocalChoose:
 		return m.renderLocalChooser(l)
+	case OverlayTunnelForm:
+		return m.renderTunnelForm(l)
+	case OverlayHistoryDetail:
+		return m.renderHistoryDetail(l)
 	default:
 		return ""
 	}

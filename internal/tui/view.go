@@ -37,6 +37,8 @@ func (m *Model) render() string {
 		content = m.renderHome(l)
 	case screenConnections:
 		content = m.renderConnections(l)
+	case screenHistory:
+		content = m.renderHistory(l)
 	case screenFiles:
 		// Already rendered above; named so the switch is exhaustive.
 	}

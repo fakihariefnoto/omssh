@@ -43,6 +43,8 @@ const (
 // Event is one metadata record. There is deliberately no payload field.
 type Event struct {
 	Time     time.Time `json:"time"`
+	Session  string    `json:"session,omitempty"`
+	Host     string    `json:"host,omitempty"`
 	Kind     Kind      `json:"kind"`
 	Listen   string    `json:"listen"`
 	Target   string    `json:"target,omitempty"`
@@ -64,6 +66,8 @@ type Options struct {
 	Dialer Dialer
 	// Remote listens on the server for a remote tunnel.
 	Remote Listener
+	// Host is the SSH alias the tunnel runs through, for the history line.
+	Host string
 	// OnEvent receives metadata. It may be nil.
 	OnEvent func(Event)
 	// LocalDialer is used by a remote tunnel to reach the target on this side;
@@ -73,6 +77,7 @@ type Options struct {
 
 // Tunnel is a running forward.
 type Tunnel struct {
+	id      string
 	options Options
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -115,8 +120,9 @@ func Start(ctx context.Context, opts Options) (*Tunnel, error) {
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
-	t := &Tunnel{options: opts, ctx: runCtx, cancel: cancel, ln: ln}
-	t.emit(Event{Time: time.Now(), Kind: opts.Kind, Listen: ln.Addr().String(), Target: opts.Target})
+	t := &Tunnel{id: newSessionID(), options: opts, ctx: runCtx, cancel: cancel, ln: ln}
+	t.emit(Event{Time: time.Now(), Session: t.id, Host: opts.Host, Kind: opts.Kind,
+		Listen: ln.Addr().String(), Target: opts.Target})
 	t.wg.Add(1)
 	go t.accept()
 	return t, nil
@@ -125,6 +131,17 @@ func Start(ctx context.Context, opts Options) (*Tunnel, error) {
 // Addr is the address the tunnel actually bound, which matters when port 0 was
 // requested.
 func (t *Tunnel) Addr() net.Addr { return t.ln.Addr() }
+
+// ID names the session in the event log, so a history can group what belongs
+// together.
+func (t *Tunnel) ID() string { return t.id }
+
+// newSessionID is unique per process without importing a UUID for one line.
+func newSessionID() string {
+	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), sessionCounter.Add(1))
+}
+
+var sessionCounter atomic.Int64
 
 func (t *Tunnel) accept() {
 	defer t.wg.Done()
@@ -135,7 +152,8 @@ func (t *Tunnel) accept() {
 			closed := t.closed
 			t.mu.Unlock()
 			if !closed && t.ctx.Err() == nil {
-				t.emit(Event{Time: time.Now(), Kind: t.options.Kind, Error: err.Error()})
+				t.emit(Event{Time: time.Now(), Session: t.id, Host: t.options.Host,
+					Kind: t.options.Kind, Error: err.Error()})
 			}
 			return
 		}
@@ -163,14 +181,16 @@ func (t *Tunnel) handle(client net.Conn) {
 		upstream, err = t.dial(t.ctx, target)
 	}
 	if err != nil {
-		t.emit(Event{Time: started, Kind: t.options.Kind, Listen: t.ln.Addr().String(),
+		t.emit(Event{Time: started, Session: t.id, Host: t.options.Host,
+			Kind: t.options.Kind, Listen: t.ln.Addr().String(),
 			Target: target, Client: client.RemoteAddr().String(), Error: err.Error()})
 		return
 	}
 	defer func() { _ = upstream.Close() }()
 
 	in, out := bridge(client, upstream)
-	t.emit(Event{Time: time.Now(), Kind: t.options.Kind, Listen: t.ln.Addr().String(),
+	t.emit(Event{Time: time.Now(), Session: t.id, Host: t.options.Host,
+		Kind: t.options.Kind, Listen: t.ln.Addr().String(),
 		Target: target, Client: client.RemoteAddr().String(), BytesIn: in, BytesOut: out})
 }
 

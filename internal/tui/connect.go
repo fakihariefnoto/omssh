@@ -169,7 +169,10 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 	m.toastSuccess("Connected to " + msg.target.Alias)
 	// Connecting from a list is a request to see the place, so the dashboard is
 	// the destination whether the list was the manager, the launcher or a chooser.
-	if m.Overlay != OverlayDeploy {
+	// A manager connect lands in the dashboard. A chooser connect has a second
+	// half (terminal or tunnel), and that half owns the screen; leave the launcher
+	// behind it rather than a file view nobody asked for.
+	if m.Overlay != OverlayDeploy && m.pendingAfterConnect == "" {
 		m.screen = screenFiles
 		m.mode = "NORMAL"
 	}

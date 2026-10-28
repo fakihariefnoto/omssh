@@ -174,6 +174,10 @@ type Model struct {
 	// the dashboard chooser follows the path, not the other way round.
 	afterLocalSetup bool
 	localChoose     localChooseState
+	tunnelForm      tunnelFormState
+	history         historyState
+	historyDetail   historyDetailState
+	historyPending  historyEntry
 
 	// live is the sessions this interface is showing, by alias, so switching tabs
 	// does not have to ask the manager.
@@ -724,6 +728,9 @@ func (m *Model) handleKeyNow(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	}
+	if m.screen == screenHistory {
+		return m.handleHistoryKey(msg)
+	}
 	if m.focusTabs {
 		return m.handleTabKey(msg)
 	}
@@ -928,6 +935,14 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlayLocalChoose:
 		m.handleLocalChooseKey(msg)
+		return true
+
+	case OverlayTunnelForm:
+		m.handleTunnelFormKey(msg)
+		return true
+
+	case OverlayHistoryDetail:
+		m.handleHistoryDetailKey(msg)
 		return true
 
 	case OverlayMCP:
@@ -1358,6 +1373,12 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "session.tunnel":
 		m.openTunnelPrompt()
 		return nil
+	case "app.history-terminal":
+		m.openHistory(0)
+		return nil
+	case "app.history-tunnel":
+		m.openHistory(1)
+		return nil
 	case "app.local":
 		m.openLocalChooser()
 		return nil
@@ -1585,7 +1606,8 @@ func (m *Model) focusedInput() *input {
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
 	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay, OverlayRecordings,
-		OverlayTunnels, OverlayMCP, OverlaySessionChoose, OverlayLocalChoose:
+		OverlayTunnels, OverlayMCP, OverlaySessionChoose, OverlayLocalChoose,
+		OverlayTunnelForm, OverlayHistoryDetail:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
@@ -1668,9 +1690,7 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 	case "prompt.replay-search":
 		m.searchReplay(value)
 		return nil
-	case "prompt.tunnel":
-		m.handleTunnelPrompt(value)
-		return nil
+
 	case "prompt.link-show":
 		// The URL is on screen to be read or selected; Enter just dismisses it.
 		return nil
@@ -1759,6 +1779,8 @@ func (m *Model) applyConfirmed(action actions.ID, entries []Entry) tea.Cmd {
 		return m.deleteTargets(entries)
 	case "session.delete":
 		m.applyDeleteConnection(m.confirmAlias)
+	case "history.delete":
+		m.deleteHistoryEntry()
 	}
 	return nil
 }

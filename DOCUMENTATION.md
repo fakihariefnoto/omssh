@@ -60,6 +60,8 @@ connections screen from anywhere, and `Esc` always takes you one step back.
  ▸ [>] Manage connections        Ctrl+O
    [t] Terminal                  choose a host
    [n] Tunnel                    choose a host
+   [H] Terminal history          recordings and replay
+   [W] Tunnel history            sessions and tails
    [=] Dashboard                 choose panes
    [~] Local files               browse or go to a folder
    [M] MCP for agents            setup and log
@@ -75,10 +77,39 @@ where you were.
 `~/.ssh/config` marked *not connected*. `Enter` opens the embedded terminal, `t`
 hands over to `ssh` (which works whether or not the session is open here), and
 choosing an offline host **connects it first** and then opens what you asked for.
-**Tunnel** uses the same chooser and then asks for the spec; if forwards are
-already running its first row is **Running tunnels**, which opens the watcher.
-**MCP** shows the stdio configuration, copies it with `c`, and lists the last agent
-calls with `r` to refresh.
+**Tunnel** uses the same chooser and then opens a form that teaches the three
+shapes instead of assuming ssh's syntax:
+
+```
+  L 8080:db.internal:5432   localhost:8080 reaches db.internal:5432 from the server
+  R 9000:localhost:3000     the server's port 9000 reaches your localhost:3000
+  D 1080                    SOCKS5 proxy on 127.0.0.1:1080
+```
+
+Starting one lands in **Tunnel history**, not on a file dashboard: the tunnel is
+not a file. **MCP** shows the stdio configuration, copies it with `c`, and lists
+the last agent calls with `r` to refresh.
+
+## History
+
+**Terminal history** and **Tunnel history** are the same screen opened on a
+different tab: Terminal, Tunnel, Agent, All. `Tab` changes the filter, `↑↓`
+chooses, `Enter` opens the record, `v` reads a terminal conversation log, `d`
+deletes the selected record after asking, and `Esc` returns to the launcher. The
+rows are newest first.
+
+- **Terminal** rows are `.cast` recordings. `Enter` replays one in the player;
+  `v` shows the same conversation as plain text, with the escape sequences gone.
+- **Tunnel** rows are sessions from `<state>/tunnels.jsonl`. `Enter` opens the
+  **tail**: when it started, where it listened, every connection with its byte
+  counts, and live counters when it is still running.
+- **Agent** rows are MCP tool calls, always labelled `agent · <tool>` so they are
+  never mistaken for something a person did. Deleting one removes that call from
+  the log.
+
+Deleting a record is scoped to its own store: a recording file, one tunnel
+session's metadata, or one agent call. A running tunnel keeps running when its
+metadata row is deleted, and says so in the confirmation.
 
 The chooser is the dashboard's question — which place — with the connect step
 folded in, so "I have not connected yet" is not a dead end: pick the host and the
@@ -914,6 +945,17 @@ with `omssh keys`. The grammar is small:
 | `w` | Switch pane |
 | `o` | Reveal in next pane |
 | `V` | Choose panes |
+
+### History
+
+| Key | Action |
+| --- | --- |
+| `Tab` / `Shift+Tab` | Filter: Terminal, Tunnel, Agent, All |
+| `↑` / `↓` | Choose a record |
+| `Enter` | Replay, watch the tunnel tail, or show the agent call |
+| `v` | Read a terminal recording as a conversation log |
+| `d` | Delete the selected record (after asking) |
+| `Esc` | Back to the launcher |
 
 ### Sessions
 

@@ -204,7 +204,7 @@ func runTunnel(opts *Options, host string, locals, remotes, dynamics []string,
 	started := make([]*tunnel.Tunnel, 0, len(specs))
 	for _, spec := range specs {
 		options := tunnel.Options{Kind: spec.kind, Listen: spec.listen, Target: spec.target,
-			Dialer: dialer, OnEvent: events}
+			Host: host, Dialer: dialer, OnEvent: events}
 		if spec.kind == tunnel.Remote {
 			options.Remote = live.SSH()
 		}

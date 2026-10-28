@@ -44,6 +44,9 @@ unpacked tree or a single archive instead of a pile of files.
 - **Recorded sessions.** `U` opens an embedded terminal; with
   `sessions.record: true` it writes an asciinema `.cast`, and `Alt+R` replays it
   with play, seek, speed and search. `T` still hands the terminal to `ssh`.
+- **History.** Terminal recordings, tunnel sessions and agent calls in one screen
+  with tabs, a conversation log for terminals, an event tail for tunnels, and
+  per-record delete. The launcher opens it on the tab you asked for.
 - **Tunnels.** `-L`, `-R` and SOCKS `-D` over the pooled connection, with a
   reconnect on the next connection and metadata-only auditing in
   `<state>/tunnels.jsonl`. From the launcher: **Terminal** and **Tunnel** choose a host —
