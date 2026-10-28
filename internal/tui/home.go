@@ -327,13 +327,15 @@ func (m *Model) openFiles() {
 
 // openDashboard is the question "what should the dashboard show?". It is the
 // launcher's Dashboard entry and the Esc-then-Enter route.
-func (m *Model) openDashboard() {
+func (m *Model) openDashboard() tea.Cmd {
+	returnTo := m.screen
 	m.screen = screenFiles
 	m.mode = "NORMAL"
 	candidates := 1 + len(m.live) + len(m.cfg.Cloud.Profiles)
 	if candidates > 1 {
-		m.openPanes()
+		return m.openPanesFrom(returnTo)
 	}
+	return nil
 }
 
 // homeOr is the user's home directory, or the fallback when it cannot be found.

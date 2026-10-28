@@ -317,7 +317,7 @@ func (m *Model) historyEmpty() string {
 		}
 		return "No recordings yet — U opens an embedded terminal. Looking in " + dir
 	case historyTunnel:
-		return "No tunnels yet — Terminal & Tunnel on the launcher forwards a port."
+		return "No tunnels yet — Terminal & Tunnel forwards a port; sessions are recorded automatically."
 	case historyAgent:
 		return "No agent calls yet — run an MCP client against omssh mcp."
 	default:

@@ -77,8 +77,16 @@ func (m *Model) localPaneIndex() int {
 	return -1
 }
 
-// openPanes shows the chooser with what is on screen already ticked.
-func (m *Model) openPanes() {
+// openPanes shows the chooser with what is on screen already ticked. The default
+// return is the files, which is where view.panes is used; the launcher passes its
+// own screen so Escape goes back there.
+func (m *Model) openPanes() tea.Cmd { return m.openPanesFrom(screenFiles) }
+
+// openPanesFrom records where Escape should land and starts the sampling that
+// fills the cards' numbers. The command must be returned to the runtime, or the
+// cards stay at "load —" forever.
+func (m *Model) openPanesFrom(returnTo screen) tea.Cmd {
+	m.panesReturn = returnTo
 	chosen := map[string]bool{}
 	for i := 0; i < m.paneCount(); i++ {
 		if m.Panes[i].Side == SideLocal {
@@ -93,6 +101,7 @@ func (m *Model) openPanes() {
 	m.Overlay = OverlayPanes
 	m.samples = map[string]remoteinfo.Info{}
 	m.sampleSeq = m.sampleSessions()
+	return m.sampleSeq
 }
 
 // sampleSessions asks every live host for its load, memory and disk, and asks
@@ -103,6 +112,9 @@ func (m *Model) sampleSessions() tea.Cmd {
 	commands := make([]tea.Cmd, 0, len(m.live)+1)
 	for alias, sess := range m.live {
 		live := sess
+		if live.Client == nil {
+			continue // a test session, or one still connecting
+		}
 		name := alias
 		// The path is read here, not in the goroutine: the model is not safe to
 		// touch from there.
@@ -188,9 +200,14 @@ func (m *Model) handlePanesKey(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc":
 		m.Overlay = OverlayNone
-	case "up", "k":
+		if m.panesReturn == screenHome {
+			m.screen = screenHome
+			m.mode = "NORMAL"
+			m.home.cursor = 0
+		}
+	case "up", "k", "left", "h":
 		m.panes.cursor = (m.panes.cursor + len(choices) - 1) % len(choices)
-	case "down", "j":
+	case "down", "j", "right", "l":
 		m.panes.cursor = (m.panes.cursor + 1) % len(choices)
 	case "space", "x":
 		alias := choices[clamp(m.panes.cursor, 0, len(choices)-1)]
@@ -381,7 +398,7 @@ func (m *Model) renderPanesChooser(l layout) string {
 
 	lines := []string{
 		m.st.CardTitle.Render("Sessions") + "  " +
-			m.st.CardMuted.Render("choose up to four for the dashboard"),
+			m.st.CardMuted.Render("choose up to four · ←/→ or ↑/↓ move · Space ticks"),
 		"",
 	}
 
@@ -415,7 +432,7 @@ func (m *Model) renderPanesChooser(l layout) string {
 	// clip, and the count is the part a person needs to see.
 	lines = append(lines, "",
 		m.st.CardMuted.Render(truncate(fmt.Sprintf(
-			"%d of %d chosen · Space picks · Enter shows · Esc keeps · local is optional",
+			"%d of %d chosen · ←/→ ↑/↓ choose · Space tick · Enter apply · Esc back",
 			len(m.panes.chosen), maxPanes), inner)))
 	return m.card(width, lines)
 }

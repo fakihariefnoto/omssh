@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/remoteinfo"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
@@ -24,7 +25,7 @@ func TestSessionCardsCarryTheNumbers(t *testing.T) {
 	out := ansi.Strip(render(m))
 	for _, want := range []string{
 		"Sessions", "local machine", "one", "two", "three",
-		"load 6.40", "7.0 GB/8.0 GB", "on screen", "Space picks", "4 of 4",
+		"load 6.40", "7.0 GB/8.0 GB", "on screen", "Space tick", "4 of 4",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the chooser should show %q:\n%s", want, out)
@@ -148,5 +149,42 @@ func TestPaneHeaderShowsHostStats(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the pane header should show %q:\n%s", want, out)
 		}
+	}
+}
+
+// The chooser says how to move, and both axes work.
+func TestPanesChooserGuidanceAndArrows(t *testing.T) {
+	m := newTestModel(t)
+	m.cfg.Cloud.Profiles = map[string]config.CloudProfile{"backups": {Provider: "s3", Bucket: "b", Region: "eu-central-1"}}
+	m.screen = screenHome
+	cmd := m.runAction("app.dashboard")
+	if m.Overlay != OverlayPanes {
+		t.Fatalf("the dashboard should ask which panes, overlay=%v", m.Overlay)
+	}
+	if cmd == nil {
+		t.Error("opening the chooser should also start sampling; otherwise the cards stay at load —")
+	}
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"←/→", "↑/↓", "Space tick", "Esc back"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the chooser should explain %q:\n%s", want, out)
+		}
+	}
+
+	// Right and left move one card, like down and up.
+	before := m.panes.cursor
+	press(t, m, keyNamed(tea.KeyRight))
+	if m.panes.cursor == before {
+		t.Error("right should move the selection")
+	}
+	press(t, m, keyNamed(tea.KeyLeft))
+	if m.panes.cursor != before {
+		t.Error("left should move it back")
+	}
+
+	// Escape goes back to where the chooser opened.
+	press(t, m, keyNamed(tea.KeyEsc))
+	if m.Overlay != OverlayNone || m.screen != screenHome {
+		t.Errorf("Esc should return to the launcher, overlay=%v screen=%v", m.Overlay, m.screen)
 	}
 }

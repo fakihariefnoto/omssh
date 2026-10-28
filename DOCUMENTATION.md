@@ -110,7 +110,9 @@ rows are newest first.
 
 - **Terminal** rows are `.cast` recordings. `Enter` replays one in the player;
   `v` shows the same conversation as plain text, with the escape sequences gone.
-- **Tunnel** rows are sessions from `<state>/tunnels.jsonl`. `Enter` opens the
+- **Tunnel** rows are sessions from `<state>/tunnels.jsonl`. Tunnel metadata is
+  **recorded automatically** — there is nothing to enable, and it is what the
+  audit log uses. `Enter` opens the
   **tail**: when it started, where it listened, every connection with its byte
   counts, and live counters when it is still running.
 - **Agent** rows are MCP tool calls, always labelled `agent · <tool>` so they are
@@ -157,7 +159,14 @@ sessions  │  1 localhost  │  ● 2 contabo  │  ● ▸ 3 ovh
   you can see which of the four you are typing into.
 - **`Tab` / `Shift+Tab`** switch sessions. **`1`…`9`** jump straight to one.
 - **`V`** chooses which sessions are on screen. When you have more sessions than
-  panes, the chooser opens on entering the dashboard and asks once.
+  panes, the chooser opens on entering the dashboard and asks once. In the
+  chooser, **←/→ and ↑/↓** both move the selection, **Space** ticks or unticks a
+  place, **Enter** applies it, and **Esc** goes back to where you came from — the
+  launcher when Dashboard opened it, the files when `V` did.
+- Host cards in the chooser show the same **load, memory and disk** numbers as
+  the pane headers, sampled while the chooser is open and refreshed every few
+  seconds. The local card says "this machine" instead: those commands are for
+  the far side.
 - Each pane keeps its own path, selection and history. Switching panes never
   disturbs the other one.
 
@@ -572,8 +581,10 @@ recording keep running, and **Terminal & Tunnel** → Terminal marks the host
 `terminal detached · Enter reattaches`. `T` is unchanged, and remains the right
 choice when you want the terminal handed over entirely.
 
-The embedded terminal is **recorded by default**: every session lands in
-**History**, and `Ctrl+,` has a *Record sessions* toggle for turning it off. The
+Both kinds of history are **on by default**: embedded terminals are recorded
+(and `Ctrl+,` has a *Record sessions* toggle for turning that off), while tunnel
+sessions are metadata and are always written to `tunnels.jsonl`. Nothing is
+captured from tunnel traffic. The
 settings are
 
 ```yaml

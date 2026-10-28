@@ -213,8 +213,11 @@ type Model struct {
 	deploy deployState
 	// panes is the pane chooser's state, and panesAsked records that the
 	// question was answered once so it does not reopen on every return.
-	panes         panesState
-	panesAsked    bool
+	panes      panesState
+	panesAsked bool
+	// panesReturn is where Escape goes from the pane chooser: the launcher when
+	// it was opened from there, the files when V opened it.
+	panesReturn   screen
 	pendingDeploy string
 	// samples are the numbers on the session cards, and sampleSeq is the
 	// repeating read while the chooser is open.
@@ -1175,7 +1178,7 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "app.files":
 		m.openFiles()
 	case "app.dashboard":
-		m.openDashboard()
+		return m.openDashboard()
 
 	case "session.open":
 		m.loadConnections()
@@ -1358,7 +1361,7 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 	case "deploy.open":
 		m.openDeploy()
 	case "view.panes":
-		m.openPanes()
+		return m.openPanes()
 	case "terminal.new":
 		return m.openTerminalForPane()
 	case "session.embedded":
@@ -1696,7 +1699,7 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 		m.goToPath(value)
 		if m.afterLocalSetup {
 			m.afterLocalSetup = false
-			m.openDashboard()
+			return m.openDashboard()
 		}
 		return nil
 	case "prompt.copy-to":

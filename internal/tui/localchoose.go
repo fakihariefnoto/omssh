@@ -39,7 +39,7 @@ func (m *Model) handleLocalChooseKey(msg tea.KeyPressMsg) {
 		m.openFiles()
 		// Choosing local is half the dashboard question; ask the other half now,
 		// so the next screen is the panes, not an empty remote column.
-		m.openDashboard()
+		m.overlayCmd = m.openDashboard()
 	}
 }
 
