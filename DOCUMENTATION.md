@@ -120,9 +120,14 @@ tunnels:
       target: db.internal:5432
 ```
 
-Starting one closes the form and shows the **running tunnels** card, where `x`
-stops the selected forward, `Enter` opens its history tail, and `Esc` closes the
-card while the tunnel keeps running. **MCP** shows the stdio configuration, copies it with `c`, and lists
+Starting one opens the **Tunnels dashboard**, a screen of its own rather than a
+card over the launcher. The left column is every running forward with its live
+counters; the right column is the selected one: where it listens, where it goes,
+connections, bytes received and sent, and the recent connections with the address
+that used it. `↑↓` chooses, `x` stops, `n` starts another on the same host, `p`
+starts the same tunnel on **another free port** (useful when one service is already
+forwarded), `h` opens History, and `Esc` returns to the launcher while the tunnels
+keep running. **MCP** shows the stdio configuration, copies it with `c`, and lists
 the last agent calls with `r` to refresh.
 
 ## History
@@ -140,7 +145,8 @@ rows are newest first.
   audit log uses. A running session is marked `running`; `s` stops it without
   deleting the record, and `x` inside the tail does the same. `Enter` opens the
   **tail**: when it started, where it listened, every connection with its byte
-  counts, and live counters when it is still running.
+  counts. If the tunnel is still running, `Enter` opens the **live dashboard**
+  instead — counters and recent connections, not a historical record.
 - **Agent** rows are MCP tool calls, always labelled `agent · <tool>` so they are
   never mistaken for something a person did. Deleting one removes that call from
   the log.

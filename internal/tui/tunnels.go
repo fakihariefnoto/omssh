@@ -41,11 +41,18 @@ type activeTunnel struct {
 	bytesIn  int64
 	bytesOut int64
 	err      string
+	events   []tunnel.Event
 }
 
 func (t *activeTunnel) observe(event tunnel.Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	// A short tail is enough to see what the tunnel is doing; the history file
+	// keeps everything.
+	t.events = append(t.events, event)
+	if len(t.events) > 100 {
+		t.events = t.events[len(t.events)-100:]
+	}
 	if event.Client != "" {
 		if event.Error != "" {
 			t.err = event.Error
@@ -65,6 +72,15 @@ func (t *activeTunnel) snapshot() (conns int, in, out int64, errText string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.conns, t.bytesIn, t.bytesOut, t.err
+}
+
+// tail returns the recent events for the live dashboard.
+func (t *activeTunnel) tail() []tunnel.Event {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]tunnel.Event, len(t.events))
+	copy(out, t.events)
+	return out
 }
 
 // openTunnelPrompt asks for a spec, showing the three shapes in the hint.
@@ -272,11 +288,8 @@ func (m *Model) handleTunnelFormKey(msg tea.KeyPressMsg) {
 		m.tunnelForm = tunnelFormState{}
 		// A tunnel is not a file: show the running list, where x stops it and
 		// Enter opens its history tail. The form is gone; the tunnel is not.
-		m.screen = screenHome
-		m.mode = "NORMAL"
-		m.Overlay = OverlayTunnels
-		m.tunnelCursor = len(m.tunnels) - 1
-		m.toastSuccess("Tunnel running · x stops it · Enter shows history")
+		m.openTunnelDashboard(len(m.tunnels) - 1)
+		m.toastSuccess("Tunnel running · x stops it · p uses another port")
 	default:
 		form.err = ""
 		form.fields[form.focus].in.Handle(msg)
@@ -462,35 +475,6 @@ func (m *Model) sshHostForTunnel() (string, bool) {
 	return host, live
 }
 
-// openTunnels lists the running forwards, or asks for one when there are none.
-func (m *Model) openTunnels() {
-	if len(m.tunnels) == 0 {
-		m.openTunnelPrompt()
-		return
-	}
-	m.tunnelCursor = 0
-	m.Overlay = OverlayTunnels
-}
-
-// handleTunnelsKey stops one, opens its history, or leaves the list.
-func (m *Model) handleTunnelsKey(msg tea.KeyPressMsg) {
-	switch msg.String() {
-	case "esc", "q":
-		m.Overlay = OverlayNone
-	case "up", "k":
-		m.tunnelCursor = max(0, m.tunnelCursor-1)
-	case "down", "j":
-		m.tunnelCursor = min(max(0, len(m.tunnels)-1), m.tunnelCursor+1)
-	case "enter":
-		m.Overlay = OverlayNone
-		m.openHistory(1)
-	case "x", "d":
-		if m.tunnelCursor >= 0 && m.tunnelCursor < len(m.tunnels) {
-			m.stopTunnel(m.tunnelCursor)
-		}
-	}
-}
-
 // runningTunnel finds a live forward by the session id history records.
 func (m *Model) runningTunnel(session string) *activeTunnel {
 	for _, active := range m.tunnels {
@@ -522,11 +506,7 @@ func (m *Model) stopTunnel(index int) {
 		_ = active.tunnel.Close()
 	}
 	m.tunnels = append(m.tunnels[:index], m.tunnels[index+1:]...)
-	m.tunnelCursor = clamp(m.tunnelCursor, 0, max(0, len(m.tunnels)-1))
 	m.toastInfo(fmt.Sprintf("Stopped %s → %s", active.listen, active.target))
-	if len(m.tunnels) == 0 && m.Overlay == OverlayTunnels {
-		m.Overlay = OverlayNone
-	}
 }
 
 // closeTunnels stops everything, for a clean quit.
@@ -684,8 +664,7 @@ func (m *Model) startSavedTunnel(name string) {
 		m.toastError(err.Error())
 		return
 	}
-	m.Overlay = OverlayTunnels
-	m.tunnelCursor = len(m.tunnels) - 1
+	m.openTunnelDashboard(len(m.tunnels) - 1)
 	m.toastSuccess("Tunnel running · x stops it")
 }
 
@@ -730,44 +709,165 @@ func (m *Model) renderTunnelSaved(l layout) string {
 	return m.card(width, lines)
 }
 
-// renderTunnels is the watcher: every forward, its counters, and its errors.
-func (m *Model) renderTunnels(l layout) string {
-	width := cardWidth(l, 60, 100)
-	content := cardContent(width)
-	lines := []string{
-		m.st.CardTitle.Render("Tunnels"),
-		m.st.CardMuted.Render(truncate(fmt.Sprintf("%d running · they keep running when this closes", len(m.tunnels)), content)),
-		"",
+// openTunnelDashboard shows the live forwards as their own screen. The tunnel is
+// not a file and not a history row while it runs: it is counters and connections.
+func (m *Model) openTunnelDashboard(cursor int) {
+	if len(m.tunnels) == 0 {
+		m.toastInfo("No tunnels running · Terminal & Tunnel starts one")
+		return
 	}
+	m.tunnelDash = clamp(cursor, 0, len(m.tunnels)-1)
+	m.screen = screenTunnels
+	m.Overlay = OverlayNone
+	m.mode = "TUNNELS"
+}
+
+// handleTunnelDashboardKey drives stop, another port, a new tunnel and the way out.
+func (m *Model) handleTunnelDashboardKey(msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "esc", "q":
+		m.screen = screenHome
+		m.mode = "NORMAL"
+		m.home.cursor = 0
+	case "up", "k":
+		m.tunnelDash = max(0, m.tunnelDash-1)
+	case "down", "j":
+		m.tunnelDash = min(max(0, len(m.tunnels)-1), m.tunnelDash+1)
+	case "x", "s":
+		m.stopTunnel(m.tunnelDash)
+		if len(m.tunnels) == 0 {
+			m.screen = screenHome
+			m.mode = "NORMAL"
+		}
+	case "n":
+		if active := m.selectedTunnel(); active != nil {
+			m.openTunnelPromptHost(active.host)
+		}
+	case "p":
+		// "Another port": the same forward, with the next free listener, so two
+		// services can share one target without editing the first."
+		active := m.selectedTunnel()
+		if active == nil {
+			return
+		}
+		form := tunnelFormState{host: active.host, kind: active.kind}
+		form.enterFields(active.kind)
+		bind, port, _ := net.SplitHostPort(active.listen)
+		host, port2, _ := net.SplitHostPort(active.target)
+		for i := range form.fields {
+			switch form.fields[i].key {
+			case "bind":
+				form.fields[i].in.SetForEditing(bind)
+			case "port":
+				next, _ := strconv.Atoi(port)
+				form.fields[i].in.SetForEditing(strconv.Itoa(suggestPort(bind, next+1)))
+			case "host":
+				form.fields[i].in.SetForEditing(host)
+			case "port2":
+				form.fields[i].in.SetForEditing(port2)
+			}
+		}
+		m.tunnelForm = form
+		m.tunnelHost = active.host
+		m.Overlay = OverlayTunnelForm
+	case "h":
+		m.screen = screenHistory
+		m.history = historyState{tab: 1}
+		m.history.all = m.loadHistory()
+		m.history.cursor = 0
+		m.mode = "HISTORY"
+	}
+}
+
+func (m *Model) selectedTunnel() *activeTunnel {
+	if m.tunnelDash < 0 || m.tunnelDash >= len(m.tunnels) {
+		return nil
+	}
+	return m.tunnels[m.tunnelDash]
+}
+
+// renderTunnelDashboard is the live view: the list on the left, the selected
+// tunnel's traffic and connections on the right.
+func (m *Model) renderTunnelDashboard(l layout) string {
+	width, height := l.Width, l.Height
+	leftW := clamp(width*2/5, 30, 48)
+	rightW := width - leftW - 3
+
+	header := spread(m.st.Accent.Bold(true).Render("Tunnels"),
+		m.st.StatusMuted.Render(fmt.Sprintf("%d running", len(m.tunnels))), width)
+	lines := []string{header, m.st.CardMuted.Render(strings.Repeat("─", max(1, width)))}
+
+	list := make([]string, 0, height-4)
 	for i, active := range m.tunnels {
-		conns, in, out, errText := active.snapshot()
+		conns, in, out, _ := active.snapshot()
 		arrow := "→"
 		if active.kind == tunnel.Remote {
 			arrow = "←"
 		}
-		label := fmt.Sprintf("%s %s %s %s", active.kind, active.listen, arrow, active.target)
-		counters := fmt.Sprintf("%d %s · %s in · %s out", conns, plural(conns, "conn", "conns"),
+		title := fmt.Sprintf("%s %s %s %s", active.kind, active.listen, arrow, active.target)
+		meta := fmt.Sprintf("%s · %d conns · %s in · %s out", active.host, conns,
 			humanSize(in), humanSize(out))
-		row := spread(m.st.CardText.Render(truncate(label, content-2)), m.st.CardMuted.Render(counters), content)
-		if i == m.tunnelCursor {
-			row = spread(m.st.Accent.Bold(true).Render("▸ "+truncate(label, content-2)),
-				m.st.CardMuted.Render(counters), content)
+		if i == m.tunnelDash {
+			list = append(list,
+				m.st.PaletteItemActive.Width(leftW).Render(padVisible("▸ "+truncate(title, leftW-2), leftW)),
+				m.st.CardMuted.Render(truncate("  "+meta, leftW)))
+			continue
 		}
-		lines = append(lines, row)
+		list = append(list,
+			m.st.CardText.Render(truncate("  "+title, leftW)),
+			m.st.CardMuted.Render(truncate("  "+meta, leftW)))
+	}
+
+	detail := make([]string, 0, height-4)
+	if active := m.selectedTunnel(); active != nil {
+		conns, in, out, errText := active.snapshot()
+		detail = append(detail,
+			m.st.CardTitle.Render(truncate(fmt.Sprintf("%s · %s", active.kind, active.host), rightW)),
+			truncate(active.listen+" → "+active.target, rightW),
+			"",
+			fmt.Sprintf("%d connections · %s received · %s sent", conns, humanSize(in), humanSize(out)),
+		)
 		if errText != "" {
-			lines = append(lines, m.st.Danger.Render(truncate("  "+errText, content)))
+			detail = append(detail, m.st.Danger.Render(truncate(errText, rightW)))
 		}
-		lines = append(lines, m.st.CardMuted.Render(truncate("  "+active.host, content)), "")
+		detail = append(detail, "", m.st.StatusMuted.Render("Recent connections"))
+		events := active.tail()
+		shown := 0
+		for i := len(events) - 1; i >= 0 && shown < max(3, height-12); i-- {
+			event := events[i]
+			switch {
+			case event.Client == "" && event.Error == "":
+				continue
+			case event.Error != "":
+				detail = append(detail, m.st.Danger.Render(truncate("  error  "+event.Error, rightW)))
+			default:
+				detail = append(detail, m.st.CardText.Render(truncate(fmt.Sprintf("  %s  %s  %s in · %s out",
+					event.Time.Format("15:04:05"), event.Client,
+					humanSize(event.BytesIn), humanSize(event.BytesOut)), rightW)))
+			}
+			shown++
+		}
+		if shown == 0 {
+			detail = append(detail, m.st.PaneEmpty.Render("  waiting for a connection"))
+		}
 	}
-	if len(m.tunnels) == 0 {
-		lines = append(lines, m.st.PaneEmpty.Render("Nothing running"))
+
+	for i := 0; i < height-3; i++ {
+		left := ""
+		if i < len(list) {
+			left = list[i]
+		}
+		right := ""
+		if i < len(detail) {
+			right = detail[i]
+		}
+		lines = append(lines, padVisible(left, leftW)+"   "+padVisible(truncate(right, rightW), rightW))
 	}
-	lines = append(lines, m.st.CardMuted.Render("↑↓ choose · x stop · Enter history · Esc close (tunnels keep running)"))
-	return m.card(width, lines)
+	lines = append(lines, "", m.st.StatusMuted.Render(truncate(
+		"↑↓ choose · x stop · p another port · n new tunnel · h history · Esc launcher", width)))
+	return strings.Join(lines, "\n")
 }
 
-// mcpCard explains how to point an agent at this program. The server itself is a
-// stdio process: it cannot live inside the interface, so the card is the setup.
 // loadMCPLog reads the calls agents made, newest first. It runs when the card
 // opens or is refreshed, not per frame: a log is a file, and rendering is not the
 // place to touch one.

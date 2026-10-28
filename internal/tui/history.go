@@ -378,6 +378,14 @@ func (m *Model) openHistoryEntry(entry historyEntry) {
 	case historyTerminal:
 		m.openReplay(entry.path)
 	case historyTunnel:
+		if active := m.runningTunnel(entry.session); active != nil {
+			for i, candidate := range m.tunnels {
+				if candidate == active {
+					m.openTunnelDashboard(i)
+					return
+				}
+			}
+		}
 		m.openTunnelTail(entry)
 	case historyAgent:
 		m.openHistoryDetail("Agent call", []string{

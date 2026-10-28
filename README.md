@@ -49,8 +49,9 @@ unpacked tree or a single archive instead of a pile of files.
   with tabs, a conversation log for terminals, an event tail for tunnels, and
   per-record delete. The launcher opens it on the tab you asked for.
 - **Saved tunnels and password hosts.** Tunnels can be saved to `config.yaml`,
-  started/edited/deleted from the chooser, and SSH connections made with a
-  password live in the same config with the secret in the keyring.
+  started/edited/deleted from the chooser, with a live dashboard for counters and
+  connections (`p` starts the same forward on another port). SSH connections made
+  with a password live in the same config with the secret in the keyring.
 - **Tunnels.** `-L`, `-R` and SOCKS `-D` over the pooled connection, with a
   reconnect on the next connection and metadata-only auditing in
   `<state>/tunnels.jsonl`. From the launcher: **Terminal** and **Tunnel** choose a host —

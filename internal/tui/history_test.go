@@ -386,3 +386,17 @@ func TestTunnelDirectionsAreExplained(t *testing.T) {
 		}
 	}
 }
+
+// Enter on a tunnel that is still running opens the live dashboard, not the
+// historical tail: bytes and connections are happening now.
+func TestHistoryRunningTunnelOpensDashboard(t *testing.T) {
+	historyFixture(t)
+	m := newTestModel(t)
+	m.tunnels = []*activeTunnel{{id: 1, sessionID: "s1", host: "contabo", kind: tunnel.Local,
+		listen: "127.0.0.1:8080", target: "db:5432"}}
+	m.openHistory(1)
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.screen != screenTunnels || m.Overlay != OverlayNone {
+		t.Errorf("Enter on a running tunnel should show the live dashboard, screen=%v overlay=%v", m.screen, m.Overlay)
+	}
+}

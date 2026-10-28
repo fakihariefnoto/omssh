@@ -23,6 +23,8 @@ const (
 	screenConnections
 	// screenHistory is the record of terminals, tunnels and agent calls.
 	screenHistory
+	// screenTunnels is the live tunnel dashboard.
+	screenTunnels
 )
 
 // screenName is the value actions.Context sees, so an action can apply on one
@@ -35,6 +37,8 @@ func (m *Model) screenName() string {
 		return "connections"
 	case screenHistory:
 		return "history"
+	case screenTunnels:
+		return "tunnels"
 	default:
 		return "files"
 	}

@@ -156,12 +156,11 @@ type Model struct {
 	connecting map[string]bool
 	// embedded is the embedded terminal, when one is open; replay is a recording
 	// being played. Both own the screen, so only one can exist at a time.
-	embedded     *embeddedState
-	detached     []*embeddedState
-	replay       *replayState
-	tunnels      []*activeTunnel
-	tunnelSeq    int
-	tunnelCursor int
+	embedded  *embeddedState
+	detached  []*embeddedState
+	replay    *replayState
+	tunnels   []*activeTunnel
+	tunnelSeq int
 	// tunnelHost is the host a tunnel prompt is for, chosen before the prompt.
 	tunnelHost    string
 	sessionChoose sessionChooseState
@@ -176,6 +175,7 @@ type Model struct {
 	localChoose     localChooseState
 	tunnelForm      tunnelFormState
 	tunnelSaved     int
+	tunnelDash      int
 	history         historyState
 	historyDetail   historyDetailState
 	historyPending  historyEntry
@@ -727,6 +727,10 @@ func (m *Model) handleKeyNow(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.screen == screenHistory {
 		return m.handleHistoryKey(msg)
 	}
+	if m.screen == screenTunnels {
+		m.handleTunnelDashboardKey(msg)
+		return m, nil
+	}
 	if m.focusTabs {
 		return m.handleTabKey(msg)
 	}
@@ -918,10 +922,6 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlayReplay:
 		m.overlayCmd = m.handleReplayKey(msg)
-		return true
-
-	case OverlayTunnels:
-		m.handleTunnelsKey(msg)
 		return true
 
 	case OverlaySessionChoose:
@@ -1376,7 +1376,7 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 		m.openReplayPrompt()
 		return nil
 	case "session.tunnels":
-		m.openTunnels()
+		m.openTunnelDashboard(0)
 		return nil
 	case "session.tunnel":
 		m.openTunnelPrompt()
@@ -1643,7 +1643,7 @@ func (m *Model) focusedInput() *input {
 		// masked and never rendered into a general-purpose input.
 		return &m.secretInput
 	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay,
-		OverlayTunnels, OverlayMCP, OverlaySessionChoose, OverlayLocalChoose,
+		OverlayMCP, OverlaySessionChoose, OverlayLocalChoose,
 		OverlayTunnelForm, OverlayHistoryDetail, OverlaySessionKind, OverlayTunnelSaved:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:

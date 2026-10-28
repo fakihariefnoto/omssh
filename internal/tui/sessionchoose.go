@@ -126,8 +126,7 @@ func (m *Model) handleSessionChooserKey(msg tea.KeyPressMsg) tea.Cmd {
 		row := rows[m.sessionChoose.cursor]
 		switch row.key {
 		case rowTunnels:
-			m.Overlay = OverlayTunnels
-			m.tunnelCursor = 0
+			m.openTunnelDashboard(0)
 			return nil
 		case rowSaved:
 			m.openTunnelSaved()

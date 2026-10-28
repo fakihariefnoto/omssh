@@ -13,6 +13,7 @@ import (
 
 	"github.com/fakihariefnoto/omssh/internal/session"
 	"github.com/fakihariefnoto/omssh/internal/ssh"
+	"github.com/fakihariefnoto/omssh/internal/tunnel"
 )
 
 // Keys reach the remote shell as the bytes a terminal would send.
@@ -174,31 +175,48 @@ func TestPruneRecordings(t *testing.T) {
 	}
 }
 
-// The tunnel card shows what is listening, where it goes, and the counters; a
-// tunnel stays running when the card closes.
-func TestTunnelCard(t *testing.T) {
+// Tunnels have their own dashboard: the list, live counters, and what each
+// connection moved. Esc leaves; x stops.
+func TestTunnelDashboard(t *testing.T) {
 	m := newTestModel(t)
-	active := &activeTunnel{id: 1, host: "contabo", kind: "local",
+	active := &activeTunnel{id: 1, sessionID: "s1", host: "contabo", kind: "local",
 		listen: "127.0.0.1:8080", target: "db:5432"}
 	active.conns, active.bytesIn, active.bytesOut = 2, 1024, 2048
+	active.events = []tunnel.Event{{Time: time.Now(), Session: "s1", Client: "127.0.0.1:5000",
+		BytesIn: 1024, BytesOut: 2048}}
 	m.tunnels = []*activeTunnel{active}
-	m.Overlay = OverlayTunnels
+	m.openTunnelDashboard(0)
+	if m.screen != screenTunnels {
+		t.Fatalf("the tunnel dashboard should be a screen, got %v", m.screen)
+	}
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"Tunnels", "local", "127.0.0.1:8080", "db:5432", "2 conns", "contabo"} {
+	for _, want := range []string{"Tunnels", "local", "127.0.0.1:8080", "db:5432", "2 connections",
+		"contabo", "127.0.0.1:5000", "Recent connections"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("the card should show %q:\n%s", want, out)
+			t.Errorf("the dashboard should show %q:\n%s", want, out)
 		}
 	}
 	press(t, m, keyNamed(tea.KeyEsc))
-	if m.Overlay != OverlayNone || len(m.tunnels) != 1 {
-		t.Errorf("Esc should close the card and leave the tunnel, overlay=%v tunnels=%d", m.Overlay, len(m.tunnels))
+	if m.screen != screenHome || len(m.tunnels) != 1 {
+		t.Errorf("Esc should return to the launcher and leave the tunnel, screen=%v tunnels=%d", m.screen, len(m.tunnels))
 	}
 
-	// x stops it.
-	m.Overlay = OverlayTunnels
+	// p starts the same tunnel on another free port.
+	m.openTunnelDashboard(0)
+	press(t, m, run('p', 0, "p"))
+	if m.Overlay != OverlayTunnelForm {
+		t.Fatalf("p should open the form for another port, overlay=%v", m.Overlay)
+	}
+	if got := m.tunnelForm.value("port"); got == "8080" || got == "" {
+		t.Errorf("the new port should differ from the running one, got %q", got)
+	}
+
+	// x stops it and, with nothing left, returns to the launcher.
+	m.Overlay = OverlayNone
+	m.openTunnelDashboard(0)
 	press(t, m, run('x', 0, "x"))
-	if len(m.tunnels) != 0 {
-		t.Errorf("x should stop the tunnel, tunnels=%d", len(m.tunnels))
+	if len(m.tunnels) != 0 || m.screen != screenHome {
+		t.Errorf("x should stop the last tunnel and go home, tunnels=%d screen=%v", len(m.tunnels), m.screen)
 	}
 }
 

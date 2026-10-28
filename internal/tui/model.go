@@ -295,7 +295,6 @@ const (
 	OverlayTransfers
 	OverlayTerminal
 	OverlayReplay
-	OverlayTunnels
 	OverlayMCP
 	OverlaySessionChoose
 	OverlayLocalChoose
@@ -334,8 +333,6 @@ func (o Overlay) Name() string {
 		return "terminal"
 	case OverlayReplay:
 		return "replay"
-	case OverlayTunnels:
-		return "tunnels"
 	case OverlayMCP:
 		return "mcp"
 	case OverlaySessionChoose:
