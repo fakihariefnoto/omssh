@@ -484,3 +484,31 @@ func TestClosingATabFromTheStrip(t *testing.T) {
 		t.Error("the local tab should not be closable")
 	}
 }
+
+// Enter on a host that is already connected opens its pane instead of dialling
+// again — the list and the dashboard must agree about what is live.
+func TestEnterOnConnectedHostOpensIt(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	local, err := vfs.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := &session.Session{Target: omssh.Target{Alias: "prod"}, FS: local, Root: "/"}
+	m.live = map[string]*session.Session{"prod": live}
+	m.tabs = []Tab{{Title: "prod", Host: "prod", State: StateReady}}
+	for i, entry := range m.visibleConnections() {
+		if entry.Alias == "prod" {
+			m.conn.cursor = i
+		}
+	}
+	m.runAction("session.connect")
+	if m.screen != screenFiles {
+		t.Errorf("Enter should show the dashboard, screen=%v", m.screen)
+	}
+	if m.Focused < 0 || m.Focused >= len(m.Panes) || m.Panes[m.Focused].Host != "prod" {
+		t.Errorf("the connected host should be focused, pane=%q", m.Pane().Host)
+	}
+	if m.live["prod"] != live {
+		t.Error("Enter should not replace the live session")
+	}
+}

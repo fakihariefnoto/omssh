@@ -167,6 +167,12 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 		m.toastInfo("Four panes are full · V chooses which sessions are shown")
 	}
 	m.toastSuccess("Connected to " + msg.target.Alias)
+	// Connecting from a list is a request to see the place, so the dashboard is
+	// the destination whether the list was the manager, the launcher or a chooser.
+	if m.Overlay != OverlayDeploy {
+		m.screen = screenFiles
+		m.mode = "NORMAL"
+	}
 	// A connection the chooser started has a second half: the terminal or tunnel
 	// the person actually asked for. Do it now, when the session exists.
 	if m.pendingAfterConnect != "" && m.pendingHost == msg.target.Alias {
@@ -324,6 +330,20 @@ func (m *Model) connectToHighlighted() tea.Cmd {
 	}
 	if entry.Cloud {
 		return m.openCloudPane(entry.Alias)
+	}
+	// Enter on a host that is already connected is "show me it", not "dial it
+	// again". Dialling again would replace the pool entry and make the chooser
+	// and the panes disagree about which session is live.
+	if live, ok := m.live[entry.Alias]; ok {
+		m.openFiles()
+		for i, tab := range m.tabs {
+			if tab.Host == entry.Alias {
+				return m.selectTab(i, true)
+			}
+		}
+		index := m.paneForSession(live)
+		m.Focused = index
+		return m.loadPaneAsync(index)
 	}
 	spec := sshconfig.Spec{
 		Alias:        entry.Alias,
