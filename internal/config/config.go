@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -22,6 +24,36 @@ type Config struct {
 	// Cloud holds object-storage profiles. They are not hosts and do not belong in
 	// ~/.ssh/config; each one becomes a pane like a session does.
 	Cloud Cloud `yaml:"cloud"`
+	// Hosts are SSH connections that live here rather than in ~/.ssh/config:
+	// typically ones with a password in the keyring, so they can be managed from
+	// omssh without editing ssh's file.
+	Hosts map[string]ManagedHost `yaml:"hosts"`
+	// Tunnels are saved forwards: a host, a direction and two addresses, so the
+	// same tunnel can be started again without retyping it.
+	Tunnels Tunnels `yaml:"tunnels"`
+}
+
+// ManagedHost is one SSH connection kept in omssh's config.
+type ManagedHost struct {
+	Host         string `yaml:"host"`
+	User         string `yaml:"user"`
+	Port         int    `yaml:"port"`
+	IdentityFile string `yaml:"identity_file"`
+	ProxyJump    string `yaml:"proxy_jump"`
+}
+
+// Tunnels holds saved forwards keyed by name.
+type Tunnels struct {
+	Profiles map[string]TunnelProfile `yaml:"profiles"`
+}
+
+// TunnelProfile is one saved forward. Kind is local, remote or dynamic; Listen
+// and Target are host:port (Target empty for dynamic).
+type TunnelProfile struct {
+	Host   string `yaml:"host"`
+	Kind   string `yaml:"kind"`
+	Listen string `yaml:"listen"`
+	Target string `yaml:"target,omitempty"`
 }
 
 // Sessions covers the embedded terminal and its recordings.
@@ -184,6 +216,22 @@ var (
 	DeployMode       = []string{"sync", "update"}
 )
 
+// validHostPort checks a host:port pair without dialling it.
+func validHostPort(value string) error {
+	host, port, err := net.SplitHostPort(strings.TrimSpace(value))
+	if err != nil {
+		return fmt.Errorf("want host:port, like 127.0.0.1:8080")
+	}
+	if strings.TrimSpace(host) == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1 || number > 65535 {
+		return fmt.Errorf("port must be 1 to 65535")
+	}
+	return nil
+}
+
 // Default returns the configuration omssh starts from on a machine with no
 // config file, and the base every file is merged onto.
 func Default() Config {
@@ -209,6 +257,8 @@ func Default() Config {
 		},
 		Transfers: Transfers{Workers: 4},
 		Sessions:  Sessions{Record: true, RecordInput: true, MaxMB: 512},
+		Tunnels:   Tunnels{Profiles: map[string]TunnelProfile{}},
+		Hosts:     map[string]ManagedHost{},
 		Deploy:    Deploy{Profiles: map[string]Profile{}},
 	}
 }
@@ -301,6 +351,37 @@ func (c Config) Validate() error {
 	}
 	if c.Keys.Quit == "esc" || c.Keys.Quit == "escape" {
 		return fmt.Errorf("keys.quit: Esc cannot quit; it dismisses, cancels and goes back")
+	}
+	for alias, host := range c.Hosts {
+		if strings.TrimSpace(alias) == "" {
+			return fmt.Errorf("hosts: empty name")
+		}
+		if strings.TrimSpace(host.Host) == "" {
+			return fmt.Errorf("hosts.%s.host: cannot be empty", alias)
+		}
+		if host.Port < 0 || host.Port > 65535 {
+			return fmt.Errorf("hosts.%s.port: must be 0 to 65535", alias)
+		}
+	}
+	for name, profile := range c.Tunnels.Profiles {
+		if name == "" {
+			return fmt.Errorf("tunnels.profiles: empty name")
+		}
+		if strings.TrimSpace(profile.Host) == "" {
+			return fmt.Errorf("tunnels.profiles.%s.host: cannot be empty", name)
+		}
+		kind := strings.ToLower(strings.TrimSpace(profile.Kind))
+		if kind != "local" && kind != "remote" && kind != "dynamic" {
+			return fmt.Errorf("tunnels.profiles.%s.kind: got %q, want local, remote or dynamic", name, profile.Kind)
+		}
+		if err := validHostPort(profile.Listen); err != nil {
+			return fmt.Errorf("tunnels.profiles.%s.listen: %w", name, err)
+		}
+		if kind != "dynamic" {
+			if err := validHostPort(profile.Target); err != nil {
+				return fmt.Errorf("tunnels.profiles.%s.target: %w", name, err)
+			}
+		}
 	}
 	if c.Sessions.KeepDays < 0 {
 		return fmt.Errorf("sessions.keep_days: must not be negative")

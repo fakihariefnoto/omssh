@@ -71,6 +71,7 @@ type sessionRow struct {
 
 const (
 	rowTunnels     = "\x00tunnels"
+	rowSaved       = "\x00saved"
 	rowConnections = "\x00connections"
 )
 
@@ -81,6 +82,10 @@ func (m *Model) sessionChooserRows() []sessionRow {
 	if m.sessionChoose.mode == "tunnel" && len(m.tunnels) > 0 {
 		rows = append(rows, sessionRow{key: rowTunnels, label: "Running tunnels",
 			hint: fmt.Sprintf("%d · watch", len(m.tunnels))})
+	}
+	if m.sessionChoose.mode == "tunnel" && len(m.cfg.Tunnels.Profiles) > 0 {
+		rows = append(rows, sessionRow{key: rowSaved, label: "Saved tunnels",
+			hint: fmt.Sprintf("%d · start, edit or delete", len(m.cfg.Tunnels.Profiles))})
 	}
 	live := make(map[string]bool, len(m.live))
 	for _, host := range m.liveSSHHosts() {
@@ -123,6 +128,9 @@ func (m *Model) handleSessionChooserKey(msg tea.KeyPressMsg) tea.Cmd {
 		case rowTunnels:
 			m.Overlay = OverlayTunnels
 			m.tunnelCursor = 0
+			return nil
+		case rowSaved:
+			m.openTunnelSaved()
 			return nil
 		case rowConnections:
 			m.Overlay = OverlayNone

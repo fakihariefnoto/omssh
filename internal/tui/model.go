@@ -302,6 +302,7 @@ const (
 	OverlayTunnelForm
 	OverlayHistoryDetail
 	OverlaySessionKind
+	OverlayTunnelSaved
 )
 
 // Name returns the identifier the action registry expects in Context.Overlay.
@@ -347,6 +348,8 @@ func (o Overlay) Name() string {
 		return "history-detail"
 	case OverlaySessionKind:
 		return "session-kind"
+	case OverlayTunnelSaved:
+		return "tunnel-saved"
 	default:
 		return ""
 	}

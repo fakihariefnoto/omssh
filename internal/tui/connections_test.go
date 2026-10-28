@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/fakihariefnoto/omssh/internal/config"
+	"github.com/fakihariefnoto/omssh/internal/keys"
 )
 
 const connFixture = `# my servers
@@ -421,5 +422,103 @@ func TestConnectionsKeepsItsKeyLegend(t *testing.T) {
 				t.Errorf("%dx%d: the legend is missing %q:\n%s", size.w, size.h, want, joined)
 			}
 		}
+	}
+}
+
+// An SSH connection with a password is saved in omssh's config, with the secret
+// in the keyring — ~/.ssh/config is not touched. It can be edited and deleted
+// without ssh.
+func TestManagedPasswordConnection(t *testing.T) {
+	m, sshPath := newConnectionsModel(t, connFixture)
+	before, err := os.ReadFile(sshPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := keys.NewStore(keys.NewMemBackend(), "test")
+	m.secrets = store
+	m.configPath = t.TempDir() + "/config.yaml"
+
+	m.conn.section = secSSH
+	m.runAction("session.add")
+	if m.Overlay != OverlayForm {
+		t.Fatalf("a in SSH should open the host form, overlay=%v", m.Overlay)
+	}
+	found := false
+	for _, field := range m.form.fields {
+		if field.key == "Password" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the host form should offer a password field")
+	}
+	values := map[string]string{
+		"Alias": "pw", "HostName": "192.0.2.10", "User": "deploy", "Port": "2222",
+		"Password": "s3cret",
+	}
+	for i := range m.form.fields {
+		if value, ok := values[m.form.fields[i].key]; ok {
+			m.form.fields[i].in.Set(value)
+		}
+	}
+	m.saveConnectionForm()
+
+	host, ok := m.cfg.Hosts["pw"]
+	if !ok {
+		t.Fatalf("the managed host should be saved: %+v", m.cfg.Hosts)
+	}
+	if host.Host != "192.0.2.10" || host.User != "deploy" || host.Port != 2222 {
+		t.Errorf("managed host = %+v", host)
+	}
+	secret, err := store.Password("pw")
+	if err != nil || secret.Reveal() != "s3cret" {
+		t.Errorf("keyring password = %q, %v", secret.Reveal(), err)
+	}
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.Hosts["pw"]; !ok {
+		t.Error("the managed host should be in the config file")
+	}
+	after, err := os.ReadFile(sshPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Error("a password connection must not edit ~/.ssh/config")
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "pw") {
+		t.Errorf("the manager should list the managed host:\n%s", out)
+	}
+
+	// e opens it from omssh's config, with the password left blank.
+	m.conn.section = secSSH
+	for i, entry := range m.visibleConnections() {
+		if entry.Alias == "pw" {
+			m.conn.cursor = i
+		}
+	}
+	m.runAction("session.edit")
+	if m.Overlay != OverlayForm || !m.form.managed {
+		t.Fatalf("e should edit the managed host, overlay=%v managed=%v", m.Overlay, m.form.managed)
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "stored in omssh config") {
+		t.Errorf("the form should say where it lives:\n%s", out)
+	}
+
+	// x deletes it and forgets the secret.
+	m.Overlay = OverlayNone
+	for i, entry := range m.visibleConnections() {
+		if entry.Alias == "pw" {
+			m.conn.cursor = i
+		}
+	}
+	m.applyDeleteConnection("pw")
+	if _, ok := m.cfg.Hosts["pw"]; ok {
+		t.Error("the managed host should be deleted")
+	}
+	if _, err := store.Password("pw"); err == nil {
+		t.Error("the stored password should be forgotten")
 	}
 }

@@ -64,6 +64,8 @@ func (m *Model) renderOverlay(l layout) string {
 		return m.renderHistoryDetail(l)
 	case OverlaySessionKind:
 		return m.renderSessionKind(l)
+	case OverlayTunnelSaved:
+		return m.renderTunnelSaved(l)
 	default:
 		return ""
 	}

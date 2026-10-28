@@ -104,6 +104,22 @@ Below the fields is the **simulation**: the path the bytes take and what
 target means the server, not your laptop". The form also names the real connection
 (`via contabo · deploy@203.0.113.10:22`).
 
+**Saving a tunnel.** `s` in the form asks for a name and writes the forward to
+`tunnels.profiles` in the config. `Saved tunnels` appears in the tunnel host
+chooser; from there `Enter` starts it, `e` edits it, and `x` deletes it (after
+asking). Starting a saved tunnel also keeps any edits made in that form, so the
+saved copy and what ran do not drift apart. A saved profile is what it says:
+
+```yaml
+tunnels:
+  profiles:
+    dev-db:
+      host: contabo
+      kind: local
+      listen: 127.0.0.1:8080
+      target: db.internal:5432
+```
+
 Starting one closes the form and shows the **running tunnels** card, where `x`
 stops the selected forward, `Enter` opens its history tail, and `Esc` closes the
 card while the tunnel keeps running. **MCP** shows the stdio configuration, copies it with `c`, and lists
@@ -414,6 +430,24 @@ saved to your config.
 `git.sr.ht`, `ssh.dev.azure.com`, or any entry whose user is `git` — are hidden
 by default. They are in the file for `git push`, not for logging in. `H` shows
 them.
+
+**Password connections without ssh's file.** A host added with a password in the
+form is saved under `hosts:` in omssh's own config, with the secret in the OS
+keyring; `~/.ssh/config` is not touched. It appears in the same manager, marked
+`omssh config`, and `e` edits it or `x` deletes it — no ssh file to find, no
+password prompt on every connect. Leaving the password blank on edit keeps the
+stored one.
+
+```yaml
+hosts:
+  pw-db:
+    host: 203.0.113.10
+    user: deploy
+    port: 22
+```
+
+Hosts from `~/.ssh/config` still work exactly as before; the two lists are merged
+and the Source column says which is which.
 
 **Authentication** uses your agent and keys, then stored passwords (OS keyring),
 then asks. A host key that has never been seen is a decision: `Remember`, `Once`
@@ -862,6 +896,11 @@ connections:
   favorites: []         # pinned hosts, in order
   hidden: []            # hosts left out of the list
   recent: []            # filled in as you connect
+
+hosts: {}                 # password connections kept by omssh
+
+tunnels:
+  profiles: {}            # saved forwards
 
 transfers:
   workers: 4

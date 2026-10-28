@@ -111,6 +111,24 @@ cloud:
   #     endpoint: https://cloud.example.com/remote.php/dav/files/me/
   #     username: me                    # password goes in the keyring
 
+# SSH connections kept by omssh instead of ~/.ssh/config, usually because they use
+# a password. The password goes in the OS keyring; this file holds the address.
+hosts: {}
+  # pw-db:
+  #   host: 203.0.113.10
+  #   user: deploy
+  #   port: 22
+
+# Saved forwards. The tunnel form saves one with the s key; History can start, edit or
+# delete them.
+tunnels:
+  profiles: {}
+  # dev-db:
+  #   host: contabo
+  #   kind: local              # local | remote | dynamic
+  #   listen: 127.0.0.1:8080
+  #   target: db.internal:5432
+
 keys:
   # Ctrl+Q quits. "esc" is rejected: Esc only ever dismisses or goes back.
   quit: ctrl+q

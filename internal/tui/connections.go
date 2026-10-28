@@ -16,6 +16,7 @@ import (
 	"github.com/fakihariefnoto/omssh/internal/cloudcred"
 	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/keys"
+	"github.com/fakihariefnoto/omssh/internal/log"
 	"github.com/fakihariefnoto/omssh/internal/sshconfig"
 )
 
@@ -31,6 +32,7 @@ type connEntry struct {
 	Port     int
 	Extra    []string // additional patterns on the Host line
 	Editable bool     // lives in the main file, not an include
+	Managed  bool     // lives in omssh's config, usually with a stored password
 }
 
 // connectionsState is the SSH host manager. It edits ~/.ssh/config directly, so
@@ -90,9 +92,12 @@ type connForm struct {
 	// how S3 profiles ended up looking like they could only be s3 or r2.
 	kind     string
 	provider string
-	fields   []connField
-	focus    int
-	err      string
+	// managed is true when the connection lives in omssh's config (usually a
+	// password connection) rather than in ~/.ssh/config.
+	managed bool
+	fields  []connField
+	focus   int
+	err     string
 }
 
 type connField struct {
@@ -178,6 +183,21 @@ func (m *Model) loadConnections() {
 			Kind:     strings.ToLower(profile.Provider),
 			Source:   "cloud profile",
 			Cloud:    true,
+		})
+	}
+	// Hosts kept in omssh's own config, usually password connections. They are
+	// not in ssh's file, so they are listed after it and edited here.
+	managed := make([]string, 0, len(m.cfg.Hosts))
+	for alias := range m.cfg.Hosts {
+		managed = append(managed, alias)
+	}
+	sort.Strings(managed)
+	for _, alias := range managed {
+		host := m.cfg.Hosts[alias]
+		entries = append(entries, connEntry{
+			Alias: alias, HostName: host.Host, User: host.User, Port: host.Port,
+			Identity: host.IdentityFile, ProxyJump: host.ProxyJump,
+			Kind: "ssh", Source: "omssh config", Managed: true,
 		})
 	}
 	m.conn.entries = entries
@@ -861,7 +881,7 @@ func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
 		}
 		row += padRight(value, c.width)
 	}
-	if !e.Editable && !e.Cloud {
+	if !e.Editable && !e.Cloud && !e.Managed {
 		// It lives in an Include, so the main file cannot change it. The host
 		// column gave up the room for this above; say it here.
 		row = strings.TrimSpace(row) + " · from include"
@@ -1010,6 +1030,9 @@ func (m *Model) handleConnectionsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // openConnectionForm opens the form, empty for a new host or filled for edit.
 func (m *Model) openConnectionForm(original string, spec sshconfig.Spec) {
 	form := connForm{original: original}
+	if _, ok := m.cfg.Hosts[original]; ok {
+		form.managed = true
+	}
 	add := func(key, label, hint, value string) {
 		field := connField{key: key, label: label, hint: hint}
 		field.in.Set(value)
@@ -1021,6 +1044,13 @@ func (m *Model) openConnectionForm(original string, spec sshconfig.Spec) {
 	add("Port", "port", "blank for 22", itoaZero(spec.Port))
 	add("IdentityFile", "key", "path to a private key", spec.IdentityFile)
 	add("ProxyJump", "jump", "host to reach this one through", spec.ProxyJump)
+	//nolint:gosec // a hint for a field, not a credential
+	passwordHint := "optional · stored in the OS keyring; saves this connection in omssh's config"
+	if form.managed {
+		passwordHint = "blank keeps the stored password · this connection lives in omssh's config"
+	}
+	add("Password", "password", passwordHint, "")
+	form.fields[len(form.fields)-1].in.Masked = true
 	m.form = form
 	m.Overlay = OverlayForm
 }
@@ -1308,6 +1338,7 @@ func formLayout(content int, fields []connField) (labelWidth, valueWidth int) {
 // saveConnectionForm writes the form to ~/.ssh/config.
 func (m *Model) saveConnectionForm() tea.Cmd {
 	spec := sshconfig.Spec{}
+	password := ""
 	for _, field := range m.form.fields {
 		value := strings.TrimSpace(field.in.Value)
 		switch field.key {
@@ -1330,7 +1361,15 @@ func (m *Model) saveConnectionForm() tea.Cmd {
 			spec.IdentityFile = value
 		case "ProxyJump":
 			spec.ProxyJump = value
+		case "Password":
+			password = value
 		}
+	}
+
+	// A password makes this omssh's connection, not ssh's: it is saved in the
+	// config and the secret in the keyring, so ssh's file is not touched.
+	if m.form.managed || password != "" {
+		return m.saveManagedConnection(spec, password)
 	}
 
 	if err := spec.Validate(); err != nil {
@@ -1374,19 +1413,80 @@ func (m *Model) saveConnectionForm() tea.Cmd {
 	return nil
 }
 
+// saveManagedConnection writes an SSH connection to omssh's config, with its
+// password in the keyring. It is the "no ssh config required" path.
+func (m *Model) saveManagedConnection(spec sshconfig.Spec, password string) tea.Cmd {
+	alias := strings.TrimSpace(spec.Alias)
+	host := strings.TrimSpace(spec.HostName)
+	if alias == "" {
+		m.form.err = "a connection needs a name"
+		return nil
+	}
+	if host == "" {
+		host = alias
+	}
+	original := m.form.original
+	// The secret is stored before the profile: a profile saved without its
+	// password would look managed and then prompt on every connect.
+	store := m.credStore()
+	if password != "" {
+		if store == nil {
+			m.form.err = "no keyring is available to store the password"
+			return nil
+		}
+		if err := store.SetPassword(alias, log.Secret(password)); err != nil {
+			m.form.err = "cannot store the password: " + err.Error()
+			return nil
+		}
+	} else if original != "" && original != alias && store != nil {
+		if secret, err := store.Password(original); err == nil {
+			_ = store.SetPassword(alias, secret)
+		}
+		_ = store.Forget(original)
+	}
+	if m.cfg.Hosts == nil {
+		m.cfg.Hosts = map[string]config.ManagedHost{}
+	}
+	if original != "" && original != alias {
+		delete(m.cfg.Hosts, original)
+	}
+	m.cfg.Hosts[alias] = config.ManagedHost{
+		Host: host, User: spec.User, Port: spec.Port,
+		IdentityFile: spec.IdentityFile, ProxyJump: spec.ProxyJump,
+	}
+	m.saveConfig()
+	m.form = connForm{}
+	m.Overlay = OverlayNone
+	m.loadConnections()
+	for i, entry := range m.visibleConnections() {
+		if entry.Alias == alias {
+			m.conn.cursor = i
+		}
+	}
+	if password != "" {
+		m.toastSuccess("Saved " + alias + " · password in the keyring")
+	} else {
+		m.toastSuccess("Saved " + alias)
+	}
+	return nil
+}
+
 // deleteConnection asks first, then removes the block from the main file.
 func (m *Model) deleteConnection() {
 	entry, ok := m.currentConnection()
 	if !ok {
 		return
 	}
-	if !entry.Editable && !entry.Cloud {
+	if !entry.Editable && !entry.Cloud && !entry.Managed {
 		m.toastWarning(entry.Alias + " lives in " + entry.Source + "; edit that file")
 		return
 	}
 	body := []string{entry.Alias + " will be removed from ~/.ssh/config.", "Nothing else in the file is touched."}
 	if entry.Cloud {
 		body = []string{entry.Alias + " will be removed from config.yaml.", "Its keyring credentials are forgotten."}
+	}
+	if entry.Managed {
+		body = []string{entry.Alias + " will be removed from config.yaml.", "Its stored password is forgotten."}
 	}
 	m.confirm = confirmState{
 		Title:  "Delete connection?",
@@ -1401,6 +1501,17 @@ func (m *Model) deleteConnection() {
 
 // applyDeleteConnection removes the confirmed host or bucket profile.
 func (m *Model) applyDeleteConnection(alias string) {
+	if _, managed := m.cfg.Hosts[alias]; managed {
+		delete(m.cfg.Hosts, alias)
+		if store := m.credStore(); store != nil {
+			_ = store.Forget(alias)
+		}
+		m.saveConfig()
+		m.loadConnections()
+		m.conn.cursor = clamp(m.conn.cursor, 0, max(0, len(m.conn.entries)-1))
+		m.toastSuccess("Deleted " + alias)
+		return
+	}
 	if m.cfg.Cloud.Profiles != nil {
 		if _, isCloud := m.cfg.Cloud.Profiles[alias]; isCloud {
 			delete(m.cfg.Cloud.Profiles, alias)
@@ -1466,6 +1577,9 @@ func (m *Model) renderConnectionForm(l layout) string {
 		title = "Edit " + m.form.original
 	}
 	lines := []string{m.st.CardTitle.Render(title)}
+	if m.form.kind != "cloud" && m.form.managed {
+		lines = append(lines, m.st.StatusMuted.Render("stored in omssh config · password in the keyring"))
+	}
 	if m.form.kind == "cloud" && m.form.provider != "" && m.form.provider != "webdav" && !hasField(m.form.fields, "Type") {
 		// A form without a type chooser states its type here instead: the tab or
 		// the chooser answered it, and repeating it as an editable field would

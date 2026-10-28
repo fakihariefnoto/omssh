@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/config"
 	"github.com/fakihariefnoto/omssh/internal/session"
 	omssh "github.com/fakihariefnoto/omssh/internal/ssh"
 	"github.com/fakihariefnoto/omssh/internal/tunnel"
@@ -172,8 +173,8 @@ func TestTunnelFormIsIllustrated(t *testing.T) {
 	}}}
 	m.openTunnelPromptHost("contabo")
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"Tunnel through contabo", "Local", "Remote", "Dynamic",
-		"listen here", "SOCKS5"} {
+	for _, want := range []string{"Tunnel through contabo", "Local forwarding", "Remote forwarding",
+		"Dynamic forwarding", "Redirects traffic", "SOCKS proxy"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("step one should explain %q:\n%s", want, out)
 		}
@@ -310,4 +311,78 @@ func TestSuggestPortIsFree(t *testing.T) {
 		t.Fatalf("suggested port %d is not free: %v", port, err)
 	}
 	_ = listener.Close()
+}
+
+// A tunnel can be saved to the config, listed, edited and deleted.
+func TestSavedTunnelProfiles(t *testing.T) {
+	m := newTestModel(t)
+	m.configPath = t.TempDir() + "/config.yaml"
+	m.live = map[string]*session.Session{"contabo": {Target: omssh.Target{Alias: "contabo", Host: "h"}}}
+	m.openTunnelPromptHost("contabo")
+	press(t, m, keyNamed(tea.KeyEnter)) // choose Local
+
+	// s saves under a prompt; the form stays, so Enter can still start it.
+	press(t, m, run('s', 0, "s"))
+	if m.Overlay != OverlayPrompt || m.prompt.Action != "prompt.tunnel-save" {
+		t.Fatalf("s should ask for a name, overlay=%v action=%q", m.Overlay, m.prompt.Action)
+	}
+	m.applyPrompt("prompt.tunnel-save", "dev-db")
+	profile, ok := m.cfg.Tunnels.Profiles["dev-db"]
+	if !ok {
+		t.Fatalf("the profile should be saved: %+v", m.cfg.Tunnels.Profiles)
+	}
+	if profile.Host != "contabo" || profile.Kind != "local" {
+		t.Errorf("profile = %+v", profile)
+	}
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.Tunnels.Profiles["dev-db"]; !ok {
+		t.Error("the profile should be in the config file")
+	}
+
+	// The saved list starts, edits and deletes.
+	m.Overlay = OverlayNone
+	m.openTunnelSaved()
+	if m.Overlay != OverlayTunnelSaved {
+		t.Fatalf("saved tunnels should list, overlay=%v", m.Overlay)
+	}
+	if out := ansi.Strip(render(m)); !strings.Contains(out, "dev-db") {
+		t.Errorf("the list should name the profile:\n%s", out)
+	}
+	press(t, m, run('e', 0, "e"))
+	if m.Overlay != OverlayTunnelForm || m.tunnelForm.saved != "dev-db" {
+		t.Fatalf("e should edit the profile, overlay=%v saved=%q", m.Overlay, m.tunnelForm.saved)
+	}
+	if got := m.tunnelForm.value("host"); got != "localhost" {
+		t.Errorf("the form should be filled from the profile, target=%q", got)
+	}
+
+	m.openTunnelSaved()
+	press(t, m, run('x', 0, "x"))
+	if m.Overlay != OverlayConfirm {
+		t.Fatalf("x should confirm deletion, overlay=%v", m.Overlay)
+	}
+	press(t, m, keyNamed(tea.KeyEnter))
+	if len(m.cfg.Tunnels.Profiles) != 0 {
+		t.Error("the profile should be deleted")
+	}
+}
+
+// The three directions say what they do, in full sentences.
+func TestTunnelDirectionsAreExplained(t *testing.T) {
+	m := newTestModel(t)
+	m.live = map[string]*session.Session{"contabo": {Target: omssh.Target{Alias: "contabo", Host: "h"}}}
+	m.openTunnelPromptHost("contabo")
+	out := ansi.Strip(render(m))
+	for _, want := range []string{
+		"Local forwarding", "remote server.",
+		"Remote forwarding", "back to your local machine",
+		"Dynamic forwarding", "SOCKS proxy", "through the SSH server",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the chooser should explain %q:\n%s", want, out)
+		}
+	}
 }

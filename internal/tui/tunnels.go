@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,7 +81,8 @@ func (m *Model) openTunnelPrompt() {
 // the addresses — because "L:8080:host:port" is ssh's syntax, not a person's.
 type tunnelFormState struct {
 	host   string
-	step   int // 0: choose L/R/D, 1: fill the fields
+	saved  string // name of the saved profile being edited
+	step   int    // 0: choose L/R/D, 1: fill the fields
 	kind   tunnel.Kind
 	cursor int // kind chooser
 	fields []tunnelField
@@ -99,9 +101,12 @@ var tunnelKindOptions = []struct {
 	name    string
 	meaning string
 }{
-	{tunnel.Local, "Local", "listen here; the server dials the target"},
-	{tunnel.Remote, "Remote", "listen on the server; this machine dials"},
-	{tunnel.Dynamic, "Dynamic", "a SOCKS5 proxy on this machine"},
+	{tunnel.Local, "Local forwarding",
+		"Redirects traffic from your local machine to a remote server."},
+	{tunnel.Remote, "Remote forwarding",
+		"Redirects traffic from a remote server back to your local machine."},
+	{tunnel.Dynamic, "Dynamic forwarding",
+		"Creates a local SOCKS proxy to route all traffic through the SSH server."},
 }
 
 // openTunnelPromptHost starts at the direction question.
@@ -234,6 +239,14 @@ func (m *Model) handleTunnelFormKey(msg tea.KeyPressMsg) {
 		form.focus = (form.focus + 1) % len(form.fields)
 	case "shift+tab", "up":
 		form.focus = (form.focus - 1 + len(form.fields)) % len(form.fields)
+	case "s":
+		defaultName := form.saved
+		if defaultName == "" {
+			defaultName = fmt.Sprintf("%s-%s-%s", form.host, form.kind, valueOr(form.value("port"), "port"))
+		}
+		m.prompt = promptState{Title: "Save tunnel", Hint: "A name for this saved configuration", Action: "prompt.tunnel-save", open: true}
+		m.prompt.input.Set(defaultName)
+		m.Overlay = OverlayPrompt
 	case "enter":
 		if err := form.checkPort(); err != nil {
 			form.err = err.Error()
@@ -243,6 +256,13 @@ func (m *Model) handleTunnelFormKey(msg tea.KeyPressMsg) {
 		if err != nil {
 			form.err = err.Error()
 			return
+		}
+		if form.saved != "" {
+			// Editing a saved tunnel and starting it also keeps the edit.
+			if err := m.saveTunnelProfile(form.saved, *form); err != nil {
+				form.err = err.Error()
+				return
+			}
 		}
 		m.tunnelHost = form.host
 		if err := m.startTunnelSpec(spec); err != nil {
@@ -283,21 +303,27 @@ func (m *Model) renderTunnelForm(l layout) string {
 			via = fmt.Sprintf("%s · %s", alias, address)
 		}
 	}
+	title := "Tunnel through " + alias
+	if form.saved != "" {
+		title = "Edit tunnel · " + form.saved
+	}
 	lines := []string{
-		m.st.CardTitle.Render("Tunnel through " + alias),
+		m.st.CardTitle.Render(title),
 		m.st.CardMuted.Render(truncate("via "+via+" · nothing is captured", content)),
 		"",
 	}
 	if form.step == 0 {
 		lines = append(lines, m.st.StatusMuted.Render(truncate("What should the forward do?", content)), "")
 		for i, option := range tunnelKindOptions {
-			text := spread(m.st.CardText.Render(option.name), m.st.CardMuted.Render(option.meaning), content-1)
 			if i == form.cursor {
-				lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible(
-					"▸ "+option.name+"  "+option.meaning, content)))
+				lines = append(lines,
+					m.st.PaletteItemActive.Width(content).Render(padVisible("▸ "+option.name, content)),
+					m.st.CardMuted.Render(truncate("  "+option.meaning, content)))
 				continue
 			}
-			lines = append(lines, "  "+text)
+			lines = append(lines,
+				"  "+m.st.CardText.Render(option.name),
+				m.st.CardMuted.Render(truncate("  "+option.meaning, content)))
 		}
 		lines = append(lines, "", m.st.CardMuted.Render("↑↓ choose · Enter next · Esc close"))
 		return m.card(width, lines)
@@ -336,9 +362,9 @@ func (m *Model) renderTunnelForm(l layout) string {
 	if form.err != "" {
 		lines = append(lines, "", m.st.Danger.Render(truncate(form.err, content)))
 	}
-	footer := "Tab next · Enter start · Esc back"
+	footer := "Tab next · Enter start · s save · Esc back"
 	if form.kind == tunnel.Remote {
-		footer = "Tab next · Enter start (port checked by the server) · Esc back"
+		footer = "Tab next · Enter start (server-side port) · s save · Esc back"
 	}
 	lines = append(lines, "", m.st.CardMuted.Render(footer))
 	return m.card(width, lines)
@@ -534,6 +560,174 @@ func suggestPort(bind string, preferred int) int {
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
 	return port
+}
+
+// profileForm turns a saved profile back into the two-step form.
+func profileForm(name string, profile config.TunnelProfile) tunnelFormState {
+	kind := tunnel.Kind(strings.ToLower(profile.Kind))
+	form := tunnelFormState{host: profile.Host, kind: kind, saved: name}
+	form.enterFields(kind)
+	set := func(key, value string) {
+		for i := range form.fields {
+			if form.fields[i].key == key {
+				form.fields[i].in.SetForEditing(value)
+			}
+		}
+	}
+	if host, port, err := net.SplitHostPort(profile.Listen); err == nil {
+		set("bind", host)
+		set("port", port)
+	}
+	if kind != tunnel.Dynamic {
+		if host, port, err := net.SplitHostPort(profile.Target); err == nil {
+			set("host", host)
+			set("port2", port)
+		}
+	}
+	return form
+}
+
+// saveTunnelProfile writes a form's values under a name, in the config.
+func (m *Model) saveTunnelProfile(name string, form tunnelFormState) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("a saved tunnel needs a name")
+	}
+	spec, err := form.spec()
+	if err != nil {
+		return err
+	}
+	profile := config.TunnelProfile{Host: form.host, Kind: string(form.kind),
+		Listen: spec.Listen, Target: spec.Target}
+	if m.cfg.Tunnels.Profiles == nil {
+		m.cfg.Tunnels.Profiles = map[string]config.TunnelProfile{}
+	}
+	m.cfg.Tunnels.Profiles[name] = profile
+	m.saveConfig()
+	return nil
+}
+
+// openTunnelSaved lists the saved forwards.
+func (m *Model) openTunnelSaved() {
+	if len(m.cfg.Tunnels.Profiles) == 0 {
+		m.toastInfo("No saved tunnels yet · s in the tunnel form saves one")
+		return
+	}
+	m.tunnelSaved = 0
+	m.Overlay = OverlayTunnelSaved
+}
+
+// savedNames is the profiles in a stable order.
+func (m *Model) savedNames() []string {
+	names := make([]string, 0, len(m.cfg.Tunnels.Profiles))
+	for name := range m.cfg.Tunnels.Profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// handleTunnelSavedKey starts, edits or deletes a saved forward.
+func (m *Model) handleTunnelSavedKey(msg tea.KeyPressMsg) {
+	names := m.savedNames()
+	switch msg.String() {
+	case "esc", "q":
+		m.Overlay = OverlayNone
+	case "up", "k":
+		m.tunnelSaved = max(0, m.tunnelSaved-1)
+	case "down", "j":
+		m.tunnelSaved = min(max(0, len(names)-1), m.tunnelSaved+1)
+	case "enter":
+		if m.tunnelSaved >= 0 && m.tunnelSaved < len(names) {
+			m.startSavedTunnel(names[m.tunnelSaved])
+		}
+	case "e":
+		if m.tunnelSaved >= 0 && m.tunnelSaved < len(names) {
+			name := names[m.tunnelSaved]
+			m.tunnelForm = profileForm(name, m.cfg.Tunnels.Profiles[name])
+			m.tunnelHost = m.tunnelForm.host
+			m.Overlay = OverlayTunnelForm
+		}
+	case "x", "d":
+		if m.tunnelSaved >= 0 && m.tunnelSaved < len(names) {
+			name := names[m.tunnelSaved]
+			m.confirm = confirmState{Title: "Delete saved tunnel?",
+				Body:   []string{name + " will be removed from config.yaml.", "Nothing is stopped; running tunnels are separate."},
+				Danger: true, Action: "tunnel.delete-saved", Alias: name, open: true}
+			m.Overlay = OverlayConfirm
+		}
+	}
+}
+
+// startSavedTunnel starts a profile on its host.
+func (m *Model) startSavedTunnel(name string) {
+	profile, ok := m.cfg.Tunnels.Profiles[name]
+	if !ok {
+		return
+	}
+	if _, live := m.live[profile.Host]; !live {
+		m.toastInfo("Connect to " + profile.Host + " first")
+		return
+	}
+	form := profileForm(name, profile)
+	if err := form.checkPort(); err != nil {
+		m.toastError(err.Error())
+		return
+	}
+	spec, err := form.spec()
+	if err != nil {
+		m.toastError(err.Error())
+		return
+	}
+	m.tunnelHost = profile.Host
+	if err := m.startTunnelSpec(spec); err != nil {
+		m.toastError(err.Error())
+		return
+	}
+	m.Overlay = OverlayTunnels
+	m.tunnelCursor = len(m.tunnels) - 1
+	m.toastSuccess("Tunnel running · x stops it")
+}
+
+// deleteTunnelProfile is the confirmed removal.
+func (m *Model) deleteTunnelProfile(name string) {
+	delete(m.cfg.Tunnels.Profiles, name)
+	m.saveConfig()
+	if len(m.cfg.Tunnels.Profiles) > 0 {
+		m.tunnelSaved = clamp(m.tunnelSaved, 0, len(m.cfg.Tunnels.Profiles)-1)
+		m.Overlay = OverlayTunnelSaved
+	} else {
+		m.Overlay = OverlayNone
+	}
+	m.toastSuccess("Deleted saved tunnel " + name)
+}
+
+// renderTunnelSaved draws the list.
+func (m *Model) renderTunnelSaved(l layout) string {
+	names := m.savedNames()
+	width := cardWidth(l, 60, 96)
+	content := cardContent(width)
+	lines := []string{
+		m.st.CardTitle.Render("Saved tunnels"),
+		m.st.CardMuted.Render(truncate(fmt.Sprintf("%d · Enter starts · e edits · x deletes", len(names)), content)),
+		"",
+	}
+	for i, name := range names {
+		profile := m.cfg.Tunnels.Profiles[name]
+		arrow := "→"
+		if strings.EqualFold(profile.Kind, "remote") {
+			arrow = "←"
+		}
+		line := fmt.Sprintf("%-18s %s %s %s %s", name, profile.Kind, profile.Listen, arrow, profile.Target)
+		hostLine := m.st.CardMuted.Render(truncate("  via "+profile.Host, content))
+		if i == m.tunnelSaved {
+			lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible("▸ "+truncate(line, content-2), content)), hostLine)
+			continue
+		}
+		lines = append(lines, "  "+m.st.CardText.Render(truncate(line, content-2)), hostLine)
+	}
+	lines = append(lines, "", m.st.CardMuted.Render("↑↓ choose · Enter start · e edit · x delete · Esc back"))
+	return m.card(width, lines)
 }
 
 // renderTunnels is the watcher: every forward, its counters, and its errors.

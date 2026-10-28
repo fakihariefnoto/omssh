@@ -175,6 +175,7 @@ type Model struct {
 	afterLocalSetup bool
 	localChoose     localChooseState
 	tunnelForm      tunnelFormState
+	tunnelSaved     int
 	history         historyState
 	historyDetail   historyDetailState
 	historyPending  historyEntry
@@ -943,6 +944,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 		m.handleSessionKindKey(msg)
 		return true
 
+	case OverlayTunnelSaved:
+		m.handleTunnelSavedKey(msg)
+		return true
+
 	case OverlayMCP:
 		if msg.String() == "esc" || msg.String() == "q" {
 			m.Overlay = OverlayNone
@@ -1200,6 +1205,12 @@ func (m *Model) runAction(id actions.ID) tea.Cmd {
 
 	case "session.edit":
 		if entry, ok := m.currentConnection(); ok {
+			if entry.Managed {
+				spec := sshconfig.Spec{Alias: entry.Alias, HostName: entry.HostName, User: entry.User,
+					Port: entry.Port, IdentityFile: entry.Identity, ProxyJump: entry.ProxyJump}
+				m.openConnectionForm(entry.Alias, spec)
+				break
+			}
 			if entry.Cloud {
 				profile, exists := m.cfg.Cloud.Profiles[entry.Alias]
 				if !exists {
@@ -1633,7 +1644,7 @@ func (m *Model) focusedInput() *input {
 		return &m.secretInput
 	case OverlayAdd, OverlayTransfers, OverlayTerminal, OverlayReplay,
 		OverlayTunnels, OverlayMCP, OverlaySessionChoose, OverlayLocalChoose,
-		OverlayTunnelForm, OverlayHistoryDetail, OverlaySessionKind:
+		OverlayTunnelForm, OverlayHistoryDetail, OverlaySessionKind, OverlayTunnelSaved:
 		// These have no text field.
 	case OverlayNone, OverlayMenu, OverlayOnboarding, OverlaySettings, OverlayConfirm, OverlayHostKey, OverlayStaged, OverlayDeploy, OverlayPanes, OverlayPaste:
 		// These have no text field of their own. The connections filter below is
@@ -1715,6 +1726,15 @@ func (m *Model) applyPrompt(action actions.ID, value string) tea.Cmd {
 		return nil
 	case "prompt.replay-search":
 		m.searchReplay(value)
+		return nil
+	case "prompt.tunnel-save":
+		if err := m.saveTunnelProfile(value, m.tunnelForm); err != nil {
+			m.toastError(err.Error())
+			return nil
+		}
+		m.tunnelForm.saved = value
+		m.Overlay = OverlayTunnelForm
+		m.toastSuccess("Saved tunnel " + value)
 		return nil
 
 	case "prompt.link-show":
@@ -1807,6 +1827,8 @@ func (m *Model) applyConfirmed(action actions.ID, entries []Entry) tea.Cmd {
 		m.applyDeleteConnection(m.confirmAlias)
 	case "history.delete":
 		m.deleteHistoryEntry()
+	case "tunnel.delete-saved":
+		m.deleteTunnelProfile(m.confirmAlias)
 	case "app.quit":
 		return m.finishQuit()
 	}
