@@ -272,6 +272,27 @@ fi
 say "Running the test suite"
 go test ./...
 
+# --- disk preflight ---------------------------------------------------------
+# Four cross-compiles of a binary that links the cloud SDKs need several GB of
+# build cache and temporary space. Running out after the tag is pushed leaves an
+# orphan tag and no release, so check before touching the repository.
+free_kb() { df -Pk . | awk 'NR == 2 { print $4 }'; }
+MIN_FREE_KB=3000000
+if [ "$(free_kb)" -lt "$MIN_FREE_KB" ]; then
+	cat >&2 <<EOF
+error: only $(( $(free_kb) / 1024 )) MB free; a release needs about 3 GB.
+
+Free space first, then run this again:
+
+  go clean -cache                 # build cache (safe; it rebuilds)
+  go clean -modcache && go mod download
+  rm -rf dist
+
+Nothing has been tagged or pushed.
+EOF
+	exit 1
+fi
+
 say "Tagging $TAG"
 git tag -a "$TAG" -m "omssh $VERSION"
 
@@ -280,7 +301,9 @@ git push origin "$TAG"
 
 say "Releasing"
 load_token
-goreleaser release --clean
+# One target at a time: the point is to keep peak temporary space low. Each
+# target still uses the machine's cores.
+goreleaser release --clean --parallelism 1
 
 say "Done."
 cat <<EOF

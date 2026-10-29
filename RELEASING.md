@@ -68,6 +68,8 @@ If that prints a `password=`, releases work as-is. If it prints nothing, either
 | not ahead of `origin/main` | the tag must point at pushed code |
 | tag does not exist, locally or remotely | re-tagging is how versions get lost |
 | token present | otherwise goreleaser fails after the tag is already pushed |
+| at least **3 GB free** | four cross-compiles of the cloud SDKs use the build cache and temporary space; running out after the tag is pushed leaves an orphan tag |
+| port preflight runs before the tag | nothing is tagged or pushed when the disk check fails |
 
 `TAP_GITHUB_TOKEN` in the environment overrides everything, which is useful in
 CI. GoReleaser commits the formula through the API, so a stale local clone of the
@@ -103,9 +105,23 @@ fine-grained and scoped to the single tap repository.
 Windows is not built. The terminal handling and the credential path have never
 been exercised there, so it is not advertised rather than shipped untested.
 
+The archives are much smaller than the binary: the current build is about
+**53 MB** stripped and about **16 MB** as `tar.gz`, because the cloud SDKs
+compress well. Storage per release is therefore the compressed size, not the
+unpacked one. GoReleaser runs with `--parallelism 1` so a release does not need
+four simultaneous build trees.
+
 Archives deliberately have no wrapping directory: the formula does
 `bin.install "omssh"` and expects the binary at the archive root, matching the
 other formulae in the same tap.
+
+If a release fails on disk space, free the build caches and run it again:
+
+```sh
+go clean -cache
+go clean -modcache && go mod download
+rm -rf dist
+```
 
 ## Verifying a release without publishing
 
