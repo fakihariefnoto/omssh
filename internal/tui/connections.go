@@ -869,7 +869,10 @@ func (m *Model) renderConnRow(e connEntry, selected bool, inner int) string {
 		marker += "  "
 	}
 
-	row := marker
+	// The header reserves four cells; a marker glyph can be ambiguous-width in
+	// some fonts, so the row is clamped to the same four cells instead of
+	// shifting every column after it.
+	row := ansi.Truncate(padVisible(marker, len(connMarkerPrefix)), len(connMarkerPrefix), "")
 	for i, c := range cols {
 		if i > 0 {
 			row += " "

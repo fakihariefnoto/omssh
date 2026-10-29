@@ -421,3 +421,27 @@ func TestLocalChooser(t *testing.T) {
 		t.Errorf("the local pane should be in %q, got %q", dir, m.Pane().Path)
 	}
 }
+
+// Every launcher row starts its label in the same column, including the live
+// session row (the old orb was ambiguous-width in some fonts).
+func TestLauncherLabelsShareAColumn(t *testing.T) {
+	m := newTestModel(t)
+	m.tabs = []Tab{{Title: "127.0.0.1", Host: "127.0.0.1", State: StateReady}}
+	m.live = map[string]*session.Session{"127.0.0.1": {}}
+	m.screen = screenHome
+	var liveAt, manageAt int
+	for _, line := range strings.Split(ansi.Strip(render(m)), "\n") {
+		if i := strings.Index(line, "127.0.0.1"); i >= 0 && strings.Contains(line, "[o]") {
+			liveAt = i
+		}
+		if i := strings.Index(line, "Manage connections"); i >= 0 {
+			manageAt = i
+		}
+	}
+	if liveAt == 0 || manageAt == 0 {
+		t.Fatalf("rows missing: live=%d manage=%d", liveAt, manageAt)
+	}
+	if liveAt != manageAt {
+		t.Errorf("labels start at %d and %d; the icon column is not fixed", liveAt, manageAt)
+	}
+}

@@ -175,7 +175,7 @@ func (m *Model) renderSessionChooser(l layout) string {
 	}
 	rows := m.sessionChooserRows()
 	for i, row := range rows {
-		text := fmt.Sprintf("%-24s %s", truncate(row.label, 24), row.hint)
+		text := padRight(truncate(row.label, 24), 24) + " " + row.hint
 		if i == m.sessionChoose.cursor {
 			lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible("▸ "+text, content)))
 			continue

@@ -101,7 +101,7 @@ func (m *Model) homeItems() []homeItem {
 				hint = "bucket"
 			}
 		}
-		items = append(items, homeItem{ID: "session.focus", Icon: "●", Label: label, Hint: hint, Host: tab.Host})
+		items = append(items, homeItem{ID: "session.focus", Icon: "o", Label: label, Hint: hint, Host: tab.Host})
 	}
 	if len(items) > 0 {
 		items = append(items, homeItem{ID: "app.files", Icon: "~", Label: "Back to the files", Hint: "Enter"})
@@ -190,11 +190,11 @@ func (m *Model) renderHome(l layout) string {
 			hint = m.st.StatusMuted.Render(item.Hint)
 		}
 		if i == cursor {
-			menu = append(menu, menuRow{text: m.st.Accent.Bold(true).Render(" ▸ ") + icon + " " +
+			menu = append(menu, menuRow{text: m.st.Accent.Bold(true).Render("> ") + icon + " " +
 				m.st.Accent.Bold(true).Render(item.Label) + gap + hint})
 			continue
 		}
-		menu = append(menu, menuRow{text: "   " + icon + " " + m.st.CardText.Render(item.Label) + gap + hint})
+		menu = append(menu, menuRow{text: "  " + icon + " " + m.st.CardText.Render(item.Label) + gap + hint})
 	}
 
 	footer := "↑↓ choose · Enter open · Esc quit · Ctrl+K actions"

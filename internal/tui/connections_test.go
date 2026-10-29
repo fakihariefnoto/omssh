@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
@@ -521,5 +522,38 @@ func TestManagedPasswordConnection(t *testing.T) {
 	}
 	if _, err := store.Password("pw"); err == nil {
 		t.Error("the stored password should be forgotten")
+	}
+}
+
+// A pinned row's marker is the same width as an ordinary one, so NAME/HOST line
+// up under the header. Positions are display cells, not bytes: the marker glyphs
+// are multi-byte.
+func TestConnectionColumnsAlignWithMarkers(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture)
+	m.conn.section = secSSH
+	m.cfg.Connections.Favorites = []string{"prod"}
+	cellIndex := func(line, sub string) int {
+		i := strings.Index(line, sub)
+		if i < 0 {
+			return -1
+		}
+		return lipgloss.Width(line[:i])
+	}
+	var header, prod, staging int
+	for _, line := range strings.Split(ansi.Strip(render(m)), "\n") {
+		switch {
+		case strings.Contains(line, "NAME") && strings.Contains(line, "HOST") && strings.Contains(line, "TYPE"):
+			header = cellIndex(line, "NAME")
+		case strings.Contains(line, "203.0.113.10") && strings.Contains(line, "ssh"):
+			prod = cellIndex(line, "prod")
+		case strings.Contains(line, "staging.example.com") && strings.Contains(line, "ssh"):
+			staging = cellIndex(line, "staging")
+		}
+	}
+	if header < 0 || prod < 0 || staging < 0 {
+		t.Fatalf("rows missing: header=%d prod=%d staging=%d", header, prod, staging)
+	}
+	if prod != staging || prod != header {
+		t.Errorf("name column: header=%d prod=%d staging=%d", header, prod, staging)
 	}
 }
