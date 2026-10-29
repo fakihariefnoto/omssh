@@ -180,6 +180,7 @@ func (t *Tunnel) accept() {
 
 // handle serves one accepted connection.
 func (t *Tunnel) handle(client net.Conn) {
+	tuneNoDelay(client)
 	defer func() { _ = client.Close() }()
 	started := time.Now()
 
@@ -199,6 +200,7 @@ func (t *Tunnel) handle(client net.Conn) {
 			Target: target, Client: client.RemoteAddr().String(), Error: err.Error()})
 		return
 	}
+	tuneNoDelay(upstream)
 	t.track(client, upstream)
 	defer func() {
 		t.untrack(client, upstream)
@@ -253,19 +255,39 @@ func bridge(client, upstream net.Conn, progress func(in, out int64)) (in, out in
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		n, _ := io.Copy(upstream, client)
-		atomic.StoreInt64(&out, n)
+		_, _ = io.Copy(countingWriter{w: upstream, n: &out}, client)
 		_ = upstream.Close()
 	}()
 	go func() {
 		defer wg.Done()
-		n, _ := io.Copy(client, upstream)
-		atomic.StoreInt64(&in, n)
+		_, _ = io.Copy(countingWriter{w: client, n: &in}, upstream)
 		_ = client.Close()
 	}()
 	wg.Wait()
 	close(done)
 	return in, out
+}
+
+// countingWriter adds to a counter on every write, so progress does not wait for
+// the copy to finish. Without it a long-lived HTTP connection reported zero.
+type countingWriter struct {
+	w io.Writer
+	n *int64
+}
+
+func (c countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	atomic.AddInt64(c.n, int64(n))
+	return n, err
+}
+
+// tuneNoDelay disables Nagle on a TCP end. A tunnel carries HTTP headers and
+// small responses; with Nagle on, each one can wait for a delayed ACK and the
+// page loads in visible steps.
+func tuneNoDelay(conn net.Conn) {
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
+	}
 }
 
 // track remembers a connection pair so Close can end it.

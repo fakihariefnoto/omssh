@@ -504,10 +504,10 @@ func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	if host == "" {
 		host, _ = m.sshHostForTunnel()
 	}
-	if _, liveOK := m.live[host]; !liveOK {
-		return fmt.Errorf("no live session on %s", host)
+	live, liveOK := m.live[host]
+	if !liveOK || live == nil || live.Client == nil || live.Client.SSH() == nil {
+		return fmt.Errorf("%s is no longer connected · reconnect and try again", host)
 	}
-	live := m.live[host]
 	options := tunnel.Options{Kind: spec.Kind, Listen: spec.Listen, Target: spec.Target, Host: host}
 	active := &activeTunnel{host: host, kind: spec.Kind, listen: spec.Listen, target: spec.Target,
 		open: map[string][2]int64{}}
@@ -553,6 +553,14 @@ func (m *Model) autosaveTunnel(host string, spec tunnel.Spec) string {
 	}
 	_, port, _ := net.SplitHostPort(spec.Listen)
 	base := fmt.Sprintf("%s-%s-%s", safeName(host), kind, valueOr(port, "port"))
+	if spec.Kind != tunnel.Dynamic {
+		_, targetPort, _ := net.SplitHostPort(spec.Target)
+		side := "server"
+		if spec.Kind == tunnel.Remote {
+			side = "local"
+		}
+		base += fmt.Sprintf("-%s-%s", side, valueOr(targetPort, "port"))
+	}
 	name := base
 	for suffix := 2; ; suffix++ {
 		if _, exists := m.cfg.Tunnels.Profiles[name]; !exists {
@@ -570,6 +578,9 @@ func (m *Model) autosaveTunnel(host string, spec tunnel.Spec) string {
 type sshDialer struct{ client *sshx.Client }
 
 func (d sshDialer) DialContext(_ context.Context, network, addr string) (net.Conn, error) {
+	if d.client == nil {
+		return nil, fmt.Errorf("ssh: the connection is closed")
+	}
 	return d.client.Dial(network, addr)
 }
 
@@ -786,7 +797,7 @@ func (m *Model) startSavedTunnel(name string) {
 	if !ok {
 		return
 	}
-	if _, live := m.live[profile.Host]; !live {
+	if live := m.live[profile.Host]; live == nil || live.Client == nil || live.Client.SSH() == nil {
 		target, ok := m.targetForAlias(profile.Host)
 		if !ok {
 			m.toastInfo("Connect to " + profile.Host + " first")
@@ -953,7 +964,7 @@ func (m *Model) checkTunnelServer() tea.Cmd {
 		return nil
 	}
 	live := m.live[active.host]
-	if live == nil || live.Client == nil {
+	if live == nil || live.Client == nil || live.Client.SSH() == nil {
 		m.toastInfo("Connect to " + active.host + " to check it")
 		return nil
 	}
@@ -1054,6 +1065,9 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 			arrow = "←"
 		}
 		title := fmt.Sprintf("%s %s %s %s", active.kind, active.listen, arrow, active.target)
+		if active.savedAs != "" {
+			title = active.savedAs
+		}
 		meta := fmt.Sprintf("%s · %d conns · %s in · %s out", active.host, conns,
 			humanSize(in), humanSize(out))
 		if i == m.tunnelDash {
@@ -1080,7 +1094,12 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 			arrow = "←"
 		}
 		detail = append(detail,
-			m.st.PaneTitle.Render(truncate(fmt.Sprintf("%s · %s", titleWord(string(active.kind)), active.host), rightW-6)),
+			m.st.PaneTitle.Render(truncate(func() string {
+				if active.savedAs != "" {
+					return active.savedAs
+				}
+				return fmt.Sprintf("%s · %s", titleWord(string(active.kind)), active.host)
+			}(), rightW-6)),
 			m.st.CardMuted.Render(strings.Repeat("─", max(1, rightW-6))),
 			m.st.CardText.Render(truncate(active.listen+" "+arrow+" "+active.target, rightW-6)),
 			"",

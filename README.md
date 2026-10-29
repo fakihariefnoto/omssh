@@ -50,7 +50,8 @@ unpacked tree or a single archive instead of a pile of files.
   with tabs, a conversation log for terminals, an event tail for tunnels, and
   per-record delete. The launcher opens it on the tab you asked for.
 - **Saved tunnels and password hosts.** Tunnels can be saved to `config.yaml`,
-  saved automatically when started, started/edited/deleted from the chooser, with
+  saved automatically when started (the name carries both ends,
+  `ovh-remote-9000-local-8080`), started/edited/deleted from the chooser, with
   a live dashboard for counters,
   active connections and bytes while they move (`p` starts the same forward on
   another port; `c` checks sshd and the firewall). SSH connections made

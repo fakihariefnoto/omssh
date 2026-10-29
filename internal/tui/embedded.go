@@ -97,7 +97,7 @@ func (m *Model) openEmbeddedHost(host string) tea.Cmd {
 		return nil
 	}
 	live := m.live[host]
-	if live == nil {
+	if live == nil || live.Client == nil || live.Client.SSH() == nil {
 		m.toastInfo("Connect to " + host + " first · t opens the external terminal")
 		return nil
 	}

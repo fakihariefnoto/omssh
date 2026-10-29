@@ -317,3 +317,35 @@ func (s *slowCloseListener) Close() error {
 	time.Sleep(s.block)
 	return nil
 }
+
+// Progress is reported while the connection is still open, not only at close:
+// this is what the dashboard's counters read.
+func TestProgressReportsLiveBytes(t *testing.T) {
+	progress := make(chan Event, 16)
+	tunnel, err := Start(context.Background(), Options{Kind: Local, Listen: "127.0.0.1:0",
+		Target: "db:5432", Dialer: newEchoDialer(),
+		OnProgress: func(event Event) { progress <- event }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tunnel.Close() }()
+	client, err := dialTest(t, tunnel.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	if _, err := client.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case event := <-progress:
+			if event.Client != "" && (event.BytesOut >= 5 || event.BytesIn >= 5) {
+				return
+			}
+		case <-deadline:
+			t.Fatal("no progress with bytes while the connection was open")
+		}
+	}
+}

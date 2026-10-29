@@ -141,3 +141,36 @@ func TestTunnelAutosavesConfig(t *testing.T) {
 		t.Errorf("saved file has %d profiles, want 2", len(cfg.Tunnels.Profiles))
 	}
 }
+
+// A session whose connection died (Wi-Fi) must produce an error, not a nil
+// pointer panic when the tunnel asks ssh to listen.
+func TestTunnelOnDeadSessionDoesNotPanic(t *testing.T) {
+	m := newTestModel(t)
+	m.live = map[string]*session.Session{"ovh": {Target: omssh.Target{Alias: "ovh", Host: "h"}}}
+	m.tunnelHost = "ovh"
+	err := m.startTunnelSpec(tunnel.Spec{Kind: tunnel.Remote, Listen: "0.0.0.0:9000", Target: "127.0.0.1:3000"})
+	if err == nil {
+		t.Fatal("a dead session should be refused")
+	}
+	if !strings.Contains(err.Error(), "no longer connected") {
+		t.Errorf("err = %v", err)
+	}
+	if len(m.tunnels) != 0 {
+		t.Error("nothing should start")
+	}
+}
+
+// Autosaved names carry both ends, which is what makes them recognisable.
+func TestAutosaveNamesBothEnds(t *testing.T) {
+	m := newTestModel(t)
+	remote := m.autosaveTunnel("ovh", tunnel.Spec{Kind: tunnel.Remote,
+		Listen: "0.0.0.0:9000", Target: "127.0.0.1:8080"})
+	if remote != "ovh-remote-9000-local-8080" {
+		t.Errorf("remote name = %q", remote)
+	}
+	local := m.autosaveTunnel("prod", tunnel.Spec{Kind: tunnel.Local,
+		Listen: "127.0.0.1:8080", Target: "db:5432"})
+	if local != "prod-local-8080-server-5432" {
+		t.Errorf("local name = %q", local)
+	}
+}
