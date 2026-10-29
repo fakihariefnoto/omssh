@@ -202,7 +202,8 @@ the last agent calls with `r` to refresh.
 ## History
 
 **History** is one launcher row and one screen, split by tab: Terminal, Tunnel,
-Agent, All. The launcher opens it on Terminal; Tab moves across. `Tab` changes the filter, `↑↓`
+Agent, All. The list shows the file name (or tool and path) and the time; the
+panel beside it describes the selected record before you open it. The launcher opens it on Terminal; Tab moves across. `Tab` changes the filter, `↑↓`
 chooses, `Enter` opens the record, `v` reads a terminal conversation log, `d`
 deletes the selected record after asking, and `Esc` returns to the launcher. The
 rows are newest first.

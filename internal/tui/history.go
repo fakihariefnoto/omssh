@@ -110,13 +110,8 @@ func terminalHistory() []historyEntry {
 	files := recordingFiles()
 	out := make([]historyEntry, 0, len(files))
 	for _, file := range files {
-		name := strings.TrimSuffix(filepath.Base(file.path), ".cast")
-		label := name
-		if at := strings.LastIndex(name, "-2026"); at > 0 {
-			label = name[:at]
-		}
 		out = append(out, historyEntry{kind: historyTerminal, when: file.when,
-			label: label, detail: humanSize(file.size), path: file.path})
+			label: filepath.Base(file.path), detail: humanSize(file.size), path: file.path})
 	}
 	return out
 }
@@ -213,9 +208,9 @@ func agentHistory() []historyEntry {
 		}
 		when, _ := time.Parse(time.RFC3339, call.Time)
 		where := strings.Trim(call.Place+":"+call.Path, ":")
-		label := "agent · " + call.Tool
+		label := call.Tool
 		if where != "" {
-			label += " " + where
+			label += " · " + where
 		}
 		out = append(out, historyEntry{kind: historyAgent, when: when, label: label,
 			ok: call.OK, key: call.Time + "|" + call.Tool + "|" + call.Path,
@@ -224,44 +219,44 @@ func agentHistory() []historyEntry {
 	return out
 }
 
-// renderHistory draws the screen: a title, tab pills, a table with a type badge,
-// and a footer that names the keys. It is deliberately quiet — history is
-// something to scan, not a dashboard to admire.
+// renderHistory draws History as two panels like the tunnel dashboard: a list
+// to scan and a detail panel that answers "what is this?" before opening it.
 func (m *Model) renderHistory(l layout) string {
 	entries := m.historyEntries()
-	width := l.Width
-	rows := make([]string, 0, l.Height)
+	width, height := l.Width, l.Height
+	leftW := clamp(width*52/100, 46, 84)
+	rightW := max(30, width-leftW-3)
+	panelRows := max(5, height-9)
 
-	title := m.st.Accent.Bold(true).Render("History")
-	rightText := fmt.Sprintf("%d %s", len(entries), plural(len(entries), "entry", "entries"))
-	if m.history.tab == 0 && !m.cfg.Sessions.Record {
-		rightText = "recording off · " + rightText
+	counts := map[historyKind]int{}
+	for _, entry := range m.history.all {
+		counts[entry.kind]++
 	}
-	right := m.st.StatusMuted.Render(rightText)
-	rows = append(rows, spread(title, right, width), "")
 
-	// Tabs are pills: the active one is filled, the rest are quiet words.
+	// Heading and tabs.
+	header := spread(m.st.Accent.Bold(true).Render("History"),
+		m.st.StatusMuted.Render(fmt.Sprintf("%d %s", len(entries), plural(len(entries), "entry", "entries"))), width)
 	pills := make([]string, 0, len(historyTabs))
 	for i, tab := range historyTabs {
+		label := tab.label
+		if tab.kind == "all" {
+			label += fmt.Sprintf(" %d", len(m.history.all))
+		} else {
+			label += fmt.Sprintf(" %d", counts[tab.kind])
+		}
 		if i == m.history.tab {
-			pills = append(pills, m.st.PaletteItemActive.Render(" "+tab.label+" "))
+			pills = append(pills, m.st.PaletteItemActive.Render(" "+label+" "))
 			continue
 		}
-		pills = append(pills, m.st.CardMuted.Render(" "+tab.label+" "))
+		pills = append(pills, m.st.CardMuted.Render(" "+label+" "))
 	}
-	rows = append(rows, "  "+strings.Join(pills, " "), "")
 
-	const badge = 7
-	rightW := clamp(width/3, 22, 38)
-	leftW := max(12, width-badge-2-rightW-3)
-	header := "  " + padRight("TYPE", badge) + " " + padRight("ENTRY", leftW) +
-		" " + padLeft("WHEN · DETAIL", rightW)
-	rows = append(rows,
-		m.st.PaneHeader.Render(truncate(header, width)),
-		m.st.CardMuted.Render(spaces(2)+strings.Repeat("─", max(1, width-4))),
-	)
-
-	listRows := max(1, l.Height-len(rows)-4)
+	// The list: TYPE, entry, when. One line per record, selection filled.
+	list := []string{
+		spread(m.st.PaneHeader.Render("TYPE    ENTRY"), m.st.PaneHeader.Render("WHEN"), leftW-6),
+		m.st.CardMuted.Render(strings.Repeat("─", max(1, leftW-6))),
+	}
+	listRows := max(1, panelRows-2)
 	m.history.cursor = clamp(m.history.cursor, 0, max(0, len(entries)-1))
 	if m.history.cursor < m.history.offset {
 		m.history.offset = m.history.cursor
@@ -269,44 +264,118 @@ func (m *Model) renderHistory(l layout) string {
 	if m.history.cursor >= m.history.offset+listRows {
 		m.history.offset = m.history.cursor - listRows + 1
 	}
-	badgeStyle := map[historyKind]lipgloss.Style{
-		historyTerminal: m.st.Accent,
-		historyTunnel:   m.st.CardText,
-		historyAgent:    m.st.StatusKey,
-	}
-	badgeText := map[historyKind]string{
+	badges := map[historyKind]string{
 		historyTerminal: "term", historyTunnel: "tunnel", historyAgent: "agent",
 	}
-	for i := m.history.offset; i < len(entries) && i < m.history.offset+listRows; i++ {
+	for i := m.history.offset; i < len(entries) && len(list) < panelRows; i++ {
 		entry := entries[i]
-		meta := entry.detail
-		if entry.kind == historyTunnel && m.runningTunnel(entry.session) != nil {
-			meta = "running · " + meta
-		}
+		label := truncate(entry.label, leftW-6-8-13-1)
+		when := ""
 		if !entry.when.IsZero() {
-			meta = entry.when.Format("Jan 02 15:04") + " · " + meta
+			when = entry.when.Format("Jan 02 15:04")
 		}
-		label := truncate(entry.label, leftW)
-		line := "  " + badgeStyle[entry.kind].Render(padRight(badgeText[entry.kind], badge)) +
-			" " + m.st.CardText.Render(padRight(label, leftW)) +
-			" " + m.st.CardMuted.Render(padLeft(truncate(meta, rightW), rightW))
+		content := leftW - 6
+		line := spread(m.st.CardMuted.Render(padRight(badges[entry.kind], 8))+m.st.CardText.Render(label),
+			m.st.CardMuted.Render(when), content)
 		if i == m.history.cursor {
-			line = m.st.PaletteItemActive.Width(width).Render(padVisible(
-				"▸ "+badgeStyle[entry.kind].Bold(true).Render(padRight(badgeText[entry.kind], badge))+
-					" "+m.st.Accent.Bold(true).Render(padRight(label, leftW))+
-					" "+m.st.CardMuted.Render(padLeft(truncate(meta, rightW), rightW)), width))
+			line = m.st.PaletteItemActive.Width(content).Render(padVisible(ansi.Strip(line), content))
 		}
-		rows = append(rows, line)
+		list = append(list, line)
 	}
 	if len(entries) == 0 {
-		rows = append(rows, "", "  "+m.st.PaneEmpty.Render(truncate(m.historyEmpty(), width-4)))
+		list = append(list, "", m.st.PaneEmpty.Render(truncate(m.historyEmpty(), leftW-8)))
 	}
-	for len(rows) < l.Height-2 {
-		rows = append(rows, "")
+	for len(list) < panelRows {
+		list = append(list, "")
 	}
+	list = list[:panelRows]
+
+	// The detail panel: metadata and the next action, never a file read per frame.
+	var detail []string
+	if len(entries) > 0 && m.history.cursor < len(entries) {
+		detail = m.historyDetailFor(entries[m.history.cursor], rightW-6)
+	} else {
+		detail = []string{"", m.st.PaneEmpty.Render("Nothing selected")}
+	}
+	for len(detail) < panelRows {
+		detail = append(detail, "")
+	}
+	detail = detail[:panelRows]
+
+	panels := lipgloss.JoinHorizontal(lipgloss.Top, m.card(leftW, list), " ", m.card(rightW, detail))
 	footer := "Tab filter · ↑↓ choose · Enter open · v conversation log · d delete · Esc back"
-	rows = append(rows, "", m.st.StatusMuted.Render(truncate(footer, width)))
-	return strings.Join(rows, "\n")
+	return header + "\n" + strings.Join(pills, " ") + "\n" + panels + "\n" + m.st.StatusMuted.Render(truncate(footer, width))
+}
+
+// historyDetailFor describes one record without opening it.
+func (m *Model) historyDetailFor(entry historyEntry, width int) []string {
+	lines := []string{m.st.PaneTitle.Render(truncate(entry.label, width)), m.st.CardMuted.Render(strings.Repeat("─", max(1, width)))}
+	line := func(text string) { lines = append(lines, truncate(text, width)) }
+	switch entry.kind {
+	case historyTerminal:
+		if !entry.when.IsZero() {
+			line(entry.when.Format("2006-01-02 15:04:05") + " · " + entry.detail)
+		}
+		line("file  " + entry.label)
+		line("")
+		line("A recorded embedded terminal.")
+		line("Enter replays it; v reads the conversation as text.")
+		line("d deletes the recording file.")
+		line("")
+		line("path")
+		line(entry.path)
+	case historyTunnel:
+		state := entry.tunnel
+		if state == nil {
+			line("Tunnel session")
+			break
+		}
+		arrow := "→"
+		if state.kind == tunnel.Remote {
+			arrow = "←"
+		}
+		line(fmt.Sprintf("%s %s %s %s", titleWord(string(state.kind)), state.listen, arrow, state.target))
+		line(fmt.Sprintf("host %s · started %s", state.host, state.start.Format("2006-01-02 15:04")))
+		line(fmt.Sprintf("%d %s · %s received · %s sent", state.conns,
+			plural(state.conns, "connection", "connections"), humanSize(state.bytesIn), humanSize(state.bytesOut)))
+		if m.runningTunnel(entry.session) != nil {
+			line(m.st.Success.Render("running now · Enter opens the live dashboard"))
+		} else {
+			line("finished · Enter opens the event tail")
+		}
+		line("")
+		line("s stops it if it is still running · d deletes this record")
+		if len(state.events) > 0 {
+			line("")
+			line("Recent connections")
+			for i := len(state.events) - 1; i >= 0 && len(lines) < 15; i-- {
+				event := state.events[i]
+				if event.Client == "" && event.Error == "" {
+					continue
+				}
+				if event.Error != "" {
+					lines = append(lines, m.st.Danger.Render(truncate("  error  "+event.Error, width)))
+					continue
+				}
+				lines = append(lines, m.st.CardText.Render(truncate(fmt.Sprintf("  %s  %s  %s in · %s out",
+					event.Time.Format("15:04:05"), event.Client, humanSize(event.BytesIn), humanSize(event.BytesOut)), width)))
+			}
+		}
+	case historyAgent:
+		line(entry.detail + " · " + entry.when.Format("2006-01-02 15:04:05"))
+		tool, where := entry.label, ""
+		if at := strings.Index(tool, " · "); at >= 0 {
+			tool, where = tool[:at], tool[at+len(" · "):]
+		}
+		line("tool  " + tool)
+		if where != "" {
+			line("where " + where)
+		}
+		line("")
+		line("An MCP tool call made by an agent.")
+		line("The same allowlists, keyring and audit log as the interface.")
+	}
+	return lines
 }
 
 // historyEmpty explains the tab, and the one setting that is usually the reason

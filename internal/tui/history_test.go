@@ -89,7 +89,7 @@ func TestHistoryTabs(t *testing.T) {
 		t.Fatalf("history should be a screen, got %v", m.screen)
 	}
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"History", "contabo", "127.0.0.1:8080", "agent · ls", "Terminal", "Tunnel", "Agent", "All"} {
+	for _, want := range []string{"History", "contabo", "127.0.0.1:8080", "ls · prod:/srv/app", "Terminal", "Tunnel", "Agent", "All"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("history should show %q:\n%s", want, out)
 		}
@@ -98,7 +98,7 @@ func TestHistoryTabs(t *testing.T) {
 	// The Tunnel tab hides the agent and terminal rows.
 	m.openHistory(1)
 	out = ansi.Strip(render(m))
-	if !strings.Contains(out, "127.0.0.1:8080") || strings.Contains(out, "agent · ls") {
+	if !strings.Contains(out, "127.0.0.1:8080") || strings.Contains(out, "ls · prod:/srv/app") {
 		t.Errorf("the Tunnel tab should filter to tunnels:\n%s", out)
 	}
 
@@ -455,7 +455,7 @@ func TestTunnelHistoryRecordsInterfaceTunnels(t *testing.T) {
 	m := newTestModel(t)
 	m.openHistory(1)
 	out := ansi.Strip(render(m))
-	for _, want := range []string{"ovh", "127.0.0.1:8080", "db:5432", "1 conns"} {
+	for _, want := range []string{"ovh", "127.0.0.1:8080", "db:5432", "1 connection"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the tunnel history should show %q:\n%s", want, out)
 		}
