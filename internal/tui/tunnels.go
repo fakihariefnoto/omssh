@@ -803,10 +803,20 @@ func (m *Model) startSavedTunnel(name string) {
 			m.toastInfo("Connect to " + profile.Host + " first")
 			return
 		}
+		cmd := m.connect(target)
+		if cmd == nil {
+			// The host was already being dialled (or there is no session manager).
+			// Leave the saved list open: closing it here was how a failed first
+			// attempt dropped the person into whatever screen was behind it.
+			m.toastInfo("Connection to " + profile.Host + " is already in progress")
+			return
+		}
 		m.pendingTunnelProfile = name
 		m.Overlay = OverlayNone
+		m.screen = screenHome
+		m.mode = "NORMAL"
 		m.toastInfo("Connecting to " + profile.Host + "…")
-		m.overlayCmd = m.connect(target)
+		m.overlayCmd = cmd
 		return
 	}
 	form := profileForm(name, profile)

@@ -174,3 +174,26 @@ func TestAutosaveNamesBothEnds(t *testing.T) {
 		t.Errorf("local name = %q", local)
 	}
 }
+
+// Starting a saved tunnel whose host is offline must not close the saved list
+// when the dial cannot start: that was how a first attempt left the person in the
+// file manager behind it.
+func TestSavedTunnelOfflineKeepsTheList(t *testing.T) {
+	m := newTestModel(t)
+	m.screen = screenFiles
+	m.cfg.Tunnels.Profiles = map[string]config.TunnelProfile{
+		"dev": {Host: "ovh", Kind: "local", Listen: "127.0.0.1:8080", Target: "db:5432"},
+	}
+	m.connecting = map[string]bool{"ovh": true}
+	m.openTunnelSaved()
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.Overlay != OverlayTunnelSaved {
+		t.Errorf("a dial that cannot start should leave the list open, overlay=%v", m.Overlay)
+	}
+	if m.screen != screenFiles {
+		t.Errorf("the screen behind the list should not change, screen=%v", m.screen)
+	}
+	if m.pendingTunnelProfile != "" {
+		t.Error("nothing should be pending when the dial never started")
+	}
+}
