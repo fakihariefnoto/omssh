@@ -69,10 +69,11 @@ still running.
    [x] Quit                      Ctrl+Q
 ```
 
-`↑↓` chooses, `Enter` opens, and `Esc` quits the program; with a transfer still
-running it asks first, because quitting cancels it. `Ctrl+Q` and the Quit row do
-the same thing, with the same check, and close SSH sessions, tunnels and embedded
-terminals before leaving. Connected hosts
+`↑↓` chooses, `Enter` opens, and `Esc` quits the program. Quitting asks first
+whenever work is in progress: the dialog lists every running tunnel and every
+running transfer, with **Cancel** and **Quit**. Confirming stops the tunnels,
+cancels the transfers, closes embedded terminals and SSH sessions, and leaves.
+`Ctrl+Q` and the Quit row use the same check. Connected hosts
 appear above the menu, so returning to the launcher also offers the way back to
 where you were.
 

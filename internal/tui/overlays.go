@@ -425,10 +425,18 @@ func (m *Model) renderConfirm(l layout) string {
 	}
 	lines = append(lines, "")
 	if m.confirm.Danger {
+		confirm := m.confirm.Confirm
+		if confirm == "" {
+			confirm = "Delete"
+		}
+		note := m.confirm.Note
+		if note == "" {
+			note = "Permanent: omssh has no trash and no undo."
+		}
 		lines = append(lines,
-			m.button(false, "Cancel")+"   "+m.st.ButtonDanger.Render("Delete"),
+			m.button(false, "Cancel")+"   "+m.st.ButtonDanger.Render(confirm),
 			"",
-			m.st.CardMuted.Render("Permanent: omssh has no trash and no undo."),
+			m.st.CardMuted.Render(note),
 		)
 	} else {
 		lines = append(lines, m.button(false, "Cancel")+"   "+m.button(true, "Confirm"))

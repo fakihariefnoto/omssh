@@ -253,9 +253,13 @@ type settingsState struct{ cursor int }
 type onboardingState struct{ cursor int }
 
 type confirmState struct {
-	Title   string
-	Body    []string
-	Danger  bool
+	Title  string
+	Body   []string
+	Danger bool
+	// Confirm and Note override the destructive defaults ("Delete", no undo) for
+	// dialogs that are dangerous but not deletions, such as quitting.
+	Confirm string
+	Note    string
 	Action  actions.ID
 	Entries []Entry
 	// Alias is set when the confirmation is about a connection.
@@ -1557,18 +1561,57 @@ func (m *Model) goBack() tea.Cmd {
 // work in progress; quitting cancels it, so the dialog says so rather than
 // discovering it afterwards.
 func (m *Model) requestQuit() tea.Cmd {
-	if jobs := m.Jobs(); jobs > 0 {
-		m.confirm = confirmState{
-			Title:  "Quit with transfers running?",
-			Body:   []string{fmt.Sprintf("%d %s still running.", jobs, plural(jobs, "transfer is", "transfers are")), "Quitting cancels them."},
-			Danger: true,
-			Action: "app.quit",
-			open:   true,
+	// Everything that would be stopped is named: a tunnel is a background job as
+	// much as a copy is, and quitting it should be a decision, not a surprise.
+	running := make([]transfer, 0, len(m.transfers))
+	for _, job := range m.transfers {
+		if !job.finished {
+			running = append(running, job)
 		}
-		m.Overlay = OverlayConfirm
-		return nil
 	}
-	return m.finishQuit()
+	if len(running) == 0 && len(m.tunnels) == 0 {
+		return m.finishQuit()
+	}
+	body := make([]string, 0, 4+len(running)+len(m.tunnels))
+	if len(m.tunnels) > 0 {
+		body = append(body, "Tunnels still running:")
+		for i, active := range m.tunnels {
+			if i == 6 {
+				body = append(body, fmt.Sprintf("  … %d more", len(m.tunnels)-i))
+				break
+			}
+			label := active.savedAs
+			if label == "" {
+				label = fmt.Sprintf("%s %s → %s", active.kind, active.listen, active.target)
+			}
+			body = append(body, "  "+label)
+		}
+	}
+	if len(running) > 0 {
+		if len(body) > 0 {
+			body = append(body, "")
+		}
+		body = append(body, "Transfers still running:")
+		for i, job := range running {
+			if i == 6 {
+				body = append(body, fmt.Sprintf("  … %d more", len(running)-i))
+				break
+			}
+			body = append(body, "  "+job.label)
+		}
+	}
+	body = append(body, "", "Quitting stops the tunnels and cancels the transfers.")
+	m.confirm = confirmState{
+		Title:   "Quit with work in progress?",
+		Body:    body,
+		Danger:  true,
+		Confirm: "Quit",
+		Note:    "Tunnels stop and transfers are cancelled.",
+		Action:  "app.quit",
+		open:    true,
+	}
+	m.Overlay = OverlayConfirm
+	return nil
 }
 
 // finishQuit ends the interface cleanly: tunnels, embedded terminals, SSH

@@ -1075,8 +1075,31 @@ func TestQuitAsksAboutRunningTransfers(t *testing.T) {
 		t.Fatalf("expected the quit confirmation, overlay=%v", m.Overlay)
 	}
 	out := ansi.Strip(render(m))
-	if !strings.Contains(out, "transfers running") || !strings.Contains(out, "cancels") {
+	if !strings.Contains(out, "Transfers still running") || !strings.Contains(out, "cancels") {
 		t.Errorf("the dialog should say what happens:\n%s", out)
+	}
+	_ = m.applyConfirmed("app.quit", nil)
+	if !m.quit {
+		t.Error("confirming should quit")
+	}
+}
+
+// With a tunnel running and no transfers, quitting still asks and lists it.
+func TestQuitListsRunningTunnels(t *testing.T) {
+	m := newTestModel(t)
+	m.tunnels = []*activeTunnel{{id: 1, sessionID: "s1", host: "ovh", kind: "remote",
+		listen: "0.0.0.0:9000", target: "127.0.0.1:8080", savedAs: "ovh-remote-9000-local-8080"}}
+	if cmd := m.requestQuit(); cmd != nil || m.quit {
+		t.Fatal("a running tunnel should open a confirmation, not quit")
+	}
+	if m.Overlay != OverlayConfirm {
+		t.Fatalf("expected the quit confirmation, overlay=%v", m.Overlay)
+	}
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Tunnels still running", "ovh-remote-9000-local-8080", "Quit", "stops the tunnels"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the dialog should show %q:\n%s", want, out)
+		}
 	}
 	_ = m.applyConfirmed("app.quit", nil)
 	if !m.quit {
