@@ -43,6 +43,8 @@ type activeTunnel struct {
 	bytesOut int64
 	err      string
 	events   []tunnel.Event
+	// savedAs is the config profile this forward is stored under.
+	savedAs string
 	// open tracks per-client cumulative bytes from progress reports, so totals
 	// only add what is new and a connection is counted once.
 	open map[string][2]int64
@@ -527,8 +529,40 @@ func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	m.tunnelSeq++
 	active.id, active.tunnel = m.tunnelSeq, started
 	active.sessionID = started.ID()
+	// A tunnel that ran is a tunnel worth keeping: starting one writes its
+	// configuration, so a reconnect does not mean typing it again. Identical
+	// profiles are reused rather than duplicated.
+	active.savedAs = m.autosaveTunnel(host, spec)
 	m.tunnels = append(m.tunnels, active)
 	return nil
+}
+
+// autosaveTunnel stores a forward in the config, reusing an identical profile.
+// The name is readable: host-kind-port, with a suffix only on a real collision.
+func (m *Model) autosaveTunnel(host string, spec tunnel.Spec) string {
+	if m.cfg.Tunnels.Profiles == nil {
+		m.cfg.Tunnels.Profiles = map[string]config.TunnelProfile{}
+	}
+	kind := strings.ToLower(string(spec.Kind))
+	for name, profile := range m.cfg.Tunnels.Profiles {
+		if profile.Host == host && strings.EqualFold(profile.Kind, kind) &&
+			profile.Listen == spec.Listen && profile.Target == spec.Target {
+			return name
+		}
+	}
+	_, port, _ := net.SplitHostPort(spec.Listen)
+	base := fmt.Sprintf("%s-%s-%s", safeName(host), kind, valueOr(port, "port"))
+	name := base
+	for suffix := 2; ; suffix++ {
+		if _, exists := m.cfg.Tunnels.Profiles[name]; !exists {
+			break
+		}
+		name = fmt.Sprintf("%s-%d", base, suffix)
+	}
+	m.cfg.Tunnels.Profiles[name] = config.TunnelProfile{Host: host, Kind: kind,
+		Listen: spec.Listen, Target: spec.Target}
+	m.saveConfig()
+	return name
 }
 
 // sshDialer adapts an SSH client to tunnel.Dialer.
@@ -732,7 +766,15 @@ func (m *Model) startSavedTunnel(name string) {
 		return
 	}
 	if _, live := m.live[profile.Host]; !live {
-		m.toastInfo("Connect to " + profile.Host + " first")
+		target, ok := m.targetForAlias(profile.Host)
+		if !ok {
+			m.toastInfo("Connect to " + profile.Host + " first")
+			return
+		}
+		m.pendingTunnelProfile = name
+		m.Overlay = OverlayNone
+		m.toastInfo("Connecting to " + profile.Host + "…")
+		m.overlayCmd = m.connect(target)
 		return
 	}
 	form := profileForm(name, profile)
@@ -1020,6 +1062,12 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 			m.st.PaneTitle.Render(truncate(fmt.Sprintf("%s · %s", titleWord(string(active.kind)), active.host), rightW-6)),
 			m.st.CardMuted.Render(strings.Repeat("─", max(1, rightW-6))),
 			m.st.CardText.Render(truncate(active.listen+" "+arrow+" "+active.target, rightW-6)),
+			"",
+		)
+		if active.savedAs != "" {
+			detail = append(detail, m.st.CardMuted.Render(truncate("saved as "+active.savedAs, rightW-6)))
+		}
+		detail = append(detail,
 			"",
 			fmt.Sprintf("%d connections · %s received · %s sent", conns, humanSize(in), humanSize(out)),
 		)

@@ -169,6 +169,8 @@ type Model struct {
 	// lands: "terminal" or "tunnel".
 	pendingAfterConnect string
 	pendingHost         string
+	// pendingTunnelProfile is a saved forward waiting for its host to connect.
+	pendingTunnelProfile string
 	// afterLocalSetup is set when a path prompt was opened from the local card:
 	// the dashboard chooser follows the path, not the other way round.
 	afterLocalSetup bool

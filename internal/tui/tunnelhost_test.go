@@ -102,3 +102,42 @@ func TestServerCheckLines(t *testing.T) {
 		t.Errorf("the check should say it is read-only:\n%s", out)
 	}
 }
+
+// Starting a tunnel writes it to the config, once: the same forward reuses its
+// profile, a different port gets its own.
+func TestTunnelAutosavesConfig(t *testing.T) {
+	m := newTestModel(t)
+	m.configPath = t.TempDir() + "/config.yaml"
+	spec := tunnel.Spec{Kind: tunnel.Local, Listen: "127.0.0.1:8080", Target: "db:5432"}
+	name := m.autosaveTunnel("ovh", spec)
+	if name == "" {
+		t.Fatal("autosave should name the profile")
+	}
+	profile, ok := m.cfg.Tunnels.Profiles[name]
+	if !ok || profile.Host != "ovh" || profile.Kind != "local" {
+		t.Fatalf("profile = %+v, %v", profile, ok)
+	}
+	if again := m.autosaveTunnel("ovh", spec); again != name {
+		t.Errorf("an identical forward should reuse %q, got %q", name, again)
+	}
+	if len(m.cfg.Tunnels.Profiles) != 1 {
+		t.Errorf("profiles = %d, want 1", len(m.cfg.Tunnels.Profiles))
+	}
+	other := spec
+	other.Listen = "127.0.0.1:8081"
+	if second := m.autosaveTunnel("ovh", other); second == name {
+		t.Errorf("a different port needs its own name, got %q", second)
+	}
+	if len(m.cfg.Tunnels.Profiles) != 2 {
+		t.Errorf("profiles = %d, want 2", len(m.cfg.Tunnels.Profiles))
+	}
+
+	// And it survives a restart, which is the point.
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Tunnels.Profiles) != 2 {
+		t.Errorf("saved file has %d profiles, want 2", len(cfg.Tunnels.Profiles))
+	}
+}

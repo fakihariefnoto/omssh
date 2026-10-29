@@ -143,6 +143,11 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 			// The chooser's second half never runs if the first half failed.
 			m.pendingAfterConnect, m.pendingHost = "", ""
 		}
+		if profile := m.pendingTunnelProfile; profile != "" {
+			if saved, ok := m.cfg.Tunnels.Profiles[profile]; ok && saved.Host == msg.target.Alias {
+				m.pendingTunnelProfile = ""
+			}
+		}
 		m.toastError(connectionMessage(msg.target, msg.err))
 		return nil
 	}

@@ -159,10 +159,12 @@ Below the fields is the **simulation**: the path the bytes take and what
 target means the server, not your laptop". The form also names the real connection
 (`via contabo · deploy@203.0.113.10:22`).
 
-**Saving a tunnel.** `s` in the form asks for a name and writes the forward to
-`tunnels.profiles` in the config. `Saved tunnels` appears in the tunnel host
-chooser; from there `Enter` starts it, `e` edits it, and `x` deletes it (after
-asking). Starting a saved tunnel also keeps any edits made in that form, so the
+**Tunnels save themselves.** Starting one writes it to `tunnels.profiles` in the
+config, so a disconnect is not a reason to type it again; an identical forward
+reuses its profile instead of piling up copies. `s` in the form still asks for a
+name first, for people who want `dev-db` rather than `ovh-local-8080`. `Saved tunnels` appears in the tunnel host
+chooser; from there `Enter` starts it (connecting the host first if it is not open),
+`e` edits it, and `x` deletes it (after asking). Starting a saved tunnel also keeps any edits made in that form, so the
 saved copy and what ran do not drift apart. A saved profile is what it says:
 
 ```yaml
