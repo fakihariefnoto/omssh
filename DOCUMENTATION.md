@@ -464,6 +464,11 @@ has one screen per kind of place, and
 [1 Overview]  2 SSH  3 S3  4 GCP·soon  5 Azure·soon  6 WebDAV
 ```
 
+`Enter` on a host connects it and leaves you in the manager, with the host now
+marked connected: choosing a row is a choice of place, not a request to open a
+folder. A second `Enter` on that connected host is the explicit way into its
+files, if it has any.
+
 The **Overview** lists everything, hosts and buckets together. **SSH**, **S3** and
 **WebDAV** each list their own. GCP and Azure are tabs that say when they arrive
 instead of showing a convincing empty list — GCS already works through the S3 tab,

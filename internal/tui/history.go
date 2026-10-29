@@ -234,7 +234,7 @@ func (m *Model) renderHistory(l layout) string {
 	}
 
 	// Heading and tabs.
-	header := spread(m.st.Accent.Bold(true).Render("History"),
+	header := spread(m.brandScreen("History"),
 		m.st.StatusMuted.Render(fmt.Sprintf("%d %s", len(entries), plural(len(entries), "entry", "entries"))), width)
 	pills := make([]string, 0, len(historyTabs))
 	for i, tab := range historyTabs {

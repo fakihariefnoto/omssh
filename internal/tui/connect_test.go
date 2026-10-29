@@ -538,3 +538,22 @@ func TestPendingSavedTunnelOpensAfterConnect(t *testing.T) {
 		t.Error("the pending profile should be consumed")
 	}
 }
+
+// Connecting from the manager stays on the manager; it does not jump into the
+// file browser. Enter again on the connected host is the explicit way in.
+func TestManagerConnectStaysInTheManager(t *testing.T) {
+	m, _ := newConnectionsModel(t, connFixture) // opens the connections screen
+	local, err := vfs.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := omssh.Target{Alias: "prod", Host: "203.0.113.10"}
+	m.handleConnected(connectedMsg{target: target,
+		session: &session.Session{Target: target, FS: local, Root: "/"}})
+	if m.screen != screenConnections {
+		t.Errorf("a manager connect should stay on the manager, screen=%v", m.screen)
+	}
+	if m.live["prod"] == nil {
+		t.Error("the session should still be recorded")
+	}
+}

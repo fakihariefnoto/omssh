@@ -335,6 +335,8 @@ func (m *Model) renderEmbedded(l layout) string {
 	if state == nil {
 		return ""
 	}
+	// The brand header takes one row and the shell takes the rest, so the screen
+	// still fills exactly the terminal.
 	height := max(1, l.Height-1)
 	state.mu.Lock()
 	// Render() does not draw a cursor: an emulator screen is text, and the cursor
@@ -345,7 +347,13 @@ func (m *Model) renderEmbedded(l layout) string {
 	selection := state.sel
 	lines := renderTerminalScreen(state.emu, blink, &selection)
 	state.mu.Unlock()
+	status := fmt.Sprintf("%s · Ctrl+] detach", state.host)
+	if state.recPath != "" {
+		status += " · recording " + filepath.Base(state.recPath)
+	}
+	header := spread(m.brandScreen("Embedded Terminal"), m.st.StatusMuted.Render(status), l.Width)
 	out := make([]string, 0, l.Height)
+	out = append(out, padVisible(ansi.Truncate(header, l.Width, ""), l.Width))
 	for i := 0; i < height; i++ {
 		line := ""
 		if i < len(lines) {
@@ -353,11 +361,6 @@ func (m *Model) renderEmbedded(l layout) string {
 		}
 		out = append(out, padVisible(ansi.Truncate(line, l.Width, ""), l.Width))
 	}
-	status := fmt.Sprintf("%s · embedded · Ctrl+] detach", state.host)
-	if state.recPath != "" {
-		status += " · recording " + filepath.Base(state.recPath)
-	}
-	out = append(out, m.st.StatusMuted.Render(padVisible(truncate(status, l.Width), l.Width)))
 	return strings.Join(out, "\n")
 }
 
@@ -735,6 +738,7 @@ func (m *Model) renderReplay(l layout) string {
 	height := max(1, l.Height-1)
 	lines := strings.Split(state.emu.Render(), "\n")
 	out := make([]string, 0, l.Height)
+	out = append(out, padVisible(ansi.Truncate(m.brandScreen("Replay"), l.Width, ""), l.Width))
 	for i := 0; i < height; i++ {
 		line := ""
 		if i < len(lines) {

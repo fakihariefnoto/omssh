@@ -191,7 +191,9 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 	// A manager connect lands in the dashboard. A chooser connect has a second
 	// half (terminal or tunnel), and that half owns the screen; leave the launcher
 	// behind it rather than a file view nobody asked for.
-	if m.Overlay != OverlayDeploy && m.pendingAfterConnect == "" {
+	// Connecting from the manager keeps the manager on screen: the person chose
+	// a row, not a folder. A second Enter on the now-connected host opens it.
+	if m.Overlay != OverlayDeploy && m.pendingAfterConnect == "" && m.screen != screenConnections {
 		m.screen = screenFiles
 		m.mode = "NORMAL"
 	}

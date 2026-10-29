@@ -285,7 +285,7 @@ func (m *Model) renderSettings(l layout) string {
 	content := cardContent(width)
 	options := m.settingsOptions()
 
-	lines := []string{m.st.CardTitle.Render("Settings and theme"), "", m.st.CardMuted.Render("Theme")}
+	lines := []string{m.brandCard("Settings and themes"), "", m.st.CardMuted.Render("Theme")}
 	for i, name := range options {
 		mark := " "
 		if name == m.themeName {

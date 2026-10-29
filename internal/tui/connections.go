@@ -63,7 +63,7 @@ func (s connSection) title() string {
 	case secGCP:
 		return "Google Cloud Storage"
 	default:
-		return "Connections"
+		return "Manage Connections"
 	}
 }
 
@@ -392,7 +392,7 @@ func (m *Model) renderConnections(l layout) string {
 		noun = plural(count, "connection", "connections")
 	case secSSH, secWebDAV:
 	}
-	title := m.st.PaneTitle.Render(m.connSectionNow().title())
+	title := m.brandScreen(m.connSectionNow().title())
 	right := m.st.StatusMuted.Render(fmt.Sprintf("%s · %d %s", place, count, noun))
 	rows = append(rows, spread(title, right, width), m.renderConnectionTabs(width), "")
 

@@ -1275,7 +1275,7 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.card(leftW, list), " ", m.card(rightW, detail))
-	header := spread(m.st.Accent.Bold(true).Render("Tunnels"),
+	header := spread(m.brandScreen("Tunnels"),
 		m.st.StatusMuted.Render(fmt.Sprintf("%d running", len(m.tunnels))), width)
 	footer := "↑↓ choose · x stop · p another port · n new · c server check · h history · Esc launcher"
 	return header + "\n" + panels + "\n" + m.st.StatusMuted.Render(truncate(footer, width))
@@ -1332,7 +1332,7 @@ func (m *Model) renderMCP(l layout) string {
 	snippet := mcpConfigSnippet()
 	lines := make([]string, 0, 24+strings.Count(snippet, "\n"))
 	lines = append(lines,
-		m.st.CardTitle.Render("MCP · for AI agents"),
+		m.brandCard("MCP Agents"),
 		m.st.CardMuted.Render(truncate("A stdio server, started by the agent, not a listener.", content)),
 		"",
 	)

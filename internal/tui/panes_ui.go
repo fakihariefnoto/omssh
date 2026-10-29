@@ -397,7 +397,7 @@ func (m *Model) renderPanesChooser(l layout) string {
 	}
 
 	lines := []string{
-		m.st.CardTitle.Render("Sessions") + "  " +
+		m.brandCard("Choose Sessions") + "  " +
 			m.st.CardMuted.Render("choose up to four · ←/→ or ↑/↓ move · Space ticks"),
 		"",
 	}

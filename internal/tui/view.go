@@ -227,12 +227,23 @@ func (m *Model) renderSidebarHeader(width int) string {
 	return padVisible(ansi.Truncate(label+"  "+build, width, "…"), width)
 }
 
+// brandScreen is the product name and the screen it belongs to, for full screens.
+func (m *Model) brandScreen(name string) string {
+	return m.st.Accent.Bold(true).Render("OMSSH") + m.st.StatusMuted.Render(" | ") + m.st.PaneTitle.Render(name)
+}
+
+// brandCard is the same for a card title.
+func (m *Model) brandCard(name string) string {
+	return m.st.Accent.Bold(true).Render("OMSSH") + m.st.StatusMuted.Render(" | ") + m.st.CardTitle.Render(name)
+}
+
 // renderTabs draws the session strip. It is labelled "sessions" and separated by
 // rules so the row reads as a tab bar at a glance; the active tab is marked by
 // colour and an underline, never by a filled block that looks like a badge.
 func (m *Model) renderTabs(l layout) string {
 	var b strings.Builder
-	b.WriteString(m.st.StatusMuted.Render("sessions"))
+	b.WriteString(m.brandScreen("Dashboard"))
+	b.WriteString(m.st.StatusMuted.Render("  │  sessions"))
 	sep := m.st.StatusMuted.Render("  │  ")
 	for i, tab := range m.tabs {
 		b.WriteString(sep)
