@@ -573,7 +573,13 @@ func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	options := tunnel.Options{Kind: spec.Kind, Listen: spec.Listen, Target: spec.Target, Host: host}
 	active := &activeTunnel{host: host, kind: spec.Kind, listen: spec.Listen, target: spec.Target,
 		open: map[string][2]int64{}}
-	options.OnEvent = active.observe
+	// The dashboard wants live updates and the history wants a record: one
+	// callback feeds both. Only finished events go to the file; progress ticks
+	// stay in memory.
+	options.OnEvent = func(event tunnel.Event) {
+		active.observe(event)
+		recordTunnelMetadata(event)
+	}
 	options.OnProgress = active.progress
 	if spec.Kind == tunnel.Remote {
 		options.Remote = live.Client.SSH()
@@ -598,6 +604,37 @@ func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	active.savedAs = m.autosaveTunnel(host, spec)
 	m.tunnels = append(m.tunnels, active)
 	return nil
+}
+
+// recordTunnelMetadata appends one event to the state log that History reads.
+// Tunnels started from the interface used to update only the live dashboard,
+// which is why their history looked empty.
+var tunnelLogMu sync.Mutex
+
+func recordTunnelMetadata(event tunnel.Event) {
+	if event.Active {
+		return
+	}
+	dir, err := config.StateDir()
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	line, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	tunnelLogMu.Lock()
+	defer tunnelLogMu.Unlock()
+	file, err := os.OpenFile(filepath.Join(dir, "tunnels.jsonl"),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer func() { _ = file.Close() }()
+	_, _ = file.Write(append(line, '\n'))
 }
 
 // autosaveTunnel stores a forward in the config, reusing an identical profile.

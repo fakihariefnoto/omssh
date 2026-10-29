@@ -175,6 +175,9 @@ func tunnelHistory() []historyEntry {
 		if state.target != "" {
 			label += " → " + state.target
 		}
+		if state.host != "" {
+			label = state.host + " · " + label
+		}
 		out = append(out, historyEntry{kind: historyTunnel, when: state.last,
 			label: label, detail: fmt.Sprintf("%d conns · %s", state.conns, humanSize(state.bytesIn)),
 			session: state.id, tunnel: state})

@@ -165,3 +165,18 @@ func TestMCPCopyTree(t *testing.T) {
 		t.Errorf("copied css = %q, %v", body, err)
 	}
 }
+
+// Every MCP call is recorded for the History screen.
+func TestMCPCallsAreRecorded(t *testing.T) {
+	opts := mcpOptions(t)
+	dir := t.TempDir()
+	request := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ls","arguments":{"place":"local","path":"` + dir + `"}}}`
+	runMCP(t, opts, request)
+	body, err := os.ReadFile(filepath.Join(os.Getenv("XDG_STATE_HOME"), "omssh", "mcp.jsonl"))
+	if err != nil {
+		t.Fatalf("mcp log: %v", err)
+	}
+	if !strings.Contains(string(body), `"tool":"ls"`) || !strings.Contains(string(body), `"ok":true`) {
+		t.Errorf("the call should be logged:\n%s", body)
+	}
+}

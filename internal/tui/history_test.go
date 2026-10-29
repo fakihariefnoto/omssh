@@ -440,3 +440,33 @@ func TestTunnelDashboardShowsActiveTraffic(t *testing.T) {
 		}
 	}
 }
+
+// A tunnel started from the interface writes the same metadata the CLI does, so
+// History can list it.
+func TestTunnelHistoryRecordsInterfaceTunnels(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	start := time.Now().Add(-time.Minute)
+	recordTunnelMetadata(tunnel.Event{Time: start, Session: "s1", Host: "ovh",
+		Kind: tunnel.Local, Listen: "127.0.0.1:8080", Target: "db:5432"})
+	recordTunnelMetadata(tunnel.Event{Time: time.Now(), Session: "s1", Host: "ovh",
+		Kind: tunnel.Local, Listen: "127.0.0.1:8080", Target: "db:5432",
+		Client: "203.0.113.7:50123", BytesIn: 1024, BytesOut: 2048})
+
+	m := newTestModel(t)
+	m.openHistory(1)
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"ovh", "127.0.0.1:8080", "db:5432", "1 conns"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the tunnel history should show %q:\n%s", want, out)
+		}
+	}
+	// Progress ticks stay in memory: no Active event in the file.
+	recordTunnelMetadata(tunnel.Event{Session: "s1", Host: "ovh", Client: "x", Active: true})
+	body, err := os.ReadFile(filepath.Join(os.Getenv("XDG_STATE_HOME"), "omssh", "tunnels.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), `"active":true`) {
+		t.Error("progress events should not reach the audit log")
+	}
+}
