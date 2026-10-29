@@ -400,3 +400,42 @@ func TestHistoryRunningTunnelOpensDashboard(t *testing.T) {
 		t.Errorf("Enter on a running tunnel should show the live dashboard, screen=%v overlay=%v", m.screen, m.Overlay)
 	}
 }
+
+// Progress reports add only new bytes, count a connection once, and a final
+// report does not double it.
+func TestTunnelProgressAccounting(t *testing.T) {
+	active := &activeTunnel{open: map[string][2]int64{}}
+	active.progress(tunnel.Event{Client: "a", BytesIn: 100, BytesOut: 200, Active: true})
+	active.progress(tunnel.Event{Client: "a", BytesIn: 150, BytesOut: 300, Active: true})
+	conns, in, out, _ := active.snapshot()
+	if conns != 1 || in != 150 || out != 300 {
+		t.Fatalf("after progress: %d conns %d/%d", conns, in, out)
+	}
+	active.observe(tunnel.Event{Client: "a", BytesIn: 150, BytesOut: 300})
+	conns, in, out, _ = active.snapshot()
+	if conns != 1 || in != 150 || out != 300 {
+		t.Errorf("a final report doubled the totals: %d conns %d/%d", conns, in, out)
+	}
+
+	active.progress(tunnel.Event{Client: "b", BytesIn: 10, BytesOut: 20, Active: true})
+	conns, in, out, _ = active.snapshot()
+	if conns != 2 || in != 160 || out != 320 {
+		t.Errorf("second client: %d conns %d/%d", conns, in, out)
+	}
+}
+
+// The dashboard shows a connection while it is open, not only after it closes.
+func TestTunnelDashboardShowsActiveTraffic(t *testing.T) {
+	m := newTestModel(t)
+	active := &activeTunnel{id: 1, sessionID: "s1", host: "ovh", kind: tunnel.Local,
+		listen: "127.0.0.1:8080", target: "localhost:3000", open: map[string][2]int64{}}
+	active.progress(tunnel.Event{Client: "203.0.113.7:50123", BytesIn: 1024, BytesOut: 4096, Active: true})
+	m.tunnels = []*activeTunnel{active}
+	m.openTunnelDashboard(0)
+	out := ansi.Strip(render(m))
+	for _, want := range []string{"Active now", "203.0.113.7:50123", "1.0 KB in", "4.0 KB out", "1 connections"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the dashboard should show %q:\n%s", want, out)
+		}
+	}
+}

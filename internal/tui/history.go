@@ -138,8 +138,8 @@ func tunnelHistory() []historyEntry {
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
 	for scanner.Scan() {
 		var event tunnel.Event
-		if json.Unmarshal(scanner.Bytes(), &event) != nil || event.Session == "" {
-			continue // a line from before sessions were identified
+		if json.Unmarshal(scanner.Bytes(), &event) != nil || event.Session == "" || event.Active {
+			continue // old lines, or live progress rather than a finished connection
 		}
 		state := sessions[event.Session]
 		if state == nil {

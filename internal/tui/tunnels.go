@@ -43,30 +43,81 @@ type activeTunnel struct {
 	bytesOut int64
 	err      string
 	events   []tunnel.Event
+	// open tracks per-client cumulative bytes from progress reports, so totals
+	// only add what is new and a connection is counted once.
+	open map[string][2]int64
 }
 
 func (t *activeTunnel) observe(event tunnel.Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if event.Client != "" {
+		_, seen := t.open[event.Client]
+		if event.Error != "" {
+			t.err = event.Error
+			delete(t.open, event.Client)
+			return
+		}
+		if !seen {
+			t.conns++
+		}
+		t.addDeltaLocked(event.Client, event.BytesIn, event.BytesOut)
+		delete(t.open, event.Client)
+		t.appendEventLocked(event)
+		return
+	}
+	t.appendEventLocked(event)
+	if event.Error != "" {
+		t.err = event.Error
+	}
+}
+
+// progress folds a running connection's totals into the tunnel's, adding only
+// the difference from the last report.
+func (t *activeTunnel) progress(event tunnel.Event) {
+	if event.Client == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, seen := t.open[event.Client]; !seen {
+		t.conns++
+	}
+	t.addDeltaLocked(event.Client, event.BytesIn, event.BytesOut)
+}
+
+func (t *activeTunnel) addDeltaLocked(client string, in, out int64) {
+	last := t.open[client]
+	deltaIn, deltaOut := in-last[0], out-last[1]
+	if deltaIn < 0 {
+		deltaIn = in
+	}
+	if deltaOut < 0 {
+		deltaOut = out
+	}
+	t.bytesIn += deltaIn
+	t.bytesOut += deltaOut
+	t.open[client] = [2]int64{in, out}
+}
+
+func (t *activeTunnel) appendEventLocked(event tunnel.Event) {
 	// A short tail is enough to see what the tunnel is doing; the history file
 	// keeps everything.
 	t.events = append(t.events, event)
 	if len(t.events) > 100 {
 		t.events = t.events[len(t.events)-100:]
 	}
-	if event.Client != "" {
-		if event.Error != "" {
-			t.err = event.Error
-			return
-		}
-		t.conns++
-		t.bytesIn += event.BytesIn
-		t.bytesOut += event.BytesOut
-		return
+}
+
+// activeConnections is a snapshot of connections currently open.
+func (t *activeTunnel) activeConnections() map[string][2]int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make(map[string][2]int64, len(t.open))
+	for client, counts := range t.open {
+		out[client] = counts
 	}
-	if event.Error != "" {
-		t.err = event.Error
-	}
+	return out
 }
 
 func (t *activeTunnel) snapshot() (conns int, in, out int64, errText string) {
@@ -455,8 +506,10 @@ func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	}
 	live := m.live[host]
 	options := tunnel.Options{Kind: spec.Kind, Listen: spec.Listen, Target: spec.Target, Host: host}
-	active := &activeTunnel{host: host, kind: spec.Kind, listen: spec.Listen, target: spec.Target}
+	active := &activeTunnel{host: host, kind: spec.Kind, listen: spec.Listen, target: spec.Target,
+		open: map[string][2]int64{}}
 	options.OnEvent = active.observe
+	options.OnProgress = active.progress
 	if spec.Kind == tunnel.Remote {
 		options.Remote = live.Client.SSH()
 	} else {
@@ -899,6 +952,13 @@ func serverCheckLines(msg tunnelCheckMsg) []string {
 		"  AllowTcpForwarding yes",
 		"  GatewayPorts clientspecified",
 		"then: sudo sshd -t && sudo systemctl reload ssh",
+		"",
+		"Open the port in the server firewall:",
+		fmt.Sprintf("  sudo ufw allow %s/tcp", msg.port),
+		"  # or",
+		fmt.Sprintf("  sudo firewall-cmd --permanent --add-port=%s/tcp && sudo firewall-cmd --reload", msg.port),
+		"",
+		fmt.Sprintf("Also allow TCP %s inbound in the provider's firewall or security group.", msg.port),
 	)
 	return lines
 }
@@ -965,6 +1025,19 @@ func (m *Model) renderTunnelDashboard(l layout) string {
 		)
 		if errText != "" {
 			detail = append(detail, m.st.Danger.Render(truncate(errText, rightW-6)))
+		}
+		if activeNow := active.activeConnections(); len(activeNow) > 0 {
+			detail = append(detail, "", m.st.StatusMuted.Render("Active now"))
+			clients := make([]string, 0, len(activeNow))
+			for client := range activeNow {
+				clients = append(clients, client)
+			}
+			sort.Strings(clients)
+			for _, client := range clients {
+				counts := activeNow[client]
+				detail = append(detail, m.st.CardText.Render(truncate(fmt.Sprintf("  %s  %s in · %s out",
+					client, humanSize(counts[0]), humanSize(counts[1])), rightW-6)))
+			}
 		}
 		detail = append(detail, "", m.st.StatusMuted.Render("Recent connections"))
 		events := active.tail()

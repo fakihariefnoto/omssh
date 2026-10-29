@@ -141,8 +141,9 @@ connect — `http://<server-ip>:9000/` will not work. To publish it:
 
 **The server check (`c`) is read-only.** For a running remote forward it asks the
 server `sshd -T` for `GatewayPorts`/`AllowTcpForwarding` and `ss -ltn` for the port,
-then says which fact decided the outcome and prints the two lines that would change
-it. It runs after the tunnel is up, when the question is answerable, and it never
+then says which fact decided the outcome and prints everything that would change
+it: the two sshd lines with the reload command, `ufw`/`firewalld` commands for the
+port, and a reminder about the provider's firewall/security group. It runs after the tunnel is up, when the question is answerable, and it never
 edits sshd or the firewall: that needs root on the server, and a file manager is
 not the place to take that permission silently.
 
@@ -177,8 +178,9 @@ tunnels:
 Starting one opens the **Tunnels dashboard**, a screen of its own rather than a
 card over the launcher. The left column is every running forward with its live
 counters; the right column is the selected one: where it listens, where it goes,
-connections, bytes received and sent, and the recent connections with the address
-that used it. `↑↓` chooses, `x` stops, `n` starts another on the same host, `c` runs a
+connections, bytes received and sent — updated twice a second while a connection
+is open, not only when it closes — and an **Active now** list with each client and
+its running totals beside the recent finished ones. `↑↓` chooses, `x` stops, `n` starts another on the same host, `c` runs a
 **server check**, `p` starts the same tunnel on **another free port** (useful when one service is already
 forwarded), `h` opens History, and `Esc` returns to the launcher while the tunnels
 keep running. **MCP** shows the stdio configuration, copies it with `c`, and lists

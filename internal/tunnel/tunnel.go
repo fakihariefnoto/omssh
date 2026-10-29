@@ -52,6 +52,10 @@ type Event struct {
 	BytesIn  int64     `json:"bytes_in,omitempty"`
 	BytesOut int64     `json:"bytes_out,omitempty"`
 	Error    string    `json:"error,omitempty"`
+	// Active marks a progress report for a connection that is still open; the
+	// final event for that connection has it false. History ignores active
+	// events so a long download is not counted twice.
+	Active bool `json:"active,omitempty"`
 }
 
 // Options configures one tunnel.
@@ -68,8 +72,13 @@ type Options struct {
 	Remote Listener
 	// Host is the SSH alias the tunnel runs through, for the history line.
 	Host string
-	// OnEvent receives metadata. It may be nil.
+	// OnEvent receives one event per connection when it closes, plus the start.
+	// It may be nil.
 	OnEvent func(Event)
+	// OnProgress receives live byte counts for open connections, about twice a
+	// second. It is separate from OnEvent so the audit log does not grow a line
+	// per tick.
+	OnProgress func(Event)
 	// LocalDialer is used by a remote tunnel to reach the target on this side;
 	// nil means net.Dial.
 	LocalDialer Dialer
@@ -188,10 +197,15 @@ func (t *Tunnel) handle(client net.Conn) {
 	}
 	defer func() { _ = upstream.Close() }()
 
-	in, out := bridge(client, upstream)
+	clientAddr := client.RemoteAddr().String()
+	in, out := bridge(client, upstream, func(in, out int64) {
+		t.progress(Event{Time: time.Now(), Session: t.id, Host: t.options.Host,
+			Kind: t.options.Kind, Listen: t.ln.Addr().String(), Target: target,
+			Client: clientAddr, BytesIn: in, BytesOut: out, Active: true})
+	})
 	t.emit(Event{Time: time.Now(), Session: t.id, Host: t.options.Host,
 		Kind: t.options.Kind, Listen: t.ln.Addr().String(),
-		Target: target, Client: client.RemoteAddr().String(), BytesIn: in, BytesOut: out})
+		Target: target, Client: clientAddr, BytesIn: in, BytesOut: out})
 }
 
 // dial reaches a target, using the local dialer for a remote tunnel and the SSH
@@ -209,7 +223,24 @@ func (t *Tunnel) dial(ctx context.Context, target string) (net.Conn, error) {
 }
 
 // bridge copies both ways and returns bytes from the client and to the client.
-func bridge(client, upstream net.Conn) (in, out int64) {
+// progress, when not nil, is called with the running totals about twice a second
+// so a long-lived connection is visible before it closes.
+func bridge(client, upstream net.Conn, progress func(in, out int64)) (in, out int64) {
+	done := make(chan struct{})
+	if progress != nil {
+		go func() {
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					progress(atomic.LoadInt64(&in), atomic.LoadInt64(&out))
+				case <-done:
+					return
+				}
+			}
+		}()
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -225,6 +256,7 @@ func bridge(client, upstream net.Conn) (in, out int64) {
 		_ = client.Close()
 	}()
 	wg.Wait()
+	close(done)
 	return in, out
 }
 
@@ -246,5 +278,11 @@ func (t *Tunnel) Close() error {
 func (t *Tunnel) emit(event Event) {
 	if t.options.OnEvent != nil {
 		t.options.OnEvent(event)
+	}
+}
+
+func (t *Tunnel) progress(event Event) {
+	if t.options.OnProgress != nil {
+		t.options.OnProgress(event)
 	}
 }
