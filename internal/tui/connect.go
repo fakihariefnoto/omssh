@@ -172,6 +172,20 @@ func (m *Model) handleConnected(msg connectedMsg) tea.Cmd {
 		m.toastInfo("Four panes are full · V chooses which sessions are shown")
 	}
 	m.toastSuccess("Connected to " + msg.target.Alias)
+	// A saved tunnel waiting for this host starts now. This must happen before
+	// the generic screen switch: the tunnel dashboard, not the file manager, is
+	// the destination the person asked for.
+	if name := m.pendingTunnelProfile; name != "" {
+		m.pendingTunnelProfile = ""
+		if saved, ok := m.cfg.Tunnels.Profiles[name]; ok && saved.Host == msg.target.Alias {
+			m.startSavedTunnel(name)
+			if m.screen != screenTunnels {
+				m.screen = screenHome
+				m.mode = "NORMAL"
+			}
+			return m.loadPaneAsync(index)
+		}
+	}
 	// Connecting from a list is a request to see the place, so the dashboard is
 	// the destination whether the list was the manager, the launcher or a chooser.
 	// A manager connect lands in the dashboard. A chooser connect has a second

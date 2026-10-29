@@ -512,3 +512,29 @@ func TestEnterOnConnectedHostOpensIt(t *testing.T) {
 		t.Error("Enter should not replace the live session")
 	}
 }
+
+// A saved tunnel waiting on this connection starts on connect and lands on the
+// tunnel dashboard, never on the file manager.
+func TestPendingSavedTunnelOpensAfterConnect(t *testing.T) {
+	m := newTestModel(t)
+	m.cfg.Tunnels.Profiles = map[string]config.TunnelProfile{
+		"dev": {Host: "contabo", Kind: "local", Listen: "127.0.0.1:8080", Target: "db:5432"},
+	}
+	m.pendingTunnelProfile = "dev"
+	// A session manager is not part of this test; the branch under test is what
+	// runs once a connection has landed.
+	m.sessions = nil
+	local, err := vfs.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := omssh.Target{Alias: "contabo", Host: "h"}
+	m.handleConnected(connectedMsg{target: target,
+		session: &session.Session{Target: target, FS: local, Root: "/"}})
+	if m.screen == screenFiles {
+		t.Error("a pending saved tunnel must not reveal the file manager")
+	}
+	if m.pendingTunnelProfile != "" {
+		t.Error("the pending profile should be consumed")
+	}
+}
