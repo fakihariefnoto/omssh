@@ -498,11 +498,73 @@ func valueOr(value, fallback string) string {
 	return value
 }
 
+// profileSpec rebuilds the spec a saved profile describes.
+func profileSpec(profile config.TunnelProfile) (tunnel.Spec, error) {
+	return tunnelFormState{kind: tunnel.Kind(strings.ToLower(profile.Kind))}.specFrom(profile)
+}
+
+// specFrom validates a profile's two addresses without a form.
+func (f tunnelFormState) specFrom(profile config.TunnelProfile) (tunnel.Spec, error) {
+	kind := tunnel.Kind(strings.ToLower(profile.Kind))
+	if kind != tunnel.Local && kind != tunnel.Remote && kind != tunnel.Dynamic {
+		return tunnel.Spec{}, fmt.Errorf("unknown tunnel kind %q", profile.Kind)
+	}
+	host, port, err := net.SplitHostPort(profile.Listen)
+	if err != nil {
+		return tunnel.Spec{}, fmt.Errorf("listen: %w", err)
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1 || number > 65535 {
+		return tunnel.Spec{}, fmt.Errorf("listen port must be 1 to 65535")
+	}
+	spec := tunnel.Spec{Kind: kind, Listen: net.JoinHostPort(host, port)}
+	if kind == tunnel.Dynamic {
+		return spec, nil
+	}
+	targetHost, targetPort, err := net.SplitHostPort(profile.Target)
+	if err != nil {
+		return tunnel.Spec{}, fmt.Errorf("target: %w", err)
+	}
+	targetNumber, err := strconv.Atoi(targetPort)
+	if err != nil || targetNumber < 1 || targetNumber > 65535 {
+		return tunnel.Spec{}, fmt.Errorf("target port must be 1 to 65535")
+	}
+	spec.Target = net.JoinHostPort(targetHost, targetPort)
+	return spec, nil
+}
+
+// runningForward finds a live forward that already occupies this address on the
+// same machine. For a remote forward "the same machine" is the server, so the
+// listen namespace matches only remote-to-remote; local and dynamic share this
+// machine's listener namespace.
+func (m *Model) runningForward(host string, spec tunnel.Spec) *activeTunnel {
+	for _, active := range m.tunnels {
+		if active.host != host {
+			continue
+		}
+		sameNamespace := (active.kind == tunnel.Remote) == (spec.Kind == tunnel.Remote)
+		if sameNamespace && active.listen == spec.Listen {
+			return active
+		}
+		if active.kind == spec.Kind && active.listen == spec.Listen && active.target == spec.Target {
+			return active
+		}
+	}
+	return nil
+}
+
 // startTunnelSpec opens a forward from an already validated spec.
 func (m *Model) startTunnelSpec(spec tunnel.Spec) error {
 	host := m.tunnelHost
 	if host == "" {
 		host, _ = m.sshHostForTunnel()
+	}
+	if active := m.runningForward(host, spec); active != nil {
+		label := active.savedAs
+		if label == "" {
+			label = fmt.Sprintf("%s %s → %s", active.kind, active.listen, active.target)
+		}
+		return fmt.Errorf("already running as %s · open Tunnels to watch it", label)
 	}
 	live, liveOK := m.live[host]
 	if !liveOK || live == nil || live.Client == nil || live.Client.SSH() == nil {
@@ -797,17 +859,30 @@ func (m *Model) startSavedTunnel(name string) {
 	if !ok {
 		return
 	}
+	spec, err := profileSpec(profile)
+	if err != nil {
+		m.toastError(err.Error())
+		return
+	}
+	// A tunnel that is already up is not started twice: the dashboard is what
+	// the person wants to see, not an SSH error about a busy port.
+	if active := m.runningForward(profile.Host, spec); active != nil {
+		for i, candidate := range m.tunnels {
+			if candidate == active {
+				m.openTunnelDashboard(i)
+				m.toastInfo(name + " is already running")
+				return
+			}
+		}
+	}
 	if live := m.live[profile.Host]; live == nil || live.Client == nil || live.Client.SSH() == nil {
-		target, ok := m.targetForAlias(profile.Host)
-		if !ok {
+		target, found := m.targetForAlias(profile.Host)
+		if !found {
 			m.toastInfo("Connect to " + profile.Host + " first")
 			return
 		}
 		cmd := m.connect(target)
 		if cmd == nil {
-			// The host was already being dialled (or there is no session manager).
-			// Leave the saved list open: closing it here was how a failed first
-			// attempt dropped the person into whatever screen was behind it.
 			m.toastInfo("Connection to " + profile.Host + " is already in progress")
 			return
 		}
@@ -819,14 +894,10 @@ func (m *Model) startSavedTunnel(name string) {
 		m.overlayCmd = cmd
 		return
 	}
-	form := profileForm(name, profile)
-	if err := form.checkPort(); err != nil {
-		m.toastError(err.Error())
-		return
-	}
-	spec, err := form.spec()
-	if err != nil {
-		m.toastError(err.Error())
+	if form := profileForm(name, profile); form.checkPort() != nil {
+		if err := form.checkPort(); err != nil {
+			m.toastError(err.Error())
+		}
 		return
 	}
 	m.tunnelHost = profile.Host
@@ -866,15 +937,17 @@ func (m *Model) renderTunnelSaved(l layout) string {
 	}
 	for i, name := range names {
 		profile := m.cfg.Tunnels.Profiles[name]
-		arrow := "→"
-		_ = arrow
 		line := fmt.Sprintf("%-18s %s", name, describeTunnel(profile))
 		hostLine := m.st.CardMuted.Render(truncate("  via "+profile.Host, content))
+		meta := line
+		if spec, err := profileSpec(profile); err == nil && m.runningForward(profile.Host, spec) != nil {
+			meta = "running · " + line
+		}
 		if i == m.tunnelSaved {
-			lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible("▸ "+truncate(line, content-2), content)), hostLine)
+			lines = append(lines, m.st.PaletteItemActive.Width(content).Render(padVisible("▸ "+truncate(meta, content-2), content)), hostLine)
 			continue
 		}
-		lines = append(lines, "  "+m.st.CardText.Render(truncate(line, content-2)), hostLine)
+		lines = append(lines, "  "+m.st.CardText.Render(truncate(meta, content-2)), hostLine)
 	}
 	lines = append(lines, "", m.st.CardMuted.Render("↑↓ choose · Enter start · e edit · x delete · Esc back"))
 	return m.card(width, lines)

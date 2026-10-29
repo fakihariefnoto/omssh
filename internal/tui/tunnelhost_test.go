@@ -197,3 +197,64 @@ func TestSavedTunnelOfflineKeepsTheList(t *testing.T) {
 		t.Error("nothing should be pending when the dial never started")
 	}
 }
+
+// A forward that is already running is not started twice, and its saved row says
+// so; Enter takes you to the live dashboard instead.
+func TestDuplicateTunnelIsNotStarted(t *testing.T) {
+	m := newTestModel(t)
+	active := &activeTunnel{id: 1, sessionID: "s1", host: "ovh", kind: tunnel.Local,
+		listen: "127.0.0.1:8080", target: "db:5432", savedAs: "ovh-local-8080-server-5432"}
+	m.tunnels = []*activeTunnel{active}
+	m.live = map[string]*session.Session{"ovh": {}}
+	m.tunnelHost = "ovh"
+
+	spec := tunnel.Spec{Kind: tunnel.Local, Listen: "127.0.0.1:8080", Target: "db:5432"}
+	err := m.startTunnelSpec(spec)
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("a duplicate should be refused, err=%v", err)
+	}
+	if len(m.tunnels) != 1 {
+		t.Errorf("nothing new should start, tunnels=%d", len(m.tunnels))
+	}
+
+	// A remote forward with the same server bind conflicts even for another target.
+	m.tunnels = append(m.tunnels, &activeTunnel{id: 2, sessionID: "s2", host: "ovh",
+		kind: tunnel.Remote, listen: "0.0.0.0:9000", target: "127.0.0.1:3000"})
+	remote := tunnel.Spec{Kind: tunnel.Remote, Listen: "0.0.0.0:9000", Target: "127.0.0.1:8080"}
+	if err := m.startTunnelSpec(remote); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Errorf("a remote bind conflict should be refused, err=%v", err)
+	}
+}
+
+// Enter on a saved tunnel that is running opens its dashboard, not an SSH error.
+func TestSavedTunnelAlreadyRunningOpensDashboard(t *testing.T) {
+	m := newTestModel(t)
+	m.cfg.Tunnels.Profiles = map[string]config.TunnelProfile{
+		"dev": {Host: "ovh", Kind: "local", Listen: "127.0.0.1:8080", Target: "db:5432"},
+	}
+	m.tunnels = []*activeTunnel{{id: 1, sessionID: "s1", host: "ovh", kind: tunnel.Local,
+		listen: "127.0.0.1:8080", target: "db:5432", savedAs: "dev"}}
+	m.live = map[string]*session.Session{"ovh": {}}
+	m.startSavedTunnel("dev")
+	if m.screen != screenTunnels {
+		t.Errorf("a running saved tunnel should open the dashboard, screen=%v", m.screen)
+	}
+	if len(m.tunnels) != 1 {
+		t.Errorf("it must not start a second tunnel, tunnels=%d", len(m.tunnels))
+	}
+}
+
+// The saved list marks a running profile.
+func TestSavedListMarksRunning(t *testing.T) {
+	m := newTestModel(t)
+	m.cfg.Tunnels.Profiles = map[string]config.TunnelProfile{
+		"dev": {Host: "ovh", Kind: "local", Listen: "127.0.0.1:8080", Target: "db:5432"},
+	}
+	m.tunnels = []*activeTunnel{{id: 1, sessionID: "s1", host: "ovh", kind: tunnel.Local,
+		listen: "127.0.0.1:8080", target: "db:5432"}}
+	m.openTunnelSaved()
+	out := ansi.Strip(render(m))
+	if !strings.Contains(out, "running") || !strings.Contains(out, "dev") {
+		t.Errorf("the saved list should mark the running profile:\n%s", out)
+	}
+}

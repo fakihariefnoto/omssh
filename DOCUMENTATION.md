@@ -169,7 +169,13 @@ config, so a disconnect is not a reason to type it again; an identical forward
 reuses its profile instead of piling up copies. `s` in the form still asks for a
 name first, for people who want `dev-db` rather than `ovh-local-8080`. `Saved tunnels` appears in the tunnel host
 chooser; from there `Enter` starts it (connecting the host first if it is not open),
-`e` edits it, and `x` deletes it (after asking). Starting a saved tunnel also keeps any edits made in that form, so the
+`e` edits it, and `x` deletes it (after asking). A profile whose forward is
+already running is marked `running`, and `Enter` takes you to its live dashboard
+rather than starting a second copy.
+
+The form refuses a duplicate too: an identical forward, or a remote bind the same
+host already has, is an error that names the running one — not an SSH failure after
+a round trip. Starting a saved tunnel also keeps any edits made in that form, so the
 saved copy and what ran do not drift apart. A saved profile is what it says:
 
 ```yaml
