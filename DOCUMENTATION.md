@@ -269,6 +269,11 @@ sessions  │  1 localhost  │  ● 2 contabo  │  ● ▸ 3 ovh
   the pane headers, sampled while the chooser is open and refreshed every few
   seconds. The local card says "this machine" instead: those commands are for
   the far side.
+- **Bucket cards show bucket facts**: files, folders and total size, read once
+  when the chooser opens (cached for five minutes). A bucket with more than 5,000
+  entries, or one that takes longer than six seconds, is marked `+` rather than
+  making the chooser wait; load/memory/disk are not shown because a bucket has no
+  CPU.
 - Each pane keeps its own path, selection and history. Switching panes never
   disturbs the other one.
 

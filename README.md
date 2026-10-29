@@ -5,7 +5,7 @@
 Many machines, one window.
 
 <p align="center">
-  <img src="omssh.png" alt="omssh launcher" width="70%">
+  <img src="screenshots/omssh.png" alt="omssh launcher" width="70%">
 </p>
 
 It starts on a launcher, not a blank prompt: **Manage connections** (hosts from
@@ -15,7 +15,7 @@ Connections you already have are listed here too, so coming back is the same
 gesture as going in.
 
 <p align="center">
-  <img src="omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
+  <img src="screenshots/omssh-dashboard.png" alt="omssh showing three hosts in a 2×2 grid with the paste options card open" width="100%">
 </p>
 
 The dashboard puts up to four places on screen as a 2×2 grid — local plus three
@@ -50,16 +50,20 @@ unpacked tree or a single archive instead of a pile of files.
 ### Cloud storage, beside SSH
 
 <p align="center">
-  <img src="omssh-cloud.png" alt="omssh with an S3 bucket in one pane and an SSH host in another" width="100%">
+  <img src="screenshots/omssh-cloud.png" alt="Choose what connection that need to display" width="100%">
 </p>
 
 A bucket is a place like a host. The same copy, archive, preview and deploy
 actions work in both directions — S3, GCS, Azure Blob and WebDAV included.
 
+<p align="center">
+  <img src="screenshots/omssh-cloud2.png" alt="omssh with an R2/S3 bucket in one pane and an SSH host in another" width="100%">
+</p>
+
 ### Tunnels with a live dashboard
 
 <p align="center">
-  <img src="omssh-tunnels.png" alt="omssh tunnel dashboard: running forwards, bytes and active connections" width="100%">
+  <img src="screenshots/omssh-tunnels.png" alt="omssh tunnel dashboard: running forwards, bytes and active connections" width="100%">
 </p>
 
 Local (`L`), remote (`R`) and dynamic/SOCKS (`D`) forwards, saved automatically
@@ -70,7 +74,7 @@ firewall.
 ### Embedded terminal and replay
 
 <p align="center">
-  <img src="omssh-terminal.png" alt="omssh embedded terminal with a recorded session" width="100%">
+  <img src="screenshots/omssh-history.png" alt="omssh embedded terminal with a recorded session" width="100%">
 </p>
 
 `U` opens a recorded terminal in the window; mouse-drag copies, `Ctrl+V` pastes,
@@ -80,7 +84,7 @@ them back with play/seek/speed/search, and shows the conversation log as text.
 ### MCP for AI agents
 
 <p align="center">
-  <img src="omssh-mcp.png" alt="omssh MCP setup card with recent agent calls" width="100%">
+  <img src="screenshots/omssh-mcp.png" alt="omssh MCP setup card with recent agent calls" width="100%">
 </p>
 
 `omssh mcp` is a stdio MCP server: list, read, copy and extract with the same

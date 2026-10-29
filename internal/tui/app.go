@@ -224,9 +224,11 @@ type Model struct {
 	pendingDeploy string
 	// samples are the numbers on the session cards, and sampleSeq is the
 	// repeating read while the chooser is open.
-	samples    map[string]remoteinfo.Info
-	lastSample time.Time
-	sampleSeq  tea.Cmd
+	samples      map[string]remoteinfo.Info
+	lastSample   time.Time
+	cloudStats   map[string]cloudStats
+	cloudStatsAt map[string]time.Time
+	sampleSeq    tea.Cmd
 	// autoConnect is the host named on the command line, opened by Init.
 	autoConnect string
 
@@ -648,6 +650,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.samples = map[string]remoteinfo.Info{}
 		}
 		m.samples[msg.alias] = msg.info
+		return m, nil
+
+	case cloudStatsMsg:
+		if m.cloudStats == nil {
+			m.cloudStats = map[string]cloudStats{}
+			m.cloudStatsAt = map[string]time.Time{}
+		}
+		m.cloudStats[msg.alias] = msg.stats
+		m.cloudStatsAt[msg.alias] = time.Now()
 		return m, nil
 
 	case sampleTickMsg:

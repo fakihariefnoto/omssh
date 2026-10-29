@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"io/fs"
 	"runtime"
 	"sort"
 	"strings"
@@ -11,6 +13,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/fakihariefnoto/omssh/internal/cloud"
+	"github.com/fakihariefnoto/omssh/internal/cloudcred"
 	"github.com/fakihariefnoto/omssh/internal/remoteinfo"
 	"github.com/fakihariefnoto/omssh/internal/vfs"
 )
@@ -32,6 +36,81 @@ type panesState struct {
 type sessionSampleMsg struct {
 	alias string
 	info  remoteinfo.Info
+}
+
+// cloudStats is what a bucket card can say: objects, folders and their size.
+// It is read once per bucket, not on every chooser tick: a listing is network
+// calls, unlike a shell command on a session.
+type cloudStats struct {
+	files, folders int
+	bytes          int64
+	partial        bool
+	done           bool
+	err            string
+}
+
+// cloudStatsMsg carries one bucket's scan back to the chooser.
+type cloudStatsMsg struct {
+	alias string
+	stats cloudStats
+}
+
+// summarizeFS walks a filesystem within a budget. Object buckets can hold
+// hundreds of thousands of keys; the card says "5000+" rather than making the
+// chooser wait for all of them.
+func summarizeFS(fsys vfs.FS, limit int, timeout time.Duration) cloudStats {
+	stats := cloudStats{}
+	start := time.Now()
+	err := fs.WalkDir(fsys, ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if path == "." {
+			return nil
+		}
+		if time.Since(start) > timeout || stats.files+stats.folders >= limit {
+			stats.partial = true
+			return fs.SkipAll
+		}
+		if walkErr != nil {
+			return nil //nolint:nilerr // one unreadable folder should not fail the count
+		}
+		if entry.IsDir() {
+			stats.folders++
+			return nil
+		}
+		stats.files++
+		if info, err := entry.Info(); err == nil {
+			stats.bytes += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		stats.err = err.Error()
+	}
+	stats.done = true
+	return stats
+}
+
+// sampleClouds scans buckets that have no recent numbers.
+func (m *Model) sampleClouds() tea.Cmd {
+	commands := make([]tea.Cmd, 0, len(m.cfg.Cloud.Profiles))
+	for name, profile := range m.cfg.Cloud.Profiles {
+		if _, ok := m.cloudStats[name]; ok && time.Since(m.cloudStatsAt[name]) < 5*time.Minute {
+			continue
+		}
+		accessKey, secretKey, _ := cloudcred.Load(m.credStore(), name)
+		profileCopy := profile
+		alias := name
+		commands = append(commands, func() tea.Msg {
+			fsys, err := cloud.Open(context.Background(), alias, profileCopy, cloud.Credentials{
+				AccessKey: accessKey, Secret: secretKey,
+				Username: accessKey, Password: secretKey,
+			})
+			if err != nil {
+				return cloudStatsMsg{alias: alias, stats: cloudStats{done: true, err: err.Error()}}
+			}
+			return cloudStatsMsg{alias: alias, stats: summarizeFS(fsys, 5000, 6*time.Second)}
+		})
+	}
+	return tea.Batch(commands...)
 }
 
 // sampleTickMsg asks for the numbers to be read again while the chooser is open.
@@ -100,7 +179,7 @@ func (m *Model) openPanesFrom(returnTo screen) tea.Cmd {
 	m.panes = panesState{chosen: chosen}
 	m.Overlay = OverlayPanes
 	m.samples = map[string]remoteinfo.Info{}
-	m.sampleSeq = m.sampleSessions()
+	m.sampleSeq = tea.Batch(m.sampleSessions(), m.sampleClouds())
 	return m.sampleSeq
 }
 
@@ -319,6 +398,7 @@ type sessionCard struct {
 	path   string
 	state  string
 	info   remoteinfo.Info
+	stats  cloudStats
 	local  bool
 }
 
@@ -347,6 +427,7 @@ func (m *Model) sessionCards() []sessionCard {
 			card.target = fmt.Sprintf("%s · %s", strings.ToUpper(profile.Provider), profile.Bucket)
 			card.state = "on demand"
 			card.cloud = true
+			card.stats = m.cloudStats[name]
 			cards = append(cards, card)
 			continue
 		}
@@ -464,6 +545,38 @@ func (m *Model) renderSessionCard(card sessionCard, selected bool, width int) st
 	switch {
 	case card.local:
 		body = append(body, m.st.CardMuted.Render(truncate("the machine you are on", inner)))
+	case card.cloud:
+		stats := card.stats
+		switch {
+		case !stats.done:
+			body = append(body,
+				m.st.CardMuted.Render("counting objects…"),
+				m.st.CardMuted.Render("files  —"),
+				m.st.CardMuted.Render("size   —"))
+		case stats.err != "":
+			body = append(body,
+				m.st.CardMuted.Render(truncate("cannot list: "+stats.err, inner)),
+				m.st.CardMuted.Render("files  —"),
+				m.st.CardMuted.Render("size   —"))
+		default:
+			files := fmt.Sprintf("%d", stats.files)
+			folders := fmt.Sprintf("%d", stats.folders)
+			size := humanSize(stats.bytes)
+			if stats.partial {
+				files += "+"
+				folders += "+"
+				size += "+"
+			}
+			body = append(body,
+				m.st.CardText.Render(truncate(fmt.Sprintf("%s files · %s folders", files, folders), inner)),
+				m.st.CardMuted.Render(truncate(size+" stored", inner)),
+				m.st.CardMuted.Render(truncate(func() string {
+					if profile, ok := m.cfg.Cloud.Profiles[card.alias]; ok && strings.TrimSpace(profile.Prefix) != "" {
+						return "prefix " + strings.Trim(profile.Prefix, "/")
+					}
+					return "whole bucket"
+				}(), inner)))
+		}
 	case card.info.Known:
 		body = append(body,
 			m.bar("load", fmt.Sprintf("%.2f", card.info.Load), card.info.LoadPercent(), inner),

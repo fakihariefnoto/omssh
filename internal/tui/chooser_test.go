@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -186,5 +189,65 @@ func TestPanesChooserGuidanceAndArrows(t *testing.T) {
 	press(t, m, keyNamed(tea.KeyEsc))
 	if m.Overlay != OverlayNone || m.screen != screenHome {
 		t.Errorf("Esc should return to the launcher, overlay=%v screen=%v", m.Overlay, m.screen)
+	}
+}
+
+// A bucket card reports objects, folders and size — not load/mem/disk, which a
+// bucket does not have.
+func TestBucketCardHasBucketStats(t *testing.T) {
+	m := newTestModel(t)
+	card := sessionCard{alias: "backups", title: "backups", target: "S3 · my-backups",
+		path: "/", state: "on demand", cloud: true,
+		stats: cloudStats{done: true, files: 42, folders: 7, bytes: 5 << 20}}
+	out := ansi.Strip(m.renderSessionCard(card, false, 60))
+	for _, want := range []string{"42 files", "7 folders", "5.0 MB stored"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("bucket card should show %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"load", "mem", "disk"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("bucket card should not show %q:\n%s", unwanted, out)
+		}
+	}
+
+	// A scan still running says so; a capped one is marked with "+".
+	card.stats = cloudStats{}
+	if out := ansi.Strip(m.renderSessionCard(card, false, 60)); !strings.Contains(out, "counting objects") {
+		t.Errorf("an unscanned bucket should say it is counting:\n%s", out)
+	}
+	card.stats = cloudStats{done: true, files: 5000, folders: 10, bytes: 1 << 20, partial: true}
+	if out := ansi.Strip(m.renderSessionCard(card, false, 60)); !strings.Contains(out, "5000+ files") {
+		t.Errorf("a capped scan should say so:\n%s", out)
+	}
+}
+
+// The walker counts files, folders and bytes, and stops at its budget.
+func TestSummarizeFS(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{
+		"one.txt":       []byte("12345"),
+		"a/two.txt":     []byte("123"),
+		"a/b/three.txt": []byte("1"),
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(root, name), body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fsys, err := vfs.NewLocal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := summarizeFS(fsys, 100, time.Second)
+	if stats.err != "" || stats.files != 3 || stats.folders != 2 || stats.bytes != 9 {
+		t.Errorf("stats = %+v", stats)
+	}
+	capped := summarizeFS(fsys, 2, time.Second)
+	if !capped.partial {
+		t.Errorf("a budget of two should be partial: %+v", capped)
 	}
 }
