@@ -198,11 +198,20 @@ func (m *Model) closeEmbedded(state *embeddedState) {
 	if state == nil {
 		return
 	}
-	if state.shell != nil {
-		_ = state.shell.Close()
-	}
-	if state.rec != nil {
-		_ = state.rec.Close()
+	// Closing an SSH channel on a dead link can block; quitting must not.
+	done := make(chan struct{})
+	go func() {
+		if state.shell != nil {
+			_ = state.shell.Close()
+		}
+		if state.rec != nil {
+			_ = state.rec.Close()
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(700 * time.Millisecond):
 	}
 }
 

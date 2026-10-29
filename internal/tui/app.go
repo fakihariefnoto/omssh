@@ -1574,15 +1574,25 @@ func (m *Model) requestQuit() tea.Cmd {
 // finishQuit ends the interface cleanly: tunnels, embedded terminals, SSH
 // sessions and the context the transfers share.
 func (m *Model) finishQuit() tea.Cmd {
-	m.closeTunnels()
-	m.closeEmbeddedAll()
-	if m.sessions != nil {
-		_ = m.sessions.CloseAll()
-	}
-	m.answerPendingPrompt()
 	if m.cancelConnect != nil {
 		m.cancelConnect()
 	}
+	m.closeTunnels()
+	m.closeEmbeddedAll()
+	if m.sessions != nil {
+		// A server that stopped answering must not keep the window open. Closing
+		// the pool is best effort once the process is leaving.
+		done := make(chan struct{})
+		go func() {
+			_ = m.sessions.CloseAll()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
+	}
+	m.answerPendingPrompt()
 	m.quit = true
 	return tea.Quit
 }

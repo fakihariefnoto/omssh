@@ -95,6 +95,9 @@ type Tunnel struct {
 
 	mu     sync.Mutex
 	closed bool
+	// conns are the open pairs, so Close can unblock a bridge instead of waiting
+	// for a client that may never hang up.
+	conns map[net.Conn]struct{}
 }
 
 // Start opens the listener and begins accepting.
@@ -129,7 +132,8 @@ func Start(ctx context.Context, opts Options) (*Tunnel, error) {
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
-	t := &Tunnel{id: newSessionID(), options: opts, ctx: runCtx, cancel: cancel, ln: ln}
+	t := &Tunnel{id: newSessionID(), options: opts, ctx: runCtx, cancel: cancel, ln: ln,
+		conns: map[net.Conn]struct{}{}}
 	t.emit(Event{Time: time.Now(), Session: t.id, Host: opts.Host, Kind: opts.Kind,
 		Listen: ln.Addr().String(), Target: opts.Target})
 	t.wg.Add(1)
@@ -195,7 +199,11 @@ func (t *Tunnel) handle(client net.Conn) {
 			Target: target, Client: client.RemoteAddr().String(), Error: err.Error()})
 		return
 	}
-	defer func() { _ = upstream.Close() }()
+	t.track(client, upstream)
+	defer func() {
+		t.untrack(client, upstream)
+		_ = upstream.Close()
+	}()
 
 	clientAddr := client.RemoteAddr().String()
 	in, out := bridge(client, upstream, func(in, out int64) {
@@ -260,7 +268,27 @@ func bridge(client, upstream net.Conn, progress func(in, out int64)) (in, out in
 	return in, out
 }
 
-// Close stops accepting and waits for open connections to finish.
+// track remembers a connection pair so Close can end it.
+func (t *Tunnel) track(conns ...net.Conn) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, conn := range conns {
+		t.conns[conn] = struct{}{}
+	}
+}
+
+func (t *Tunnel) untrack(conns ...net.Conn) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, conn := range conns {
+		delete(t.conns, conn)
+	}
+}
+
+// Close stops accepting and ends open connections. It is bounded: a quit must
+// not wait for a browser keep-alive, and a listener on a dead link must not block
+// the process. A connection still busy after the deadline is abandoned to the
+// OS, which will close it with the process.
 func (t *Tunnel) Close() error {
 	t.mu.Lock()
 	if t.closed {
@@ -268,11 +296,38 @@ func (t *Tunnel) Close() error {
 		return nil
 	}
 	t.closed = true
+	conns := make([]net.Conn, 0, len(t.conns))
+	for conn := range t.conns {
+		conns = append(conns, conn)
+	}
 	t.mu.Unlock()
 	t.cancel()
-	err := t.ln.Close()
-	t.wg.Wait()
-	return err
+
+	// The listener's Close can itself be a network round trip for a remote
+	// forward; do not hold the caller for it.
+	closed := make(chan struct{})
+	go func() {
+		_ = t.ln.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(300 * time.Millisecond):
+	}
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
+	done := make(chan struct{})
+	go func() {
+		t.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-time.After(500 * time.Millisecond):
+		return nil
+	}
 }
 
 func (t *Tunnel) emit(event Event) {

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -629,14 +630,34 @@ func (m *Model) stopTunnel(index int) {
 	}
 }
 
-// closeTunnels stops everything, for a clean quit.
+// closeTunnels stops everything in parallel and waits only briefly. Quitting must
+// not hang on a tunnel whose client never hangs up.
 func (m *Model) closeTunnels() {
-	for _, active := range m.tunnels {
-		if active.tunnel != nil {
-			_ = active.tunnel.Close()
-		}
-	}
+	tunnels := m.tunnels
 	m.tunnels = nil
+	if len(tunnels) == 0 {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		for _, active := range tunnels {
+			if active.tunnel == nil {
+				continue
+			}
+			wg.Add(1)
+			go func(closer interface{ Close() error }) {
+				defer wg.Done()
+				_ = closer.Close()
+			}(active.tunnel)
+		}
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(900 * time.Millisecond):
+	}
 }
 
 // suggestPort returns the first free port at or after preferred, so the form can

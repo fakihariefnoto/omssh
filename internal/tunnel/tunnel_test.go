@@ -252,3 +252,68 @@ func TestParseSpec(t *testing.T) {
 		}
 	}
 }
+
+// Close does not wait for a client that never hangs up, and a listener whose
+// Close blocks cannot hold the caller forever.
+func TestCloseIsBounded(t *testing.T) {
+	t.Run("open connection", func(t *testing.T) {
+		tunnel, err := Start(context.Background(), Options{Kind: Local, Listen: "127.0.0.1:0",
+			Target: "db:5432", Dialer: newEchoDialer()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err := dialTest(t, tunnel.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = client.Close() }()
+		if _, err := client.Write([]byte("hold")); err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		if err := tunnel.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(start); elapsed > 1500*time.Millisecond {
+			t.Errorf("Close took %v with an idle client", elapsed)
+		}
+	})
+
+	t.Run("slow listener", func(t *testing.T) {
+		listener := &blockingListener{block: 2 * time.Second}
+		tunnel, err := Start(context.Background(), Options{Kind: Remote, Listen: "0.0.0.0:9000",
+			Target: "127.0.0.1:3000", Remote: listener, LocalDialer: newEchoDialer()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		_ = tunnel.Close()
+		if elapsed := time.Since(start); elapsed > 1500*time.Millisecond {
+			t.Errorf("Close took %v with a blocking listener", elapsed)
+		}
+	})
+}
+
+// blockingListener stands in for a remote listener whose Close is a network
+// round trip that does not answer.
+type blockingListener struct {
+	block time.Duration
+	conns chan net.Conn
+}
+
+func (b *blockingListener) Listen(_, _ string) (net.Listener, error) {
+	if b.conns == nil {
+		b.conns = make(chan net.Conn)
+	}
+	return &slowCloseListener{fakeListener: fakeListener{conns: b.conns}, block: b.block}, nil
+}
+
+type slowCloseListener struct {
+	fakeListener
+	block time.Duration
+}
+
+func (s *slowCloseListener) Close() error {
+	time.Sleep(s.block)
+	return nil
+}
