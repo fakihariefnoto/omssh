@@ -46,6 +46,8 @@ unpacked tree or a single archive instead of a pile of files.
   with play, seek, speed and search. Mouse-drag copies, `Ctrl+V` pastes,
   `Ctrl+]` detaches without ending the shell, and Terminal & Tunnel attaches
   again. `T` still hands the terminal to `ssh`.
+- **Safe confirmations.** Destructive dialogs start on Cancel; arrows or Tab choose,
+  `y`/`n` answer, and clicking works.
 - **History.** Terminal recordings, tunnel sessions and agent calls in one screen
   with tabs, a conversation log for terminals, an event tail for tunnels, and
   per-record delete. The launcher opens it on the tab you asked for.

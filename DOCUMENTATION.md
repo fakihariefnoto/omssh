@@ -48,6 +48,10 @@ omssh prod       # the interface, connected to prod on startup
 - **MCP for agents** — the stdio setup and the recent call log.
 - **Settings, theme and keys** (`Ctrl+,`) — themes, icons, motion, and the keymap.
 
+Confirmations always start on **Cancel**. `←/→` or `Tab` moves between Cancel and
+the action, `Enter` takes the selected one, `Esc` or `n` cancels, `y` confirms, and
+both buttons are clickable. Nothing destructive happens on a stray Enter.
+
 Nothing is modal. You can open the palette (`Ctrl+K`), the keymap (`?`), or the
 connections screen from anywhere, and `Esc` takes you one step back. On the
 launcher — the outermost screen — `Esc` leaves, after asking if a transfer is

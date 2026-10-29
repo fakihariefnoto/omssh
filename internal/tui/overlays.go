@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -424,24 +425,69 @@ func (m *Model) renderConfirm(l layout) string {
 		lines = append(lines, m.st.CardText.Render(truncate(line, content)))
 	}
 	lines = append(lines, "")
+	cancel := m.button(m.confirm.Focus == 0, "Cancel")
 	if m.confirm.Danger {
 		confirm := m.confirm.Confirm
 		if confirm == "" {
 			confirm = "Delete"
+		}
+		action := m.st.ButtonDanger.Render(confirm)
+		if m.confirm.Focus == 1 {
+			action = m.st.ButtonActive.Render(confirm)
 		}
 		note := m.confirm.Note
 		if note == "" {
 			note = "Permanent: omssh has no trash and no undo."
 		}
 		lines = append(lines,
-			m.button(false, "Cancel")+"   "+m.st.ButtonDanger.Render(confirm),
+			cancel+"   "+action,
 			"",
 			m.st.CardMuted.Render(note),
 		)
 	} else {
-		lines = append(lines, m.button(false, "Cancel")+"   "+m.button(true, "Confirm"))
+		lines = append(lines, cancel+"   "+m.button(m.confirm.Focus == 1, "Confirm"))
 	}
+	lines = append(lines, "", m.st.CardMuted.Render("←/→ choose · Enter confirm · Esc cancel"))
 	return m.card(width, lines)
+}
+
+// handleConfirmMouse clicks either button. The card's geometry is the same one
+// overlayOn uses, so a click lands where the text is.
+func (m *Model) handleConfirmMouse(msg tea.MouseMsg) tea.Cmd {
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != ansi.MouseLeft {
+		return nil
+	}
+	l := m.measure()
+	card := strings.Split(m.renderConfirm(l), "\n")
+	width := 0
+	for _, line := range card {
+		width = max(width, lipgloss.Width(line))
+	}
+	left := max(0, (l.Width-width)/2)
+	top := max(0, (l.Height-len(card))/2)
+	row := click.Y - top
+	if row < 0 || row >= len(card) {
+		return nil
+	}
+	line := ansi.Strip(card[row])
+	x := click.X - left
+	cancelAt := strings.Index(line, "Cancel")
+	confirmLabel := m.confirm.Confirm
+	if confirmLabel == "" {
+		confirmLabel = "Confirm"
+		if m.confirm.Danger {
+			confirmLabel = "Delete"
+		}
+	}
+	confirmAt := strings.Index(line, confirmLabel)
+	switch {
+	case cancelAt >= 0 && x >= cancelAt && x < cancelAt+len("Cancel"):
+		return m.confirmAnswer(false)
+	case confirmAt >= 0 && x >= confirmAt && x < confirmAt+len(confirmLabel):
+		return m.confirmAnswer(true)
+	}
+	return nil
 }
 
 // renderPrompt draws a single-field prompt: new folder, new file, rename, path.

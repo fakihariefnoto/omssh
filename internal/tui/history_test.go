@@ -364,6 +364,7 @@ func TestSavedTunnelProfiles(t *testing.T) {
 	if m.Overlay != OverlayConfirm {
 		t.Fatalf("x should confirm deletion, overlay=%v", m.Overlay)
 	}
+	press(t, m, keyNamed(tea.KeyRight))
 	press(t, m, keyNamed(tea.KeyEnter))
 	if len(m.cfg.Tunnels.Profiles) != 0 {
 		t.Error("the profile should be deleted")

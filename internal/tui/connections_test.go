@@ -305,6 +305,7 @@ func TestConnectionsDeleteAsksFirst(t *testing.T) {
 	}
 
 	press(t, m, run('d', 0, "d"))
+	press(t, m, keyNamed(tea.KeyRight))
 	press(t, m, keyNamed(tea.KeyEnter))
 	text := readText(t, path)
 	if strings.Contains(text, "Host prod") {

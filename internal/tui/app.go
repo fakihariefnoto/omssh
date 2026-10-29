@@ -264,6 +264,9 @@ type confirmState struct {
 	Entries []Entry
 	// Alias is set when the confirmation is about a connection.
 	Alias string
+	// Focus is 0 for Cancel, 1 for the action. Cancel is the default: the safe
+	// button should be the one Enter lands on.
+	Focus int
 	open  bool
 }
 
@@ -857,16 +860,16 @@ func (m *Model) handleOverlayKey(msg tea.KeyPressMsg) bool {
 
 	case OverlayConfirm:
 		switch msg.String() {
-		case "esc":
-			m.confirm = confirmState{}
-			m.Overlay = OverlayNone
+		case "esc", "n":
+			m.confirmAnswer(false)
+		case "y":
+			m.overlayCmd = m.confirmAnswer(true)
+		case "left", "h", "shift+tab":
+			m.confirm.Focus = 0
+		case "right", "l", "tab":
+			m.confirm.Focus = 1
 		case "enter":
-			entries := m.confirm.Entries
-			action := m.confirm.Action
-			m.confirmAlias = m.confirm.Alias
-			m.confirm = confirmState{}
-			m.Overlay = OverlayNone
-			m.overlayCmd = m.applyConfirmed(action, entries)
+			m.overlayCmd = m.confirmAnswer(m.confirm.Focus == 1)
 		}
 		return true
 
@@ -1088,6 +1091,10 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.Overlay == OverlayTerminal {
 		m.handleEmbeddedMouse(msg)
 		return m, nil
+	}
+	if m.Overlay == OverlayConfirm {
+		cmd := m.handleConfirmMouse(msg)
+		return m, cmd
 	}
 	if m.Overlay != OverlayNone {
 		return m, nil
@@ -1555,6 +1562,21 @@ func (m *Model) goBack() tea.Cmd {
 		m.quitHint = "Nothing to dismiss · Ctrl+Q to quit"
 	}
 	return nil
+}
+
+// confirmAnswer closes the dialog and performs the chosen side.
+func (m *Model) confirmAnswer(confirmed bool) tea.Cmd {
+	if !confirmed {
+		m.confirm = confirmState{}
+		m.Overlay = OverlayNone
+		return nil
+	}
+	entries := m.confirm.Entries
+	action := m.confirm.Action
+	m.confirmAlias = m.confirm.Alias
+	m.confirm = confirmState{}
+	m.Overlay = OverlayNone
+	return m.applyConfirmed(action, entries)
 }
 
 // requestQuit asks before ending something that is still moving. A transfer is

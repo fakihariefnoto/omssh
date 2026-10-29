@@ -672,8 +672,10 @@ func TestDeleteAsksFirstAndStatesTheFacts(t *testing.T) {
 		t.Fatal("cancelling deleted the file")
 	}
 
-	// Confirming deletes it, and says so.
+	// Confirming deletes it, and says so. Cancel is the default, so choose the
+	// action first.
 	press(t, m, keyNamed(tea.KeyF8))
+	press(t, m, keyNamed(tea.KeyRight))
 	press(t, m, keyNamed(tea.KeyEnter))
 	if _, err := os.Stat(filepath.Join(m.Pane().Path, "notes.txt")); !os.IsNotExist(err) {
 		t.Fatal("confirming did not delete the file")
@@ -1104,5 +1106,61 @@ func TestQuitListsRunningTunnels(t *testing.T) {
 	_ = m.applyConfirmed("app.quit", nil)
 	if !m.quit {
 		t.Error("confirming should quit")
+	}
+}
+
+// A confirmation starts on Cancel, and Enter, Left or n all cancel. Choosing the
+// action needs a deliberate move.
+func TestConfirmDefaultsToCancel(t *testing.T) {
+	m := newTestModel(t)
+	m.selectByName("notes.txt")
+	press(t, m, keyNamed(tea.KeyF8))
+	if m.confirm.Focus != 0 {
+		t.Fatal("the confirmation should start on Cancel")
+	}
+	press(t, m, keyNamed(tea.KeyEnter))
+	if m.Overlay != OverlayNone {
+		t.Error("Enter on Cancel should close the dialog")
+	}
+	if _, err := os.Stat(filepath.Join(m.Pane().Path, "notes.txt")); err != nil {
+		t.Fatal("cancelling deleted the file")
+	}
+
+	m.selectByName("notes.txt")
+	press(t, m, keyNamed(tea.KeyF8))
+	press(t, m, run('n', 0, "n"))
+	if m.Overlay != OverlayNone {
+		t.Error("n should cancel")
+	}
+}
+
+// Clicking Cancel cancels; clicking the action performs it.
+func TestConfirmIsClickable(t *testing.T) {
+	m := newTestModel(t)
+	m.selectByName("notes.txt")
+	press(t, m, keyNamed(tea.KeyF8))
+	l := m.measure()
+	card := strings.Split(m.renderConfirm(l), "\n")
+	row, left := 0, 0
+	for i, line := range card {
+		if strings.Contains(ansi.Strip(line), "Cancel") {
+			row = i
+			break
+		}
+	}
+	width := 0
+	for _, line := range card {
+		width = max(width, lipgloss.Width(line))
+	}
+	left = max(0, (l.Width-width)/2)
+	top := max(0, (l.Height-len(card))/2)
+	x := left + strings.Index(ansi.Strip(card[row]), "Cancel") + 1
+	click := tea.MouseClickMsg(tea.Mouse{X: x, Y: top + row, Button: ansi.MouseLeft})
+	_, _ = m.Update(click)
+	if m.Overlay != OverlayNone {
+		t.Error("clicking Cancel should close the dialog")
+	}
+	if _, err := os.Stat(filepath.Join(m.Pane().Path, "notes.txt")); err != nil {
+		t.Fatal("clicking Cancel deleted the file")
 	}
 }
