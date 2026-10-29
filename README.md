@@ -24,64 +24,68 @@ and history. Which four is a choice, asked before the dashboard opens. Files mov
 between any two of them, and the card in the middle is where a copy becomes an
 unpacked tree or a single archive instead of a pile of files.
 
-## What it does
+## Why this CLI tool suits you
 
-- **Four panes, one screen — or one.** Each keeps its own path and history.
-  `w` moves between them; `V` chooses which places are on screen, and the local
-  folder is optional, so four servers is a legitimate dashboard.
-- **Copying that respects you.** Mark files once, paste into any pane — as files,
-  as an unpacked tree, or as an archive, with the conflict rule chosen in one
-  card instead of a soup of flags.
-- **Archive handling on both sides.** Extract a tarball that lives on the server
-  into a local folder; pack a local selection straight onto the server. No
-  `tar`/`unzip` on either end.
-- **Buckets as places.** S3, Cloudflare R2, Backblaze B2, Alibaba OSS, GCS,
-  Azure Blob and WebDAV open in a pane like a host: copy between a bucket and a
-  server, extract an archive from a bucket, deploy into one. Credentials come
-  from the form (stored in the OS keyring) or the provider's own chain — never
-  from the config file. Azure takes an account key, a SAS token or Entra ID; GCS
-  takes HMAC keys, ADC, a service-account JSON or impersonation.
-- **Recorded sessions.** `U` opens an embedded terminal, recorded to an asciinema
-  `.cast` by default (Ctrl+, turns that off); History lists them, `Alt+R` replays
-  with play, seek, speed and search. Mouse-drag copies, `Ctrl+V` pastes,
-  `Ctrl+]` detaches without ending the shell, and Terminal & Tunnel attaches
-  again. `T` still hands the terminal to `ssh`.
-- **Safe confirmations.** Destructive dialogs start on Cancel; arrows or Tab choose,
-  `y`/`n` answer, and clicking works.
-- **History.** Terminal recordings, tunnel sessions and agent calls in one screen
-  with tabs, a conversation log for terminals, an event tail for tunnels, and
-  per-record delete. The launcher opens it on the tab you asked for.
-- **Saved tunnels and password hosts.** Tunnels can be saved to `config.yaml`,
-  saved automatically when started (the name carries both ends,
-  `ovh-remote-9000-local-8080`), started/edited/deleted from the chooser, with
-  a live dashboard for counters,
-  active connections and bytes while they move (`p` starts the same forward on
-  another port; `c` checks sshd and the firewall). SSH connections made
-  with a password live in the same config with the secret in the keyring.
-- **Tunnels.** `-L`, `-R` and SOCKS `-D` over the pooled connection, with a
-  reconnect on the next connection and metadata-only auditing in
-  `<state>/tunnels.jsonl`. From the launcher: **Terminal** and **Tunnel** choose a host —
-  connecting it first if needed — and **Tunnel** shows what is listening and how
-  much has moved.
-  `bastion` names the forward that exists to be watched.
-- **An agent interface.** `omssh fs` and `omssh mcp`: one path grammar, JSON
-  output, `--json-lines` progress, and a safety model — read-only by default,
-  allowlists, plans for destructive calls, an audit log.
-- **Deploy profiles.** A local tree to a remote root, with excludes, a reviewed
-  diff, and a sync mode that mirrors. A second run with nothing changed does
-  nothing.
-- **A real terminal.** `t` hands the terminal to `ssh` for that host — vim, top,
-  tmux and colours work because nothing stands in their way.
-- **Dotfiles visible by default.** Hidden files are shown until you press `.`,
-  because hiding a file by default makes you wonder where it went.
-- **One manager for every place.** `Ctrl+O` has a screen per kind — Overview, SSH,
-  S3 — with `a` adding whichever the screen is about, and `Tab` moving between
-  them.
-- **Honest about state.** Live transfers, marked files, pinned hosts and recent
-  connections are visible in the sidebar; every destructive action asks first.
-- **Keyboard-first, mouse-friendly.** Plain letters are commands, digits switch
-  sessions, `Ctrl+K` finds any action, and `Esc` always goes back — it never
-  quits.
+- **Manage SSH connections.** Stop juggling SSH configs and aliases. omssh keeps
+  the connections in one list and lets you use your own `ssh`, or its embedded
+  SSH with history and replay.
+- **SSH and cloud storage in one window.** Copy, move and delete between
+  SSH↔SSH, SSH↔cloud, cloud↔SSH, or either↔local. S3, GCS, Azure Blob and WebDAV,
+  with credentials in the OS keyring, not the config.
+- **Manage tunneling.** Local, remote and SOCKS port forwarding from the same
+  CLI, with saved profiles and a live dashboard.
+- **Archive and extract out of the box.** Extract an archive straight into the
+  other pane, or pack a selection into one, without running `tar`/`unzip` first.
+- **Up to four panes.** Four sessions in one window with progress for every
+  transfer. The grid shrinks to the number of places you actually opened.
+- **Recorded sessions.** Embedded terminals and tunnels are recorded by default
+  (`.cast`, replayable), so you can audit what happened — including what an agent
+  did. Turn recording off in settings.
+- **Built for agents.** `omssh fs` and `omssh mcp` expose the same places to an
+  AI agent with JSON output, allowlists and an audit log.
+- **Themes.** Several palettes and a mono theme, chosen from settings.
+
+## See it
+
+### Cloud storage, beside SSH
+
+<p align="center">
+  <img src="omssh-cloud.png" alt="omssh with an S3 bucket in one pane and an SSH host in another" width="100%">
+</p>
+
+A bucket is a place like a host. The same copy, archive, preview and deploy
+actions work in both directions — S3, GCS, Azure Blob and WebDAV included.
+
+### Tunnels with a live dashboard
+
+<p align="center">
+  <img src="omssh-tunnels.png" alt="omssh tunnel dashboard: running forwards, bytes and active connections" width="100%">
+</p>
+
+Local (`L`), remote (`R`) and dynamic/SOCKS (`D`) forwards, saved automatically
+when started. The dashboard shows every connection and its bytes while they move;
+`p` starts the same tunnel on another port, `c` checks the server's sshd and
+firewall.
+
+### Embedded terminal and replay
+
+<p align="center">
+  <img src="omssh-terminal.png" alt="omssh embedded terminal with a recorded session" width="100%">
+</p>
+
+`U` opens a recorded terminal in the window; mouse-drag copies, `Ctrl+V` pastes,
+`Ctrl+]` detaches without ending the shell. History lists the recordings, plays
+them back with play/seek/speed/search, and shows the conversation log as text.
+
+### MCP for AI agents
+
+<p align="center">
+  <img src="omssh-mcp.png" alt="omssh MCP setup card with recent agent calls" width="100%">
+</p>
+
+`omssh mcp` is a stdio MCP server: list, read, copy and extract with the same
+allowlists and audit log. The launcher's MCP card copies the client configuration
+and shows what the agent has been doing.
 
 ## Install
 
@@ -141,11 +145,12 @@ omssh config check    # validate it, with line numbers
 omssh config path     # print the exact path
 ```
 
-Connections are not duplicated here: `omssh` reads and writes your
-`~/.ssh/config` in place, leaving comments and directives it does not manage
-untouched. The config file holds preferences — theme, keymap overrides, transfer
-behaviour, deploy profiles, pinned and hidden hosts, and cloud *profiles* (bucket,
-region, endpoint — no secrets).
+Connections normally live in `~/.ssh/config`, which omssh reads and writes in
+place without touching directives it does not manage. A connection created with
+a password is stored under `hosts:` here instead, with the secret in the OS
+keyring. The config also holds preferences — theme, keymap overrides, transfer
+behaviour, deploy profiles, saved tunnels, pinned and hidden hosts, and cloud
+*profiles* (bucket, region, endpoint — no secrets).
 
 Bucket credentials entered in the form are kept in the **OS keyring**. Leave them
 blank and the standard AWS chain is used instead.
@@ -160,6 +165,9 @@ omssh cloud list                 # object-storage profiles
 omssh cloud check <profile>      # list a bucket root, and say what a 403 means
 omssh cloud ls <profile> [path]
 omssh cloud forget <profile>     # drop the stored access key
+omssh fs ls prod:/srv/app        # files, one grammar for every place
+omssh tunnel contabo -L 8080:db:5432
+omssh mcp                        # MCP server over stdio
 omssh keys                       # the effective keymap
 omssh config path|init|check
 omssh version
@@ -167,7 +175,9 @@ omssh version
 
 `exec` allocates no terminal unless you ask with `--tty`, and answers what a
 connection asks: it prints an unknown host key's fingerprint before trusting it,
-and reads passwords without echoing.
+and reads passwords without echoing. `--json`, `--json-lines`, `--batch` and
+`--allow-write`/`--allow-host`/`--allow-path` make the same commands usable by a
+script or an agent.
 
 ## Development
 
